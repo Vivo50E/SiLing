@@ -73,6 +73,7 @@ from .remote_nodes import (
     qualify_run_id,
     remote_api_path,
 )
+from .self_update import SelfUpdateError, SelfUpdateManager
 from .sync_status import SyncStatusService, load_settings as load_sync_settings
 from .sync_transfer import TransferCancelled
 from .terminal_theme import (
@@ -209,6 +210,36 @@ _CONVERSATION_METRICS_POOL = ThreadPoolExecutor(
 _CONVERSATION_METRICS_PENDING_LOCK = threading.Lock()
 _CONVERSATION_METRICS_PENDING: dict[tuple[str, str], Any] = {}
 _QUICKLOOK_PROCS: dict[str, subprocess.Popen] = {}
+
+
+def _schedule_dashboard_restart(
+    delay_seconds: float = 1.0,
+    before_exec: Optional[Callable[[], None]] = None,
+) -> None:
+    """Replace this Dashboard process after the HTTP response is flushed.
+
+    ``exec`` preserves the process identity for launchd and avoids racing two
+    servers for the same port. Agent tmux sessions are separate processes and
+    are unaffected. The browser already watches the dashboard instance id and
+    reloads itself after the replacement finishes starting.
+    """
+    executable = sys.executable
+    argv = [executable, *sys.argv]
+    cwd = os.getcwd()
+
+    def restart() -> None:
+        time.sleep(max(0.25, delay_seconds))
+        try:
+            if before_exec is not None:
+                before_exec()
+            os.chdir(cwd)
+            os.execv(executable, argv)
+        except Exception as exc:
+            print(f"[self-update] restart failed: {exc}", file=sys.stderr, flush=True)
+
+    threading.Thread(
+        target=restart, daemon=True, name="orch-self-update-restart",
+    ).start()
 
 
 def _should_auto_title(label: str, cwd: str, alive: bool) -> bool:
@@ -7862,6 +7893,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         refresh_callback=remote_nodes.request_refresh,
     )
     native_activity = NativeActivityService()
+    self_updates = SelfUpdateManager(PROJECT_DIR)
 
     def scan_session_snapshot() -> list[dict[str, Any]]:
         # Reaping shares the same low-frequency worker as discovery. HTTP
@@ -7999,6 +8031,10 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
     app.state.sync_status = sync_status
     app.state.remote_nodes = remote_nodes
     app.state.remote_node_reconnect = remote_node_reconnect
+    app.state.self_updates = self_updates
+    app.state.schedule_restart = lambda: _schedule_dashboard_restart(
+        before_exec=ttyd.stop_all,
+    )
 
     # Optional background publisher: write current URL to iCloud Drive so a
     # phone can pick up the latest address without guessing. Writes on IP
@@ -8262,6 +8298,60 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             **_dashboard_client_config(),
             "remote_nodes": remote_nodes.browser_config(),
         }
+
+    @app.get("/api/self-update")
+    def self_update_status():
+        """List committed, isolated self-improvement branches for review."""
+        return self_updates.status()
+
+    def require_self_update_intent(request: Request) -> None:
+        # A custom header forces cross-origin browser requests through CORS
+        # preflight, which this local Dashboard does not grant. This prevents
+        # an arbitrary website from driving a tokenless localhost Dashboard.
+        if request.headers.get("x-orch-self-update") != "reviewed":
+            raise HTTPException(403, "explicit self-update intent is required")
+        if "application/json" not in request.headers.get("content-type", "").lower():
+            raise HTTPException(415, "self-update requests require JSON")
+
+    @app.post("/api/self-update/verify")
+    async def self_update_verify(request: Request):
+        require_self_update_intent(request)
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        branch = str(body.get("branch") or "").strip()
+        if not branch:
+            raise HTTPException(400, "branch is required")
+        try:
+            return await asyncio.to_thread(self_updates.verify, branch)
+        except SelfUpdateError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/api/self-update/apply")
+    async def self_update_apply(request: Request):
+        require_self_update_intent(request)
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        branch = str(body.get("branch") or "").strip()
+        verification_token = str(body.get("verification_token") or "").strip()
+        confirmation = str(body.get("confirmation") or "")
+        if not branch or not verification_token:
+            raise HTTPException(400, "branch and verification_token are required")
+        try:
+            result = await asyncio.to_thread(
+                self_updates.apply, branch, verification_token, confirmation,
+            )
+        except SelfUpdateError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        if body.get("restart", True):
+            result["restarting"] = True
+            app.state.schedule_restart()
+        else:
+            result["restarting"] = False
+        return result
 
     @app.get("/api/nodes")
     def dashboard_nodes():

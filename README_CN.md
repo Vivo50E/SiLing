@@ -224,6 +224,17 @@ orch delegate --agent codex --model gpt-5.6-sol --effort high \
 指定行数读取 TTY 开头或结尾，以及向目标 session 发送 follow-up。完整流程、幂等
 自动化与远端节点行为见 [Agent 委派指南](docs/agent-delegation.md)。
 
+### 批准并应用自改进
+
+Dashboard 顶部的 **apply update** 会发现位于独立 Git worktree 中、名称以
+`agent/self-improve-` 开头的候选分支。候选必须已经提交、两个 worktree 都没有
+未提交改动，并且能够 fast-forward 当前分支。点击 **Run full tests** 后，批准令牌
+会绑定当前分支与候选分支的精确 commit；任一分支随后发生变化都会使令牌失效。
+
+审核 commit 和文件列表后，输入 `APPROVE` 才能执行 fast-forward 合并。Dashboard
+随后原地重启，tmux 中的 agents 不会停止，已经安装的 macOS PWA 会自动重连，
+无需重新安装。该流程不会应用 agent 工作区里的未提交代码，也不会 force merge。
+
 ## 在 macOS 后台常驻
 
 受管安装器会创建隔离运行环境、安装依赖、生成私有 token，并注册用户级

@@ -248,6 +248,20 @@ Codex/Claude session's model or effort through `orch session` commands. See the
 [agent delegation guide](docs/agent-delegation.md) for the complete workflow,
 idempotent automation, and remote-node behavior.
 
+### Approve and apply self-improvements
+
+The Dashboard's **apply update** action discovers candidate branches in
+separate Git worktrees whose names begin with `agent/self-improve-`. A candidate
+must be committed, both worktrees must be clean, and it must fast-forward the
+current branch. After **Run full tests** succeeds, the approval token is bound
+to the exact target and candidate commits; changing either commit invalidates
+the token.
+
+Review the commits and changed-file list, then type `APPROVE` to perform the
+fast-forward merge. The Dashboard replaces its process while tmux agents keep
+running, and an installed macOS PWA reconnects without being reinstalled. The
+workflow never applies uncommitted agent code and never force-merges.
+
 ## Keep it running on macOS
 
 The managed installer creates an isolated runtime, installs dependencies,
