@@ -210,6 +210,7 @@ _CONVERSATION_METRICS_POOL = ThreadPoolExecutor(
 _CONVERSATION_METRICS_PENDING_LOCK = threading.Lock()
 _CONVERSATION_METRICS_PENDING: dict[tuple[str, str], Any] = {}
 _QUICKLOOK_PROCS: dict[str, subprocess.Popen] = {}
+_NATIVE_SESSION_IMPORT_LOCK = threading.Lock()
 
 
 def _schedule_dashboard_restart(
@@ -3372,6 +3373,210 @@ def _discover_resume_metadata(r: dict[str, Any],
     if agent == "cursor":
         return _find_cursor_resume(cwd, started_at)
     return {}
+
+
+def _native_started_at(value: Any, path: Path) -> str:
+    text = str(value or "").strip()
+    if text:
+        return text
+    try:
+        epoch = _path_birth_or_mtime(path)
+        return datetime.fromtimestamp(epoch).astimezone().isoformat(
+            timespec="seconds"
+        )
+    except (OSError, OverflowError, ValueError):
+        return ""
+
+
+def _native_session_row(
+    agent: str,
+    resume_id: str,
+    cwd: str,
+    started_at: str,
+    source: str,
+    source_path: Path,
+) -> dict[str, Any]:
+    workspace = Path(cwd).name if cwd else "unknown workspace"
+    return {
+        "native_key": f"{agent}:{resume_id}",
+        "agent": agent,
+        "resume_id": resume_id,
+        "resume_cmd": _resume_cmd_for(agent, resume_id),
+        "cwd": cwd,
+        "workspace": workspace,
+        "started_at": started_at,
+        "source": source,
+        "source_path": str(source_path),
+        "display_name": f"{workspace} · {resume_id[:8]}",
+    }
+
+
+def _scan_native_sessions(max_per_agent: int = 500) -> list[dict[str, Any]]:
+    """Read native CLI indexes without copying or modifying transcripts."""
+    rows: list[dict[str, Any]] = []
+
+    codex_root = Path.home() / ".codex" / "sessions"
+    try:
+        codex_paths = sorted(
+            codex_root.glob("*/*/*/rollout-*.jsonl"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )[:max_per_agent]
+    except OSError:
+        codex_paths = []
+    for path in codex_paths:
+        try:
+            with path.open(encoding="utf-8") as handle:
+                obj = json.loads(handle.readline())
+            payload = obj.get("payload") or {}
+            if obj.get("type") != "session_meta" or not isinstance(payload, dict):
+                continue
+            resume_id = str(payload.get("id") or payload.get("session_id") or "")
+            if not resume_id:
+                continue
+            rows.append(_native_session_row(
+                "codex", resume_id, str(payload.get("cwd") or ""),
+                _native_started_at(payload.get("timestamp"), path),
+                "codex-session-file", path,
+            ))
+        except (OSError, UnicodeError, json.JSONDecodeError, TypeError):
+            continue
+
+    claude_root = Path.home() / ".claude" / "projects"
+    try:
+        claude_paths = sorted(
+            claude_root.glob("*/*.jsonl"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )[:max_per_agent]
+    except OSError:
+        claude_paths = []
+    for path in claude_paths:
+        resume_id = path.stem
+        cwd = ""
+        timestamp = ""
+        try:
+            with path.open(encoding="utf-8") as handle:
+                for index, line in enumerate(handle):
+                    if index >= 200:
+                        break
+                    obj = json.loads(line)
+                    resume_id = str(obj.get("sessionId") or resume_id)
+                    cwd = str(obj.get("cwd") or cwd)
+                    timestamp = str(obj.get("timestamp") or timestamp)
+                    if cwd and timestamp and obj.get("sessionId"):
+                        break
+            if resume_id:
+                rows.append(_native_session_row(
+                    "claude", resume_id, cwd,
+                    _native_started_at(timestamp, path),
+                    "claude-jsonl", path,
+                ))
+        except (OSError, UnicodeError, json.JSONDecodeError, TypeError):
+            continue
+
+    cursor_root = Path.home() / ".cursor" / "projects"
+    try:
+        cursor_paths = sorted(
+            (
+                path for path in cursor_root.glob(
+                    "*/agent-transcripts/*/*.jsonl"
+                )
+                if path.parent.name != "subagents"
+            ),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )[:max_per_agent]
+    except OSError:
+        cursor_paths = []
+    for path in cursor_paths:
+        resume_id = path.parent.name
+        if not resume_id or not _UUID_RE.fullmatch(resume_id):
+            continue
+        rows.append(_native_session_row(
+            "cursor", resume_id.lower(), "",
+            _native_started_at("", path), "cursor-transcript", path,
+        ))
+
+    unique: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        unique.setdefault(row["native_key"], row)
+    return sorted(
+        unique.values(), key=lambda row: row.get("started_at") or "",
+        reverse=True,
+    )
+
+
+def _imported_native_keys(outputs_dir: Path) -> dict[str, str]:
+    imported: dict[str, str] = {}
+    for run in _discover_runs(outputs_dir):
+        agent = _norm_agent(
+            (run.get("resume") or {}).get("agent") or run.get("agent") or ""
+        )
+        resume_id = str(run.get("resume_id") or "")
+        if agent and resume_id:
+            imported[f"{agent}:{resume_id}"] = str(run.get("run_id") or "")
+    return imported
+
+
+def _import_native_session(
+    outputs_dir: Path,
+    candidate: dict[str, Any],
+) -> dict[str, str]:
+    agent = _norm_agent(str(candidate.get("agent") or ""))
+    resume_id = str(candidate.get("resume_id") or "").strip()
+    if agent not in {"codex", "claude", "cursor"} or not resume_id:
+        raise ValueError("invalid native session")
+    short_id = re.sub(r"[^a-zA-Z0-9]+", "", resume_id)[:8] or "session"
+    task = f"imported-{agent}-{short_id}"
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    base_run_name = f"{task}-{stamp}"
+    run_name = base_run_name
+    for suffix in range(2, 1000):
+        if not (outputs_dir / run_name).exists():
+            break
+        run_name = f"{base_run_name}-{suffix}"
+    run_dir = outputs_dir / run_name
+    run_dir.mkdir(parents=True, exist_ok=False)
+    cwd = str(candidate.get("cwd") or "").strip()
+    if not cwd or not Path(cwd).expanduser().is_dir():
+        fallback = str(_dashboard_client_config().get("projects_root") or "")
+        cwd = fallback if fallback and Path(fallback).is_dir() else str(Path.home())
+    started_at = str(candidate.get("started_at") or _iso_now())
+    source = str(candidate.get("source") or "native-history-import")
+    source_path = str(candidate.get("source_path") or "")
+    meta = _build_resume_meta(
+        agent, resume_id, source, source_path, confidence="exact",
+    )
+    meta["resume_recorded_at"] = started_at
+    session = {
+        "kind": "run",
+        "run_id": f"{run_name}::{task}",
+        "name": task,
+        "agent": agent,
+        "model": "default",
+        "effort": "",
+        "cwd": cwd,
+        "tmux_session": "",
+        "log_file": f"logs/{task}.log",
+        "started_at": started_at,
+        "status": "finished",
+        "label": str(candidate.get("display_name") or task),
+        "imported_at": _iso_now(),
+        "import_source": "native-history",
+        **meta,
+        "resume": {
+            "agent": agent,
+            "id": resume_id,
+            "cmd": meta["resume_cmd"],
+            "source": source,
+            "recorded_at": started_at,
+            "source_path": source_path,
+            "confidence": "exact",
+        },
+    }
+    write_json(run_dir / "session.json", session)
+    return {"run_id": session["run_id"], "native_key": candidate["native_key"]}
 
 
 def _apply_resume_meta_to_row(r: dict[str, Any], meta: dict[str, str]) -> None:
@@ -10452,6 +10657,111 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                 "response": result,
             }
             return {**result, "replayed": False}
+
+    @app.get("/api/native-sessions")
+    async def get_native_sessions(
+        limit: int = Query(300, ge=1, le=500),
+        q: str = Query("", max_length=240),
+        agent: str = Query("", max_length=24),
+        node_id: str = Query("local", max_length=64),
+    ):
+        """List native CLI histories not yet indexed by Orchestrator."""
+        if node_id != "local":
+            node = remote_nodes.get(node_id)
+            if node is None:
+                raise HTTPException(404, "remote node not found")
+            return await _remote_json(
+                node, "/api/native-sessions",
+                params={"limit": limit, "q": q, "agent": agent},
+            )
+        rows, imported = await asyncio.gather(
+            asyncio.to_thread(_scan_native_sessions),
+            asyncio.to_thread(_imported_native_keys, outputs_dir),
+        )
+        normalized_agent = _norm_agent(agent)
+        query_parts = [part for part in str(q or "").lower().split() if part]
+        result = []
+        for row in rows:
+            if normalized_agent and row["agent"] != normalized_agent:
+                continue
+            if row["native_key"] in imported:
+                continue
+            if query_parts:
+                haystack = " ".join(
+                    str(row.get(key) or "")
+                    for key in (
+                        "agent", "resume_id", "cwd", "workspace",
+                        "started_at", "display_name", "source",
+                    )
+                ).lower()
+                if not all(part in haystack for part in query_parts):
+                    continue
+            result.append(row)
+        return {
+            "sessions": result[:limit],
+            "total_unimported": len(result),
+            "already_indexed": len(imported),
+        }
+
+    @app.post("/api/native-sessions/import")
+    async def import_native_sessions(request: Request):
+        if "application/json" not in request.headers.get("content-type", "").lower():
+            raise HTTPException(415, "native session import requires JSON")
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        if body.get("confirmation") != "IMPORT":
+            raise HTTPException(403, "explicit import confirmation is required")
+        node_id = str(body.get("node_id") or "local")
+        if node_id != "local":
+            node = remote_nodes.get(node_id)
+            if node is None:
+                raise HTTPException(404, "remote node not found")
+            return await _remote_json(
+                node, "/api/native-sessions/import",
+                method="POST", body={
+                    "native_keys": body.get("native_keys") or [],
+                    "confirmation": "IMPORT",
+                },
+            )
+        raw_keys = body.get("native_keys")
+        if not isinstance(raw_keys, list) or not raw_keys:
+            raise HTTPException(400, "native_keys must be a non-empty list")
+        requested = {
+            str(value) for value in raw_keys[:100]
+            if isinstance(value, str) and value
+        }
+        if not requested:
+            raise HTTPException(400, "no valid native session keys")
+
+        def import_selected() -> dict[str, Any]:
+            with _NATIVE_SESSION_IMPORT_LOCK:
+                candidates = {
+                    row["native_key"]: row for row in _scan_native_sessions()
+                }
+                indexed = _imported_native_keys(outputs_dir)
+                imported = []
+                skipped = []
+                for key in sorted(requested):
+                    if key in indexed:
+                        skipped.append({
+                            "native_key": key, "reason": "already indexed",
+                            "run_id": indexed[key],
+                        })
+                        continue
+                    candidate = candidates.get(key)
+                    if candidate is None:
+                        skipped.append({
+                            "native_key": key, "reason": "native session not found",
+                        })
+                        continue
+                    imported.append(_import_native_session(outputs_dir, candidate))
+                return {"ok": True, "imported": imported, "skipped": skipped}
+
+        result = await asyncio.to_thread(import_selected)
+        session_snapshots.request_refresh()
+        return result
 
     @app.get("/api/resumable")
     async def get_resumable(

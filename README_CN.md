@@ -207,6 +207,14 @@ orch run codex investigate /path/to/project
 
 浏览器和 CLI 工作流使用相同的本地 sessions 和 metadata。
 
+### 导入使用 Orchestrator 之前创建的 sessions
+
+在 **New session → Import existing** 中可以扫描 Codex、Claude Code 和 Cursor
+Agent 的原生历史记录。搜索或筛选结果后，一次最多选择 100 个 sessions，导入后
+它们会出现在 Resume 列表中。导入只在 `outputs/` 下创建 Orchestrator metadata
+索引；原始 transcript 始终保留在原生目录中，不会被复制、移动、编辑或删除。已经
+建立索引的原生 session ID 会自动从导入列表隐藏。
+
 ## 让一个 agent 把任务委派给另一个 agent
 
 Agent 不需要在发现额外工作后停下来等人手工开窗口。它可以直接从当前

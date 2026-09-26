@@ -1225,6 +1225,28 @@
     color: var(--text-dim);
     font-size: 11px;
   }
+  .native-import-toolbar { display: grid; grid-template-columns: 1fr 150px; gap: 8px; }
+  .native-import-list {
+    max-height: 280px; overflow: auto; border: 1px solid var(--border);
+    border-radius: 7px; background: var(--bg);
+  }
+  .native-import-row {
+    display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 9px;
+    align-items: start; padding: 9px 10px; border-bottom: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .native-import-row:last-child { border-bottom: 0; }
+  .native-import-row:hover { background: var(--bg-elev); }
+  .native-import-row input { margin-top: 3px; }
+  .native-import-name { font-size: 12px; color: var(--text); }
+  .native-import-meta {
+    color: var(--text-dim); font-size: 10px; line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+  .native-import-empty { padding: 22px; color: var(--text-dim); text-align: center; }
+  @media (max-width: 620px) {
+    .native-import-toolbar { grid-template-columns: 1fr; }
+  }
   .modal-hint {
     font-size: 11px; color: var(--text-dim); line-height: 1.5;
     background: var(--bg); border-radius: 6px; padding: 8px 10px;
@@ -2776,6 +2798,7 @@
           <select id="new-kind">
             <option value="new">New</option>
             <option value="resume">Resume</option>
+            <option value="import">Import existing</option>
           </select>
         </label>
         <div class="fld resume-field" id="new-resume-field" hidden>
@@ -2786,7 +2809,23 @@
           <select id="new-resume-from"></select>
           <div class="resume-picker-status" id="new-resume-status"></div>
         </div>
-        <label class="fld">
+        <div class="fld resume-field" id="new-import-field" hidden>
+          <span>Native session history</span>
+          <div class="native-import-toolbar">
+            <input id="new-import-search" type="search"
+                   placeholder="Search workspace, session id, date..."
+                   autocomplete="off" />
+            <select id="new-import-agent">
+              <option value="">All agents</option>
+              <option value="codex">Codex</option>
+              <option value="claude">Claude Code</option>
+              <option value="cursor">Cursor Agent</option>
+            </select>
+          </div>
+          <div class="native-import-list" id="new-import-list"></div>
+          <div class="resume-picker-status" id="new-import-status"></div>
+        </div>
+        <label class="fld" id="new-label-field">
           <span>Label <em>(optional, used as title &amp; task name)</em></span>
           <input id="new-label" type="text" placeholder="e.g. fix sglang bench flake" autocomplete="off" />
         </label>
@@ -2813,7 +2852,7 @@
             <option value="max">max</option>
           </select>
         </label>
-        <label class="fld">
+        <label class="fld" id="new-cwd-field">
           <span>Working dir</span>
           <input id="new-cwd" type="text" value="~"
                  placeholder="~/project" autocomplete="off" />
@@ -2822,6 +2861,9 @@
           <b>Resume</b>: start a new tmux session using the selected session's
           native CLI resume id. Only ended sessions with saved resume metadata
           appear in the list.<br/>
+          <b>Import existing</b>: index native Codex, Claude Code, or Cursor
+          Agent history so it appears under Resume. Original transcripts are
+          read-only and are not copied, moved, or deleted.<br/>
           <b>Open iTerm &amp; Start</b>: new iTerm window running <code>orch run</code>.
           Requires macOS Automation permission for iTerm if the dashboard is
           running under LaunchAgent.<br/>
@@ -11809,6 +11851,9 @@
   let resumableSessions = [];
   let resumeLoadSeq = 0;
   let resumeSearchTimer = null;
+  let nativeSessions = [];
+  let nativeLoadSeq = 0;
+  let nativeSearchTimer = null;
 
   function selectedNodeId() {
     return $("new-node")?.value || "local";
@@ -12013,20 +12058,71 @@
     }
   }
 
+  function renderNativeSessions() {
+    const list = $("new-import-list");
+    const status = $("new-import-status");
+    if (!nativeSessions.length) {
+      list.innerHTML = '<div class="native-import-empty">No unimported native sessions found.</div>';
+      status.textContent = "Original transcript files remain untouched.";
+      return;
+    }
+    list.innerHTML = nativeSessions.map(session => `
+      <label class="native-import-row">
+        <input type="checkbox" value="${escapeHtml(session.native_key)}" />
+        <span>
+          <span class="native-import-name">${escapeHtml(session.agent)} · ${escapeHtml(session.display_name)}</span>
+          <span class="native-import-meta">${escapeHtml(session.started_at || "unknown date")}${session.cwd ? " · " + escapeHtml(session.cwd) : " · workspace unavailable; configured default will be used"}</span>
+        </span>
+      </label>`).join("");
+    status.textContent = `${nativeSessions.length} unimported session${nativeSessions.length === 1 ? "" : "s"}. Select up to 100.`;
+  }
+
+  async function loadNativeSessions() {
+    const seq = ++nativeLoadSeq;
+    const query = $("new-import-search").value.trim();
+    const agent = $("new-import-agent").value;
+    $("new-import-list").innerHTML = '<div class="native-import-empty">Scanning native history…</div>';
+    $("new-import-status").textContent = "Reading metadata only; transcripts are not copied.";
+    try {
+      const params = new URLSearchParams({
+        limit: "300",
+        node_id: selectedNodeId(),
+      });
+      if (query) params.set("q", query);
+      if (agent) params.set("agent", agent);
+      const result = await api(`/api/native-sessions?${params.toString()}`);
+      if (seq !== nativeLoadSeq) return;
+      nativeSessions = result.sessions || [];
+      renderNativeSessions();
+    } catch (e) {
+      if (seq !== nativeLoadSeq) return;
+      nativeSessions = [];
+      $("new-import-list").innerHTML = '<div class="native-import-empty">Native session scan failed.</div>';
+      $("new-import-status").textContent = e.message || "Scan failed";
+    }
+  }
+
   function updateNewSessionMode() {
     const kind = $("new-kind").value;
     const isResume = kind === "resume";
+    const isImport = kind === "import";
     const remoteNode = selectedRemoteNode();
     $("new-resume-field").hidden = !isResume;
-    $("new-agent-field").hidden = isResume;
-    $("new-model-field").hidden = isResume;
-    $("new-effort-field").hidden = isResume || $("new-agent").value !== "claude";
-    $("new-submit").hidden = !!remoteNode;
+    $("new-import-field").hidden = !isImport;
+    $("new-label-field").hidden = isImport;
+    $("new-agent-field").hidden = isResume || isImport;
+    $("new-model-field").hidden = isResume || isImport;
+    $("new-effort-field").hidden = isResume || isImport || $("new-agent").value !== "claude";
+    $("new-cwd-field").hidden = isImport;
+    $("new-submit").hidden = !!remoteNode || isImport;
     $("new-submit").textContent = isResume ? "Open iTerm & Resume" : "Open iTerm & Start";
-    $("new-submit-bg").textContent = remoteNode
+    $("new-submit-bg").textContent = isImport
+      ? "Import selected"
+      : remoteNode
       ? `${isResume ? "Resume" : "Start"} on ${remoteNode.label || remoteNode.id}`
       : (isResume ? "Resume in background" : "Start in background");
     if (isResume) loadResumableSessions();
+    if (isImport) loadNativeSessions();
   }
 
   $("new-kind").addEventListener("change", updateNewSessionMode);
@@ -12038,14 +12134,21 @@
     resumeSearchTimer = setTimeout(() => loadResumableSessions(q), q ? 250 : 150);
   });
   $("new-resume-from").addEventListener("change", updateSelectedResumeFromSelect);
+  $("new-import-search").addEventListener("input", () => {
+    clearTimeout(nativeSearchTimer);
+    nativeSearchTimer = setTimeout(loadNativeSessions, 250);
+  });
+  $("new-import-agent").addEventListener("change", loadNativeSessions);
   $("new-node").addEventListener("change", () => {
     resumableSessions = [];
+    nativeSessions = [];
     updateNewSessionTarget(true);
   });
 
   async function createSession(mode) {
     // mode: "iterm" (open iTerm window) | "background" (tmux only, no UI app)
     const isResume = $("new-kind").value === "resume";
+    const isImport = $("new-kind").value === "import";
     const btnIterm = $("new-submit");
     const btnBg = $("new-submit-bg");
     const both = [btnIterm, btnBg];
@@ -12053,6 +12156,28 @@
     const active = (mode === "background") ? btnBg : btnIterm;
     active.textContent = "Starting…";
     try {
+      if (isImport) {
+        const nativeKeys = Array.from(
+          $("new-import-list").querySelectorAll('input[type="checkbox"]:checked')
+        ).map(input => input.value).slice(0, 100);
+        if (!nativeKeys.length) throw new Error("Select at least one native session.");
+        active.textContent = "Importing…";
+        const result = await api("/api/native-sessions/import", {
+          method: "POST",
+          body: {
+            node_id: selectedNodeId(), native_keys: nativeKeys,
+            confirmation: "IMPORT",
+          },
+        });
+        const imported = (result.imported || []).length;
+        const skipped = (result.skipped || []).length;
+        alert(`Imported ${imported} session${imported === 1 ? "" : "s"}${skipped ? `; skipped ${skipped}` : ""}. They are now available under Resume.`);
+        $("new-kind").value = "resume";
+        await loadResumableSessions("");
+        updateNewSessionMode();
+        setTimeout(refreshList, 500);
+        return;
+      }
       const body = isResume
         ? {
             node_id: selectedNodeId(),

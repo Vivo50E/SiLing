@@ -228,6 +228,15 @@ orch run codex investigate /path/to/project
 
 The browser and CLI workflows use the same local sessions and metadata.
 
+### Import sessions created before Orchestrator
+
+Choose **New session → Import existing** to scan native Codex, Claude Code, and
+Cursor Agent history. Search or filter the results, select up to 100 sessions,
+and import them into the Resume picker. Import creates only an Orchestrator
+metadata index under `outputs/`; original transcripts stay in their native
+locations and are never copied, moved, edited, or deleted. Already indexed
+native session IDs are automatically hidden from the import list.
+
 ## Let one agent delegate to another
 
 An agent does not have to stop at reporting that more work is needed. From an
