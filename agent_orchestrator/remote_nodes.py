@@ -97,6 +97,7 @@ class RemoteNodeSettings:
     label: str
     url: str
     projects_root: str = ""
+    new_session_working_dir: str = ""
     token: str = ""
     ssh_host: str = ""
     local_port: int = 0
@@ -219,6 +220,9 @@ def settings_from_dict(data: dict[str, Any]) -> tuple[RemoteNodeSettings, ...]:
             label=str(raw.get("label") or node_id).strip() or node_id,
             url=url.rstrip("/"),
             projects_root=str(raw.get("projects_root") or "").strip(),
+            new_session_working_dir=str(
+                raw.get("new_session_working_dir") or ""
+            ).strip(),
             token=_resolve_token(raw),
             ssh_host=ssh_host,
             local_port=local_port,
@@ -365,6 +369,7 @@ class RemoteNodeRegistry:
                 "remote_instance_id": "",
                 "remote_backend_id": "",
                 "projects_root": node.projects_root,
+                "new_session_working_dir": node.new_session_working_dir,
             }
             for node in self.settings
         }
@@ -461,6 +466,12 @@ class RemoteNodeRegistry:
                 "projects_root": str(
                     state.get("projects_root") or node.projects_root
                 ),
+                "new_session_working_dir": str(
+                    state.get("new_session_working_dir")
+                    or node.new_session_working_dir
+                    or state.get("projects_root")
+                    or node.projects_root
+                ),
                 "remote_instance_id": str(state.get("remote_instance_id") or ""),
                 "remote_backend_id": str(state.get("remote_backend_id") or ""),
                 "reconnect_enabled": bool(node.reconnect.enabled),
@@ -475,6 +486,9 @@ class RemoteNodeRegistry:
                 "label": row["label"],
                 "online": row["online"],
                 "projects_root": row["projects_root"],
+                "new_session_working_dir": row[
+                    "new_session_working_dir"
+                ],
                 "reconnect_enabled": bool(
                     self._by_id[row["id"]].reconnect.enabled
                 ),
@@ -543,6 +557,9 @@ class RemoteNodeRegistry:
             cached_projects_root = str(
                 self._states[node.id].get("projects_root") or ""
             )
+            cached_working_dir = str(
+                self._states[node.id].get("new_session_working_dir") or ""
+            )
         with self._client(node) as client:
             health_resp = client.get(node.upstream_url("/api/health"))
             health_resp.raise_for_status()
@@ -554,15 +571,23 @@ class RemoteNodeRegistry:
             native_resp.raise_for_status()
             native_payload = native_resp.json()
             projects_root = cached_projects_root or node.projects_root
-            # The projects root is static for the lifetime of a node process.
-            # Fetch it only when it was not supplied locally and has not yet
-            # been learned, instead of on every activity poll.
-            if not projects_root:
+            working_dir = (
+                cached_working_dir or node.new_session_working_dir
+            )
+            # These paths are static for the lifetime of a node process. Fetch
+            # them only until both have been supplied or learned.
+            if not projects_root or not working_dir:
                 try:
                     config_resp = client.get(node.upstream_url("/api/config"))
                     config_resp.raise_for_status()
-                    projects_root = str(
-                        config_resp.json().get("projects_root") or ""
+                    remote_config = config_resp.json()
+                    projects_root = projects_root or str(
+                        remote_config.get("projects_root") or ""
+                    )
+                    working_dir = working_dir or str(
+                        remote_config.get("new_session_working_dir")
+                        or projects_root
+                        or ""
                     )
                 except (httpx.HTTPError, ValueError, AttributeError):
                     pass
@@ -589,6 +614,7 @@ class RemoteNodeRegistry:
                 or health.get("backend_id") or ""
             ),
             "projects_root": projects_root,
+            "new_session_working_dir": working_dir or projects_root,
             "native_activity": native if isinstance(native, list) else [],
         }
         # A just-started remote dashboard may still be warming its local

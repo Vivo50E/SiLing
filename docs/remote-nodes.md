@@ -62,6 +62,7 @@ Copy `examples/dashboard.local.json` to the repository root as
 ```json
 {
   "projects_root": "~/Documents/Projects",
+  "new_session_working_dir": "~/Workflows",
   "remote_nodes": [
     {
       "id": "dev",
@@ -69,6 +70,7 @@ Copy `examples/dashboard.local.json` to the repository root as
       "enabled": true,
       "url": "http://127.0.0.1:17861",
       "projects_root": "/home/example/Projects",
+      "new_session_working_dir": "/home/example/Workflows",
       "token_env": "ORCH_REMOTE_DEV_TOKEN",
       "ssh_host": "dev-server",
       "local_port": 17861,
@@ -81,8 +83,10 @@ Copy `examples/dashboard.local.json` to the repository root as
 }
 ```
 
-The file is ignored by Git. The browser receives only the node label, health,
-and project root; tokens and reconnect commands remain server-side.
+The file is ignored by Git. `new_session_working_dir` controls the initial
+Working dir shown for that location without changing its project-browsing
+root. The browser receives only the node label, health, and these paths;
+tokens and reconnect commands remain server-side.
 
 Restart the local Dashboard after changing its configuration. The sidebar
 will group sessions by location, and remote panes support the same TTY,

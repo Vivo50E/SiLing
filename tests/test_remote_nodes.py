@@ -346,6 +346,7 @@ class RemoteNodeRegistryTest(unittest.TestCase):
             "label": "Dev box",
             "url": "http://127.0.0.1:17861",
             "projects_root": "/home/example/Projects",
+            "new_session_working_dir": "/home/example/Workflows",
         }]})
         self.registry = RemoteNodeRegistry(self.settings)
 
@@ -381,6 +382,10 @@ class RemoteNodeRegistryTest(unittest.TestCase):
     def test_public_status_marks_inventory_unready_during_node_warmup(self):
         status = self.registry.public_status()[0]
         self.assertFalse(status["session_inventory_ready"])
+        self.assertEqual(
+            status["new_session_working_dir"],
+            "/home/example/Workflows",
+        )
 
         with self.registry._lock:
             self.registry._states["dev"].update({
@@ -425,6 +430,7 @@ class DashboardFederationTest(unittest.TestCase):
                     "label": "Dev box",
                     "url": "http://127.0.0.1:17861",
                     "projects_root": "/home/example/Projects",
+                    "new_session_working_dir": "/home/example/Workflows",
                     "token": "node-secret",
                     "reconnect": {
                         "enabled": True,
@@ -458,6 +464,12 @@ class DashboardFederationTest(unittest.TestCase):
                     ).json()
 
             self.assertEqual(config_payload["remote_nodes"][0]["id"], "dev")
+            self.assertEqual(
+                config_payload["remote_nodes"][0][
+                    "new_session_working_dir"
+                ],
+                "/home/example/Workflows",
+            )
             self.assertTrue(
                 config_payload["remote_nodes"][0]["reconnect_enabled"]
             )

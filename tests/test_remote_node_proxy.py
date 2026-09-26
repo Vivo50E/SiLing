@@ -41,7 +41,10 @@ def _fake_remote_node() -> FastAPI:
 
     @app.get("/api/config")
     def config():
-        return {"projects_root": "/home/example/Projects"}
+        return {
+            "projects_root": "/home/example/Projects",
+            "new_session_working_dir": "/home/example/Workflows",
+        }
 
     @app.get("/api/sessions")
     def sessions():
@@ -246,6 +249,13 @@ class RemoteNodeProxyTest(unittest.TestCase):
                     self.assertEqual(
                         parse_qualified_run_id(run_id),
                         ("dev", "remote-run 1"),
+                    )
+                    browser_config = client.get("/api/config").json()
+                    self.assertEqual(
+                        browser_config["remote_nodes"][0][
+                            "new_session_working_dir"
+                        ],
+                        "/home/example/Workflows",
                     )
 
                     tty = client.get(f"/api/sessions/{run_id}/tty")

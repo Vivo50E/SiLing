@@ -3,6 +3,7 @@
   "projects_browser_url": "http://127.0.0.1:8080/",
   "git_status_url": "http://127.0.0.1:8501/",
   "projects_root": "~/Documents/Projects",
+  "new_session_working_dir": "~/Workflows",
   "remote_nodes": [
     {
       "id": "dev",
@@ -10,6 +11,7 @@
       "enabled": false,
       "url": "http://127.0.0.1:17861",
       "projects_root": "/home/example/Projects",
+      "new_session_working_dir": "/home/example/Workflows",
       "token_env": "ORCH_REMOTE_DEV_TOKEN",
       "ssh_host": "dev-server",
       "local_port": 17861,

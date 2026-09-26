@@ -484,6 +484,24 @@ class DashboardNotificationContractTests(unittest.TestCase):
         self.assertNotIn('<image name=[Pasted Image]', self.source)
 
 
+class DashboardNewSessionContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.source = (dashboard.STATIC_DIR / "index.html").read_text()
+
+    def test_working_directory_uses_independent_dashboard_config(self):
+        self.assertIn("new_session_working_dir: \"~\"", self.source)
+        self.assertIn(
+            "config.new_session_working_dir || PROJECTS_ROOT || \"~\"",
+            self.source,
+        )
+        self.assertIn(
+            "node?.new_session_working_dir\n"
+            "        || node?.projects_root || NEW_SESSION_WORKING_DIR",
+            self.source,
+        )
+
+
 class DashboardExitedSessionContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -1515,6 +1533,49 @@ class DashboardAuthenticationTests(unittest.TestCase):
             config = dashboard._dashboard_client_config()
 
         self.assertEqual(config["projects_root"], str(Path.home()))
+
+    def test_new_session_working_directory_is_configurable(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            projects = root / "projects"
+            workflows = root / "workflows"
+            projects.mkdir()
+            workflows.mkdir()
+            config_path = root / "dashboard.local.json"
+            config_path.write_text(json.dumps({
+                "projects_root": str(projects),
+                "new_session_working_dir": str(workflows),
+            }))
+
+            with patch.dict(os.environ, {
+                "ORCH_DASHBOARD_CONFIG": str(config_path),
+                "ORCH_PROJECTS_ROOT": str(projects),
+            }):
+                config = dashboard._dashboard_client_config()
+
+        self.assertEqual(config["projects_root"], str(projects))
+        self.assertEqual(
+            config["new_session_working_dir"], str(workflows)
+        )
+
+    def test_create_uses_configured_working_directory_when_omitted(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            workflows = root / "workflows"
+            workflows.mkdir()
+            config_path = root / "dashboard.local.json"
+            config_path.write_text(json.dumps({
+                "projects_root": str(root),
+                "new_session_working_dir": str(workflows),
+            }))
+
+            with patch.dict(os.environ, {
+                "ORCH_DASHBOARD_CONFIG": str(config_path),
+                "ORCH_PROJECTS_ROOT": str(root),
+            }):
+                cwd = dashboard._resolve_session_cwd("")
+
+        self.assertEqual(cwd, str(workflows))
 
     def test_create_rejects_a_missing_working_directory(self):
         with TestClient(self.app) as client:

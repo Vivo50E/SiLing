@@ -3225,12 +3225,14 @@
     projects_browser_url: "http://127.0.0.1:8080/",
     git_status_url: "http://127.0.0.1:8501/",
     projects_root: "~",
+    new_session_working_dir: "~",
     remote_nodes: [],
   };
   let NOTES_URL = DEFAULT_DASHBOARD_CONFIG.notes_url;
   let PROJECTS_BROWSER_URL = DEFAULT_DASHBOARD_CONFIG.projects_browser_url;
   let GIT_STATUS_URL = DEFAULT_DASHBOARD_CONFIG.git_status_url;
   let PROJECTS_ROOT = DEFAULT_DASHBOARD_CONFIG.projects_root;
+  let NEW_SESSION_WORKING_DIR = DEFAULT_DASHBOARD_CONFIG.new_session_working_dir;
   let REMOTE_NODES = [];
   const PROJECTS_BROWSER_TABS_KEY = "orch_projects_browser_tabs_v1";
   const GLOBAL_TERMINAL_THEME_KEY = "orch_global_terminal_theme";
@@ -3287,6 +3289,9 @@
     PROJECTS_BROWSER_URL = String(config.projects_browser_url || "").trim();
     GIT_STATUS_URL = String(config.git_status_url || "").trim();
     PROJECTS_ROOT = String(config.projects_root || "").trim();
+    NEW_SESSION_WORKING_DIR = String(
+      config.new_session_working_dir || PROJECTS_ROOT || "~"
+    ).trim();
     REMOTE_NODES = Array.isArray(config.remote_nodes)
       ? config.remote_nodes.map(node => Object.assign({}, node)) : [];
 
@@ -3317,7 +3322,7 @@
     }
 
     const cwd = $("new-cwd");
-    if (cwd && PROJECTS_ROOT) cwd.value = PROJECTS_ROOT;
+    if (cwd) cwd.value = NEW_SESSION_WORKING_DIR;
   }
   const SIDEBAR_SESSION_GROUPS = [
     ["lead", "Lead"],
@@ -11896,7 +11901,8 @@
   function updateNewSessionTarget(resetCwd = true) {
     const node = selectedRemoteNode();
     if (resetCwd) {
-      $("new-cwd").value = node?.projects_root || PROJECTS_ROOT || "~";
+      $("new-cwd").value = node?.new_session_working_dir
+        || node?.projects_root || NEW_SESSION_WORKING_DIR || "~";
     }
     updateNewSessionMode();
   }
@@ -12203,7 +12209,9 @@
       $("new-label").value = "";
       $("new-model").value = "";
       $("new-effort").value = "";
-      $("new-cwd").value = selectedRemoteNode()?.projects_root || PROJECTS_ROOT || "~";
+      const node = selectedRemoteNode();
+      $("new-cwd").value = node?.new_session_working_dir
+        || node?.projects_root || NEW_SESSION_WORKING_DIR || "~";
       $("new-kind").value = "new";
       updateNewSessionMode();
       setTimeout(refreshList, 1200);

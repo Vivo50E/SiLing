@@ -172,6 +172,10 @@ PYTHON=python3.11  # 可替换为任意已安装的 Python 3.10+
 打开 [http://127.0.0.1:7860](http://127.0.0.1:7860)，创建 session、设置标签和
 优先级，然后选择 **Start in Background**。
 
+如果希望单独设置 New Session 的默认 Working dir，而不改变项目浏览根目录，可在
+被忽略的 `dashboard.local.json` 中设置 `new_session_working_dir`，或使用
+`ORCH_NEW_SESSION_WORKING_DIR`。未设置时会沿用 `projects_root`。
+
 ### 在 macOS 上安装为独立应用
 
 Dashboard 内置 Progressive Web App 支持。启动 Dashboard 后，可在 Safari 中选择

@@ -191,6 +191,10 @@ PYTHON=python3.11  # use any installed Python 3.10+
 Open [http://127.0.0.1:7860](http://127.0.0.1:7860), create a session, assign a
 label and priority, then choose **Start in Background**.
 
+To give New Session a default Working dir without changing the project-browser
+root, set `new_session_working_dir` in the ignored `dashboard.local.json`, or
+set `ORCH_NEW_SESSION_WORKING_DIR`. If omitted, it follows `projects_root`.
+
 ### Install as a macOS app
 
 The Dashboard includes Progressive Web App support. After starting it, choose

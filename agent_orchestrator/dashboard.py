@@ -1501,6 +1501,19 @@ def _dashboard_client_config() -> dict[str, str]:
     ).expanduser()
     if not projects_root.is_dir():
         result["projects_root"] = str(Path.home())
+    raw_working_dir = (
+        os.environ["ORCH_NEW_SESSION_WORKING_DIR"]
+        if "ORCH_NEW_SESSION_WORKING_DIR" in os.environ
+        else data.get("new_session_working_dir", result["projects_root"])
+    )
+    working_dir = Path(
+        os.path.expandvars(str(raw_working_dir or result["projects_root"]))
+    ).expanduser()
+    result["new_session_working_dir"] = (
+        str(working_dir)
+        if working_dir.is_dir()
+        else result["projects_root"]
+    )
     return result
 
 
@@ -1540,6 +1553,22 @@ def _safe_write_json(p: Path, data: dict) -> None:
 def _projects_root() -> Path:
     configured = _dashboard_client_config()["projects_root"]
     return Path(configured).expanduser().resolve()
+
+
+def _resolve_session_cwd(raw: str) -> str:
+    default_cwd = os.path.expanduser(
+        _dashboard_client_config()["new_session_working_dir"]
+    )
+    if not os.path.isdir(default_cwd):
+        default_cwd = os.path.expanduser("~")
+    cwd = (raw or default_cwd).strip()
+    if cwd:
+        cwd = os.path.expanduser(os.path.expandvars(cwd))
+    if not os.path.isdir(cwd):
+        raise HTTPException(
+            400, f"working directory does not exist: {cwd}"
+        )
+    return cwd
 
 
 def _extra_linked_folder_roots() -> list[Path]:
@@ -8568,6 +8597,9 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                     "label": "Local",
                     "online": True,
                     "projects_root": _dashboard_client_config()["projects_root"],
+                    "new_session_working_dir": _dashboard_client_config()[
+                        "new_session_working_dir"
+                    ],
                     "session_count": len(
                         session_snapshots.snapshot().get("sessions") or []
                     ),
@@ -9826,7 +9858,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             _normalize_terminal_theme(str(body.get("terminal_theme") or ""))
             if "terminal_theme" in body else None
         )
-        cwd = _resolve_default_cwd(body.get("cwd") or "")
+        cwd = _resolve_session_cwd(body.get("cwd") or "")
         mode = (body.get("mode") or "background").strip()
         if mode not in ("iterm", "background"):
             raise HTTPException(400, "mode must be 'iterm' or 'background'")
@@ -10332,21 +10364,6 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                   "run_id": run_id}
         return finish_result(result)
 
-    def _resolve_default_cwd(raw: str) -> str:
-        default_cwd = os.path.expanduser(
-            _dashboard_client_config()["projects_root"]
-        )
-        if not os.path.isdir(default_cwd):
-            default_cwd = os.path.expanduser("~")
-        cwd = (raw or default_cwd).strip()
-        if cwd:
-            cwd = os.path.expanduser(os.path.expandvars(cwd))
-        if not os.path.isdir(cwd):
-            raise HTTPException(
-                400, f"working directory does not exist: {cwd}"
-            )
-        return cwd
-
     async def _deliver_delegated_prompt(
         session: str,
         session_json: Path,
@@ -10401,7 +10418,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         raw_cwd = str(body.get("cwd") or "").strip()
         if not raw_cwd and parent:
             raw_cwd = str(parent.get("cwd") or "")
-        cwd = _resolve_default_cwd(raw_cwd)
+        cwd = _resolve_session_cwd(raw_cwd)
         if agent == "claude":
             trusted, trust_cwd, trust_reason = _claude_workspace_trust_status(cwd)
             if trusted is False:
@@ -10505,7 +10522,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
           effort: optional Claude Code effort (low|medium|high|xhigh|max)
           terminal_theme: optional terminal palette
           label: optional session label
-          cwd:   optional working directory (default: configured projects root)
+          cwd:   optional working directory (default: configured new-session dir)
           mode:  "iterm" (default) or "background"
         """
         body = await request.json()
@@ -10531,7 +10548,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             if "terminal_theme" in body else None
         )
         label = (body.get("label") or "").strip()
-        cwd = _resolve_default_cwd(body.get("cwd") or "")
+        cwd = _resolve_session_cwd(body.get("cwd") or "")
         mode = (body.get("mode") or "iterm").strip()
 
         if agent not in ("cursor", "claude", "agent", "codex"):
@@ -10949,7 +10966,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                 or entry.get("task")
                 or "restored"
             )[:80]
-            cwd = _resolve_default_cwd(entry.get("cwd") or "")
+            cwd = _resolve_session_cwd(entry.get("cwd") or "")
             model = str(src.get("model") or "").strip()
             if model in _MODEL_DEFAULTS:
                 model = ""
@@ -11078,7 +11095,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                 if "terminal_theme" in src else None
             )
         )
-        cwd = _resolve_default_cwd(body.get("cwd") or src.get("cwd") or "")
+        cwd = _resolve_session_cwd(body.get("cwd") or src.get("cwd") or "")
         label = (body.get("label") or "").strip()
         if not label:
             base = src.get("display_name") or src.get("task") or "resumed"
@@ -11201,7 +11218,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             _normalize_terminal_theme(str(src.get("terminal_theme") or ""))
             if "terminal_theme" in src else None
         )
-        cwd = src.get("cwd") or _resolve_default_cwd("")
+        cwd = src.get("cwd") or _resolve_session_cwd("")
         # Preserve the user's label so the cloned session is recognizable,
         # but tag it as a clone so there's no confusion in the sidebar.
         orig_label = (src.get("label") or "").strip()
