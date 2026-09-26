@@ -119,12 +119,12 @@ class SelfUpdateDashboardContractTests(unittest.TestCase):
             cls.project / "agent_orchestrator" / "dashboard.py"
         ).read_text()
 
-    def test_dashboard_exposes_review_verify_and_apply_controls(self):
+    def test_dashboard_uses_inline_two_click_verify_and_apply_control(self):
         self.assertIn('id="btn-self-update"', self.index)
-        self.assertIn('id="self-update-details"', self.index)
-        self.assertIn('id="self-update-tests"', self.index)
-        self.assertIn('id="self-update-apply" disabled', self.index)
-        self.assertIn('typed !== "APPROVE"', self.index)
+        self.assertNotIn('id="self-update-modal"', self.index)
+        self.assertNotIn('typed !== "APPROVE"', self.index)
+        self.assertIn('button.textContent = "approve update"', self.index)
+        self.assertIn('confirmation: "APPROVE"', self.index)
 
     def test_apply_requires_verification_token_and_requests_restart(self):
         self.assertIn('api("/api/self-update/verify"', self.index)

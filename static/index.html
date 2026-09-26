@@ -1300,34 +1300,8 @@
   #btn-sync-status.warn { color: var(--warn); border-color: var(--warn); }
   #btn-sync-status.err { color: var(--err); border-color: var(--err); }
   #btn-self-update.available { color: var(--warn); border-color: var(--warn); }
-  .self-update-modal { max-width: 760px; max-height: min(820px, 90vh); }
-  .self-update-modal .modal-body { min-height: 0; overflow-y: auto; }
-  .self-update-summary {
-    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
-  }
-  .self-update-summary > div {
-    padding: 9px 10px; border: 1px solid var(--border); border-radius: 7px;
-    background: var(--bg); min-width: 0;
-  }
-  .self-update-summary strong {
-    display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .self-update-summary span { color: var(--text-dim); font-size: 10px; }
-  .self-update-details, .self-update-tests {
-    min-height: 92px; max-height: 240px; overflow: auto; margin: 0;
-    padding: 10px 12px; border: 1px solid var(--border); border-radius: 7px;
-    background: var(--bg); color: var(--text-dim); white-space: pre-wrap;
-    overflow-wrap: anywhere; font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
-  }
-  .self-update-tests.passed { color: var(--ok); border-color: var(--ok); }
-  .self-update-tests.failed { color: var(--err); border-color: var(--err); }
-  .self-update-warning {
-    padding: 9px 11px; border: 1px solid var(--warn); border-radius: 7px;
-    color: var(--warn); background: rgba(210,153,34,0.08); font-size: 11px;
-  }
-  @media (max-width: 620px) {
-    .self-update-summary { grid-template-columns: 1fr; }
-  }
+  #btn-self-update.verified { color: var(--ok); border-color: var(--ok); }
+  #btn-self-update.failed { color: var(--err); border-color: var(--err); }
   #btn-mission-control.warn { color: var(--warn); border-color: var(--warn); }
   .mission-modal {
     width: 80vw; height: 80vh; max-width: none;
@@ -2952,44 +2926,6 @@
     </div>
   </div>
 
-  <div class="modal-scrim" id="self-update-modal" hidden>
-    <div class="modal self-update-modal">
-      <div class="modal-head">
-        <div>
-          <div class="modal-title">Approve and apply improvement</div>
-          <div class="sync-meta">Committed branches only · tests required · fast-forward only</div>
-        </div>
-        <button class="modal-close" id="self-update-close" title="Close">×</button>
-      </div>
-      <div class="modal-body">
-        <label class="fld">
-          <span>Candidate branch</span>
-          <select id="self-update-candidate"></select>
-        </label>
-        <div class="self-update-summary">
-          <div><strong id="self-update-target">—</strong><span>Target branch</span></div>
-          <div><strong id="self-update-commits">0</strong><span>Commits ahead</span></div>
-          <div><strong id="self-update-files">0</strong><span>Changed files</span></div>
-        </div>
-        <div class="self-update-warning" id="self-update-warning">
-          Candidate code is never applied directly from an agent's dirty worktree.
-        </div>
-        <pre class="self-update-details" id="self-update-details">Checking for candidates…</pre>
-        <div class="sync-meta" id="self-update-meta">
-          Run the complete test suite before approval. Verification expires after 15 minutes
-          and becomes invalid if either commit changes.
-        </div>
-        <pre class="self-update-tests" id="self-update-tests">Tests have not been run.</pre>
-      </div>
-      <div class="modal-foot">
-        <button class="btn-secondary" id="self-update-refresh">Refresh</button>
-        <button class="btn-secondary" id="self-update-verify">Run full tests</button>
-        <button class="btn-primary" id="self-update-apply" disabled>Approve, apply &amp; restart</button>
-        <button class="btn-secondary" id="self-update-close-2">Close</button>
-      </div>
-    </div>
-  </div>
-
   <div class="modal-scrim" id="mission-modal" hidden>
     <div class="modal mission-modal">
       <div class="modal-head">
@@ -3396,58 +3332,47 @@
   // ---------- Approve and apply self-improvements ----------
   let selfUpdateStatus = { available: false, candidates: [] };
   let selfUpdateVerification = null;
+  let selfUpdatePhase = "idle";
 
-  function selectedSelfUpdateCandidate() {
-    const branch = $("self-update-candidate").value;
-    return (selfUpdateStatus.candidates || []).find(item => item.branch === branch) || null;
+  function eligibleSelfUpdateCandidate() {
+    return (selfUpdateStatus.candidates || []).find(item => item.eligible) || null;
   }
 
-  function renderSelfUpdateCandidate() {
-    const candidate = selectedSelfUpdateCandidate();
-    selfUpdateVerification = null;
-    $("self-update-apply").disabled = true;
-    $("self-update-tests").className = "self-update-tests";
-    $("self-update-tests").textContent = "Tests have not been run.";
-    $("self-update-target").textContent = selfUpdateStatus.target_branch || "—";
-    $("self-update-commits").textContent = String(candidate?.ahead || 0);
-    $("self-update-files").textContent = String(candidate?.files?.length || 0);
-    if (!candidate) {
-      $("self-update-warning").textContent =
-        "No unapplied agent/self-improve-* branch is available. The agent must commit its result in an isolated worktree first.";
-      $("self-update-details").textContent = selfUpdateStatus.error || "No candidate updates.";
-      $("self-update-verify").disabled = true;
-      return;
-    }
-    const eligible = !!candidate.eligible;
-    $("self-update-warning").textContent = eligible
-      ? "Review every commit and changed file below. Applying performs a fast-forward merge and restarts this Dashboard; tmux agent sessions continue running."
-      : `Blocked: ${candidate.blocked_reason || "candidate is not safe to apply"}`;
-    const commits = (candidate.commits || [])
-      .map(item => `  ${item.short}  ${item.subject}`).join("\n") || "  (none)";
-    const files = (candidate.files || [])
-      .map(item => `  ${item.status.padEnd(4)} ${item.path}`).join("\n") || "  (none)";
-    const stat = candidate.diffstat ? `\n\nDiff stat:\n${candidate.diffstat}` : "";
-    $("self-update-details").textContent =
-      `Candidate: ${candidate.branch}\nWorktree: ${candidate.worktree || "—"}\nCommit: ${candidate.short_head || "—"}\n\nCommits:\n${commits}\n\nFiles:\n${files}${stat}`;
-    $("self-update-verify").disabled = !eligible;
+  function verificationStillMatches() {
+    const candidate = eligibleSelfUpdateCandidate();
+    return !!(candidate && selfUpdateVerification?.verification_token
+      && selfUpdateVerification.branch === candidate.branch
+      && selfUpdateVerification.candidate_head === candidate.head
+      && selfUpdateVerification.target_head === candidate.target_head);
   }
 
   function renderSelfUpdateStatus() {
     const candidates = selfUpdateStatus.candidates || [];
     const eligible = candidates.filter(item => item.eligible);
     const button = $("btn-self-update");
-    button.classList.toggle("available", eligible.length > 0);
-    button.textContent = eligible.length ? `update: ${eligible.length}` : "apply update";
-    const select = $("self-update-candidate");
-    const previous = select.value;
-    select.innerHTML = candidates.length
-      ? candidates.map(item => {
-          const suffix = item.eligible ? `${item.ahead} commit${item.ahead === 1 ? "" : "s"}` : "blocked";
-          return `<option value="${escapeHtml(item.branch)}">${escapeHtml(item.branch)} · ${escapeHtml(suffix)}</option>`;
-        }).join("")
-      : '<option value="">No candidate updates</option>';
-    if (candidates.some(item => item.branch === previous)) select.value = previous;
-    renderSelfUpdateCandidate();
+    if (selfUpdateVerification && !verificationStillMatches()) {
+      selfUpdateVerification = null;
+      if (selfUpdatePhase === "verified") selfUpdatePhase = "idle";
+    }
+    button.classList.toggle("available", eligible.length > 0 && selfUpdatePhase === "idle");
+    button.classList.toggle("verified", selfUpdatePhase === "verified");
+    button.classList.toggle("failed", selfUpdatePhase === "failed");
+    button.disabled = selfUpdatePhase === "verifying" || selfUpdatePhase === "applying";
+    if (selfUpdatePhase === "verifying") button.textContent = "testing update…";
+    else if (selfUpdatePhase === "verified") button.textContent = "approve update";
+    else if (selfUpdatePhase === "applying") button.textContent = "applying…";
+    else if (selfUpdatePhase === "failed") button.textContent = "update failed";
+    else button.textContent = eligible.length ? `update: ${eligible.length}` : "apply update";
+
+    const candidate = eligible[0];
+    if (selfUpdatePhase === "verified" && candidate) {
+      button.title = `Tests passed for ${candidate.branch} (${candidate.short_head}). Click again to approve, apply, and restart.`;
+    } else if (candidate) {
+      button.title = `Test ${candidate.branch} (${candidate.short_head}) before approval. A second click applies and restarts.`;
+    } else {
+      const blocked = candidates[0]?.blocked_reason;
+      button.title = blocked ? `Blocked: ${blocked}` : (selfUpdateStatus.error || "No candidate updates");
+    }
   }
 
   async function pollSelfUpdateStatus(silent = true) {
@@ -3457,89 +3382,65 @@
     } catch (e) {
       selfUpdateStatus = { available: false, error: e.message, candidates: [] };
       renderSelfUpdateStatus();
-      if (!silent) alert("Update check failed:\n" + e.message);
+      if (!silent) {
+        selfUpdatePhase = "failed";
+        renderSelfUpdateStatus();
+        $("btn-self-update").title = "Update check failed: " + e.message;
+      }
     }
   }
 
   $("btn-self-update").addEventListener("click", async () => {
-    $("self-update-modal").hidden = false;
+    const button = $("btn-self-update");
+    if (selfUpdatePhase === "failed") selfUpdatePhase = "idle";
     await pollSelfUpdateStatus(false);
-  });
-  const closeSelfUpdateModal = () => { $("self-update-modal").hidden = true; };
-  $("self-update-close").addEventListener("click", closeSelfUpdateModal);
-  $("self-update-close-2").addEventListener("click", closeSelfUpdateModal);
-  $("self-update-modal").addEventListener("click", event => {
-    if (event.target === $("self-update-modal")) closeSelfUpdateModal();
-  });
-  $("self-update-candidate").addEventListener("change", renderSelfUpdateCandidate);
-  $("self-update-refresh").addEventListener("click", async event => {
-    event.currentTarget.disabled = true;
-    try { await pollSelfUpdateStatus(false); }
-    finally { event.currentTarget.disabled = false; }
-  });
-  $("self-update-verify").addEventListener("click", async event => {
-    const candidate = selectedSelfUpdateCandidate();
-    if (!candidate?.eligible) return;
-    const button = event.currentTarget;
-    button.disabled = true;
-    button.textContent = "Running full tests…";
-    const output = $("self-update-tests");
-    output.className = "self-update-tests";
-    output.textContent = "Running the complete unittest suite in the candidate worktree…";
-    selfUpdateVerification = null;
-    $("self-update-apply").disabled = true;
-    try {
-      const result = await api("/api/self-update/verify", {
-        method: "POST",
-        headers: { "X-Orch-Self-Update": "reviewed" },
-        body: { branch: candidate.branch },
-      });
-      output.textContent = result.output || (result.ok ? "All tests passed." : "Tests failed.");
-      output.classList.add(result.ok ? "passed" : "failed");
-      if (result.ok && result.verification_token) {
+    const candidate = eligibleSelfUpdateCandidate();
+    if (!candidate) return;
+
+    if (!verificationStillMatches()) {
+      selfUpdatePhase = "verifying";
+      selfUpdateVerification = null;
+      renderSelfUpdateStatus();
+      try {
+        const result = await api("/api/self-update/verify", {
+          method: "POST",
+          headers: { "X-Orch-Self-Update": "reviewed" },
+          body: { branch: candidate.branch },
+        });
+        if (!result.ok || !result.verification_token) {
+          throw new Error(result.output || "Tests failed");
+        }
         selfUpdateVerification = result;
-        $("self-update-apply").disabled = false;
-        $("self-update-meta").textContent =
-          `Verified ${candidate.short_head} in ${Number(result.duration_seconds || 0).toFixed(1)}s. Approval is bound to this exact target and candidate commit.`;
+        selfUpdatePhase = "verified";
+        renderSelfUpdateStatus();
+      } catch (e) {
+        selfUpdatePhase = "failed";
+        renderSelfUpdateStatus();
+        button.title = "Verification failed: " + e.message;
       }
-    } catch (e) {
-      output.textContent = "Verification failed: " + e.message;
-      output.classList.add("failed");
-    } finally {
-      button.disabled = !selectedSelfUpdateCandidate()?.eligible;
-      button.textContent = "Run full tests";
+      return;
     }
-  });
-  $("self-update-apply").addEventListener("click", async event => {
-    const candidate = selectedSelfUpdateCandidate();
-    if (!candidate || !selfUpdateVerification?.verification_token) return;
-    const typed = window.prompt(
-      `Apply ${candidate.branch} (${candidate.short_head}) to ${candidate.target_branch}?\n\n` +
-      "The Dashboard will restart; active tmux sessions will keep running.\n\nType APPROVE to continue."
-    );
-    if (typed !== "APPROVE") return;
-    const button = event.currentTarget;
-    button.disabled = true;
-    button.textContent = "Applying…";
+
+    selfUpdatePhase = "applying";
+    renderSelfUpdateStatus();
     try {
-      const result = await api("/api/self-update/apply", {
+      await api("/api/self-update/apply", {
         method: "POST",
         headers: { "X-Orch-Self-Update": "reviewed" },
         body: {
           branch: candidate.branch,
           verification_token: selfUpdateVerification.verification_token,
-          confirmation: typed,
+          confirmation: "APPROVE",
           restart: true,
         },
       });
-      $("self-update-meta").textContent =
-        `Applied ${result.short_head}. Dashboard is restarting; this window will reconnect automatically…`;
-      $("self-update-tests").textContent += "\n\nApplied successfully. Waiting for Dashboard restart…";
-      button.textContent = "Restarting…";
+      button.textContent = "restarting…";
+      button.title = "Update applied. Dashboard is restarting; active tmux sessions continue running.";
     } catch (e) {
-      alert("Apply failed:\n" + e.message);
-      button.disabled = false;
-      button.textContent = "Approve, apply & restart";
+      selfUpdateVerification = null;
+      selfUpdatePhase = "failed";
+      renderSelfUpdateStatus();
+      button.title = "Apply failed: " + e.message;
       await pollSelfUpdateStatus(true);
     }
   });
@@ -12483,9 +12384,7 @@
     await pollSyncStatus(true);
     setInterval(() => pollSyncStatus(true), 30000);
     await pollSelfUpdateStatus(true);
-    setInterval(() => {
-      if ($("self-update-modal").hidden) pollSelfUpdateStatus(true);
-    }, 30000);
+    setInterval(() => pollSelfUpdateStatus(true), 30000);
     refreshPhoneUrl();
     setInterval(refreshPhoneUrl, 30000);
     if (!health.ttyd) {
