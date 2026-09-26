@@ -172,6 +172,14 @@ PYTHON=python3.11  # 可替换为任意已安装的 Python 3.10+
 打开 [http://127.0.0.1:7860](http://127.0.0.1:7860)，创建 session、设置标签和
 优先级，然后选择 **Start in Background**。
 
+### 在 macOS 上安装为独立应用
+
+Dashboard 内置 Progressive Web App 支持。启动 Dashboard 后，可在 Safari 中选择
+**文件 → 添加到程序坞**，或使用 Chrome/Edge 地址栏中的安装按钮。安装后它会以
+独立窗口运行，并出现在程序坞、Launchpad 和 Spotlight 中。由于 session 与 TTY
+来自本地后端，使用应用前仍需保持 `orch dashboard` 运行；后端不可用时应用会显示
+重连页面，而不会展示缓存的旧 session 状态。
+
 如果希望当前 shell 里的命令更短：
 
 ```bash

@@ -1,0 +1,33 @@
+{
+  "id": "/",
+  "name": "Agent Orchestrator",
+  "short_name": "Orchestrator",
+  "description": "A local-first command center for coding-agent sessions.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone"],
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "categories": ["developer", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/static/icons/orchestrator-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/orchestrator-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/orchestrator-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

@@ -10969,6 +10969,20 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             if ico.exists():
                 return FileResponse(str(ico))
             return PlainTextResponse("", 204)
+
+        @app.get("/service-worker.js", include_in_schema=False)
+        def service_worker():
+            worker = STATIC_DIR / "service-worker.js"
+            if not worker.exists():
+                return PlainTextResponse("", 404)
+            return FileResponse(
+                str(worker),
+                media_type="application/javascript",
+                headers={
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Service-Worker-Allowed": "/",
+                },
+            )
     else:
         @app.get("/")
         def index_missing():

@@ -191,6 +191,15 @@ PYTHON=python3.11  # use any installed Python 3.10+
 Open [http://127.0.0.1:7860](http://127.0.0.1:7860), create a session, assign a
 label and priority, then choose **Start in Background**.
 
+### Install as a macOS app
+
+The Dashboard includes Progressive Web App support. After starting it, choose
+**File → Add to Dock** in Safari, or use the install button in the Chrome/Edge
+address bar. It then runs in its own window and appears in the Dock, Launchpad,
+and Spotlight. The local `orch dashboard` backend must remain running to
+provide sessions and TTY access; if it is unavailable, the app shows a reconnect
+screen instead of displaying stale cached session state.
+
 For shorter commands in the current shell:
 
 ```bash

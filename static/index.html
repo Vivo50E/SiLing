@@ -4,6 +4,13 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#0d1117" />
+<meta name="application-name" content="Agent Orchestrator" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Orchestrator" />
+<link rel="manifest" href="/static/manifest.webmanifest" />
+<link rel="icon" type="image/svg+xml" href="/static/icons/orchestrator.svg" />
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png" />
 <!-- Dev-mode cache busting: browsers (esp. Safari) aggressively cache this
      HTML + its inline <script>, which makes iteration painful when the
      backend is serving a live index.html. Tell everyone to never cache. -->
@@ -12107,6 +12114,13 @@
 
   // ---------- Boot ----------
   (async () => {
+    if ("serviceWorker" in navigator && window.isSecureContext) {
+      try {
+        await navigator.serviceWorker.register("/service-worker.js", { scope: "/" });
+      } catch (e) {
+        console.warn("PWA service worker registration failed", e);
+      }
+    }
     try {
       applyDashboardConfig(await api("/api/config"));
     } catch (e) {
