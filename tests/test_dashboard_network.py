@@ -34,6 +34,26 @@ class DashboardNetworkTests(unittest.TestCase):
         )
         self.assertEqual(parse_qs(urlparse(url).query)["token"], [raw])
 
+    def test_access_url_brackets_ipv6_address(self):
+        url = dashboard_network.build_access_url(
+            "2001:db8::42", 7860, "https", "secret"
+        )
+
+        parsed = urlparse(url)
+        self.assertEqual(parsed.hostname, "2001:db8::42")
+        self.assertEqual(parsed.port, 7860)
+        self.assertEqual(
+            url,
+            "https://[2001:db8::42]:7860/?token=secret",
+        )
+
+    def test_access_url_does_not_double_bracket_ipv6_address(self):
+        url = dashboard_network.build_access_url(
+            "[::1]", 7860, "http", None
+        )
+
+        self.assertEqual(url, "http://[::1]:7860/")
+
     def test_protocol_detection_falls_through_to_https(self):
         calls = []
 

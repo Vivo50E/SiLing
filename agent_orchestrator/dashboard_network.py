@@ -117,7 +117,10 @@ def build_access_url(ip: Optional[str], port: int, scheme: str,
                      token: Optional[str]) -> str:
     if not ip:
         return ""
-    base = f"{scheme}://{ip}:{port}/"
+    host = ip if ip.startswith("[") and ip.endswith("]") else (
+        f"[{ip}]" if ":" in ip else ip
+    )
+    base = f"{scheme}://{host}:{port}/"
     if token:
         base += "?" + urlencode({"token": token})
     return base
