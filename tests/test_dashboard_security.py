@@ -1161,6 +1161,54 @@ class TtydRecoveryTests(unittest.TestCase):
         self.assertTrue(enabled)
         run.assert_called_once()
 
+    def test_default_tmux_wheel_binding_uses_sticky_copy_mode(self):
+        current = subprocess.CompletedProcess(
+            args=["tmux", "list-keys"], returncode=0,
+            stdout=(
+                'bind-key -T root WheelUpPane if-shell -F '
+                '"#{||:#{alternate_on},#{pane_in_mode},#{mouse_any_flag}}" '
+                '{ send-keys -M } { copy-mode -e }\n'
+            ),
+            stderr="",
+        )
+        updated = subprocess.CompletedProcess(
+            args=["tmux", "bind-key"], returncode=0,
+            stdout="", stderr="",
+        )
+        with patch.object(
+            dashboard.subprocess, "run", side_effect=[current, updated],
+        ) as run:
+            enabled = dashboard._enable_tmux_sticky_wheel_scrollback()
+
+        self.assertTrue(enabled)
+        self.assertEqual(run.call_count, 2)
+        self.assertEqual(
+            run.call_args_list[0].args[0],
+            ["tmux", "list-keys", "-T", "root"],
+        )
+        self.assertEqual(
+            run.call_args_list[1].args[0],
+            [
+                "tmux", "bind-key", "-T", "root", "WheelUpPane",
+                "if-shell", "-F", "#{mouse_any_flag}",
+                "send-keys -M",
+                "copy-mode ; send-keys -X -N 5 scroll-up",
+            ],
+        )
+
+    def test_custom_tmux_wheel_binding_is_preserved(self):
+        current = subprocess.CompletedProcess(
+            args=["tmux", "list-keys"], returncode=0,
+            stdout="bind-key -T root WheelUpPane copy-mode\n", stderr="",
+        )
+        with patch.object(
+            dashboard.subprocess, "run", return_value=current,
+        ) as run:
+            enabled = dashboard._enable_tmux_sticky_wheel_scrollback()
+
+        self.assertTrue(enabled)
+        run.assert_called_once()
+
     def test_persisted_theme_index_reads_active_run_and_task_sessions(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             outputs = Path(temp_dir)
@@ -1214,6 +1262,9 @@ class TtydRecoveryTests(unittest.TestCase):
             dashboard, "tmux_alive", return_value=True,
         ), patch.object(
             dashboard, "_enable_tmux_hyperlink_passthrough",
+            return_value=True,
+        ), patch.object(
+            dashboard, "_enable_tmux_sticky_wheel_scrollback",
             return_value=True,
         ), patch.object(
             dashboard, "ensure_shadow_session", return_value="orch-themed-web",
@@ -1278,6 +1329,9 @@ class TtydRecoveryTests(unittest.TestCase):
             side_effect=lambda name: name == "orch-task-1",
         ), patch.object(
             dashboard, "_enable_tmux_hyperlink_passthrough",
+            return_value=True,
+        ), patch.object(
+            dashboard, "_enable_tmux_sticky_wheel_scrollback",
             return_value=True,
         ), patch.object(
             manager, "_stop_proc"

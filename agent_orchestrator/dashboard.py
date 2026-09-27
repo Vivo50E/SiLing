@@ -7590,6 +7590,49 @@ def _enable_tmux_hyperlink_passthrough() -> bool:
         return False
 
 
+def _enable_tmux_sticky_wheel_scrollback() -> bool:
+    """Keep browser wheel scrollback usable for alternate-screen apps.
+
+    tmux's default ``WheelUpPane`` binding forwards the wheel whenever the
+    pane is in the alternate screen, even when the application did not enable
+    mouse tracking. Codex then receives an event it cannot use, so the browser
+    pane appears unable to scroll. Replace only that known default binding;
+    preserve user-customized bindings and applications (such as Claude Code)
+    that explicitly request mouse events.
+    """
+    try:
+        current = subprocess.run(
+            ["tmux", "list-keys", "-T", "root"],
+            capture_output=True, text=True, timeout=3,
+        )
+        if current.returncode != 0:
+            return False
+        default_condition = (
+            "#{||:#{alternate_on},#{pane_in_mode},#{mouse_any_flag}}"
+        )
+        wheel_binding = next(
+            (
+                line for line in current.stdout.splitlines()
+                if " WheelUpPane " in f" {line} "
+            ),
+            "",
+        )
+        if default_condition not in wheel_binding or "copy-mode -e" not in wheel_binding:
+            return True
+        updated = subprocess.run(
+            [
+                "tmux", "bind-key", "-T", "root", "WheelUpPane",
+                "if-shell", "-F", "#{mouse_any_flag}",
+                "send-keys -M",
+                "copy-mode ; send-keys -X -N 5 scroll-up",
+            ],
+            capture_output=True, text=True, timeout=3,
+        )
+        return updated.returncode == 0
+    except (subprocess.SubprocessError, FileNotFoundError):
+        return False
+
+
 def shadow_name(session: str) -> str:
     """Canonical shadow session name for a given original session."""
     if session.endswith(SHADOW_SUFFIX):
@@ -7729,6 +7772,7 @@ class TtydManager:
         self._next_port = base_port
         self._owner = f"{os.getpid()}-{uuid.uuid4().hex}"
         self._tmux_hyperlinks_configured: Optional[bool] = None
+        self._tmux_wheel_scrollback_configured: Optional[bool] = None
         # FastAPI runs sync endpoints in a thread pool, so two iframe loads
         # for the same session can call ensure() concurrently.  Without a
         # lock both callers can spawn a ttyd and the last dict assignment
@@ -7848,6 +7892,10 @@ class TtydManager:
         if self._tmux_hyperlinks_configured is None:
             self._tmux_hyperlinks_configured = (
                 _enable_tmux_hyperlink_passthrough()
+            )
+        if self._tmux_wheel_scrollback_configured is None:
+            self._tmux_wheel_scrollback_configured = (
+                _enable_tmux_sticky_wheel_scrollback()
             )
         theme = _normalize_terminal_theme(theme)
         self._session_themes[session] = theme
