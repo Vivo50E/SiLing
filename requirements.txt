@@ -1,6 +1,6 @@
 pyyaml>=6.0
 
-# Dashboard (orch dashboard)
+# Dashboard (siling dashboard)
 fastapi>=0.110
 # Starlette 1.x currently deprecates the httpx-backed TestClient used by
 # FastAPI; stay on the tested 0.x line until that transition is complete.

@@ -1,4 +1,4 @@
-"""Run the Agent Orchestrator command-line interface as a module."""
+"""Run the SiLing command-line interface as a module."""
 
 from .cli import main
 

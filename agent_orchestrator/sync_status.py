@@ -1320,7 +1320,7 @@ def _scan_command(args: argparse.Namespace) -> int:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="Agent Orchestrator sync status helper")
+    parser = argparse.ArgumentParser(description="SiLing sync status helper")
     subparsers = parser.add_subparsers(dest="command", required=True)
     scan = subparsers.add_parser("scan")
     scan.add_argument("--root", required=True)

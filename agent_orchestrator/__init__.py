@@ -1,1 +1,1 @@
-"""Agent Orchestrator application package."""
+"""SiLing application package."""

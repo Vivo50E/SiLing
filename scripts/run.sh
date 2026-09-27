@@ -1,14 +1,14 @@
 #!/bin/bash
 # Lightweight interactive mode: start an agent with auto-permission + logging
-# Usage: orch run [options] [claude|cursor|codex] [name]
+# Usage: siling run [options] [claude|cursor|codex] [name]
 # Examples:
-#   orch run                       # cursor agent, auto-named
-#   orch run claude                # claude code
-#   orch run codex                 # OpenAI codex CLI (YOLO mode)
-#   orch run --fast                # cursor + composer-2-fast
-#   orch run --think claude        # claude + sonnet-4-thinking
-#   orch run --effort high claude  # claude + explicit effort
-#   orch run -m gpt-5.2 cursor    # cursor + explicit model
+#   siling run                       # cursor agent, auto-named
+#   siling run claude                # claude code
+#   siling run codex                 # OpenAI codex CLI (YOLO mode)
+#   siling run --fast                # cursor + composer-2-fast
+#   siling run --think claude        # claude + sonnet-4-thinking
+#   siling run --effort high claude  # claude + explicit effort
+#   siling run -m gpt-5.2 cursor    # cursor + explicit model
 #
 # Model shortcuts: --fast --think --codex --codex-high --max --opus --sonnet --auto
 # Claude Code supports --effort low|medium|high|xhigh|max.
@@ -21,6 +21,11 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUTPUTS_DIR="${ORCH_OUTPUTS_DIR:-$REPO_DIR/outputs}"
+
+# Make the real SiLing launcher available to agents even when the Dashboard
+# was started without activating its virtualenv. Existing ORCH_* variables and
+# orch-* tmux names remain unchanged for session/data compatibility.
+export PATH="$REPO_DIR:$REPO_DIR/.venv/bin:$PATH"
 
 # Keep macOS malloc debug toggles from leaking into Python helper processes.
 unset MallocStackLogging MallocStackLoggingNoCompact MallocScribble MallocGuardEdges MallocNanoZone
@@ -243,7 +248,7 @@ TASK_NAME_Q=$(printf "%q" "$TASK_NAME")
 AGENT_TYPE_Q=$(printf "%q" "$AGENT_TYPE")
 DASHBOARD_URL_Q=$(printf "%q" "${ORCH_DASHBOARD_URL:-}")
 
-# Create the initial metadata before the agent can issue concurrent `orch`
+# Create the initial metadata before the agent can issue concurrent `siling`
 # updates. Every later writer uses the shared JSON lock protocol.
 cat > "$SESSION_JSON" <<EOF
 {
@@ -272,7 +277,7 @@ tmux new-session -d -s "$SESSION" -x "$COLS" -y "$ROWS" \
     "cd $CWD_Q && ORCH_RUN_ID=$RUN_ID_Q ORCH_RUN_DIR=$RUN_DIR_Q ORCH_TMUX_SESSION=$SESSION_Q ORCH_SESSION_JSON=$SESSION_JSON_Q ORCH_TASK_NAME=$TASK_NAME_Q ORCH_AGENT_TYPE=$AGENT_TYPE_Q ORCH_DASHBOARD_URL=$DASHBOARD_URL_Q $AGENT_CMD; echo '--- Agent exited ---'; read"
 
 # Kill any pre-existing watcher for this RUN_DIR (re-run after crash,
-# or an `orch continue` replacing a daemon). We MUST wait for the old
+# or an `siling continue` replacing a daemon). We MUST wait for the old
 # watcher to actually die before starting the new one, because the
 # old watcher's cleanup() unlinks $RUN_DIR/.watcher.pid as its last
 # step — if it runs late, it would happily delete the new watcher's

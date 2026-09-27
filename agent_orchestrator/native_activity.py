@@ -33,7 +33,7 @@ _CODEX_BOUNDARY_EVENTS = {
     "turn_completed": ("waiting_user", "Turn complete"),
     "turn_aborted": ("waiting_user", "Turn interrupted"),
 }
-_CLAUDE_PERMISSION_POLICIES = {"observe", "orchestrator"}
+_CLAUDE_PERMISSION_POLICIES = {"observe", "siling", "orchestrator"}
 
 
 def _state_home() -> Path:
@@ -173,10 +173,10 @@ def claude_permission_decision(
     payload: Mapping[str, Any], *, policy: str = "observe",
     environ: Mapping[str, str] | None = None,
 ) -> dict[str, Any] | None:
-    """Return a native Claude permission decision for an opted-in orch run.
+    """Return a native Claude permission decision for an opted-in siling run.
 
     The policy is deliberately scoped by the environment inherited from the
-    Orchestrator launcher. Installing the hook therefore does not silently
+    SiLing launcher. Installing the hook therefore does not silently
     change permissions for unrelated Claude sessions started by the user.
     """
     if policy not in _CLAUDE_PERMISSION_POLICIES:
@@ -226,7 +226,7 @@ def handle_claude_hook(
 
         # Claude's background-agent daemon can fork the visible conversation
         # into a new native session id. Hooks then report lifecycle events for
-        # that child id while Orchestrator still identifies the pane by the
+        # that child id while SiLing still identifies the pane by the
         # preallocated/resumed id in session.json. Mirror the event to that
         # stable identity so a child Stop/idle event clears the pane's working
         # state instead of leaving its spinner active forever.
@@ -320,7 +320,7 @@ def install_claude_hooks(
     settings_path: Path | None = None, *, orch_path: str = "",
     permission_policy: str = "observe",
 ) -> tuple[Path, bool]:
-    """Merge Orchestrator lifecycle hooks into Claude user settings."""
+    """Merge SiLing lifecycle hooks into Claude user settings."""
     if permission_policy not in _CLAUDE_PERMISSION_POLICIES:
         raise ValueError(
             f"unsupported Claude permission policy: {permission_policy}"
@@ -335,7 +335,7 @@ def install_claude_hooks(
     if orch_path:
         command = f"{shlex.quote(orch_path)} agent-event --agent claude"
     else:
-        # Importing the full Orchestrator CLI pulls in dashboard/task modules
+        # Importing the full SiLing CLI pulls in dashboard/task modules
         # and adds hundreds of milliseconds to every Claude prompt. The hook
         # path imports only this stdlib-only module and normally returns in
         # tens of milliseconds.
@@ -471,7 +471,7 @@ class NativeActivityService:
 
     def register_runs(self, rows: Iterable[dict[str, Any]]) -> None:
         # One native Codex/Claude conversation can have several historical
-        # Orchestrator runs after repeated resumes. Lifecycle state belongs to
+        # SiLing runs after repeated resumes. Lifecycle state belongs to
         # the conversation, but notifications and UI state must belong to one
         # concrete run. Prefer the live run, then the newest historical run.
         # Otherwise one task_complete event gets broadcast to every old alias.

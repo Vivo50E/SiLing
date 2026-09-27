@@ -15,7 +15,7 @@ Heuristics:
 
 We pick the transcript whose birth time is closest to session.started_at,
 falling back to the most recently modified transcript in the project dir.
-This works well for the typical `orch run` pattern (one agent per cwd at a
+This works well for the typical `siling run` pattern (one agent per cwd at a
 time), and gracefully degrades if there's ambiguity.
 
 No guarantees — this is a best-effort display hint, not a source of truth.

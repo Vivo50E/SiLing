@@ -4,10 +4,10 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#0d1117" />
-<meta name="application-name" content="Agent Orchestrator" />
+<meta name="application-name" content="SiLing" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="Orchestrator" />
+<meta name="apple-mobile-web-app-title" content="SiLing" />
 <link rel="manifest" href="/static/manifest.webmanifest" />
 <link rel="icon" type="image/svg+xml" href="/static/icons/orchestrator.svg" />
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png" />
@@ -17,7 +17,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
-<title>Agent Orchestrator</title>
+<title>SiLing</title>
 <style>
   :root {
     --bg: #0d1117;
@@ -2712,10 +2712,10 @@
 <div class="app">
   <aside class="sidebar" id="sidebar">
     <div class="brand">
-      <h1>🎛 Orchestrator</h1>
+      <h1>🎛 SiLing</h1>
       <div class="ctrls">
         <button id="btn-notif" title="Idle notifications (off)">🔕</button>
-        <button id="btn-organize" title="Run `orch organize`: an AI agent classifies ended sessions into projects/">📁</button>
+        <button id="btn-organize" title="Run `siling organize`: an AI agent classifies ended sessions into projects/">📁</button>
         <button id="btn-new" title="New session (opens a new iTerm window)">+</button>
         <button id="btn-refresh" title="Refresh list">↻</button>
       </div>
@@ -2838,7 +2838,7 @@
           <b>Import existing</b>: index native Codex, Claude Code, or Cursor
           Agent history so it appears under Resume. Original transcripts are
           read-only and are not copied, moved, or deleted.<br/>
-          <b>Open iTerm &amp; Start</b>: new iTerm window running <code>orch run</code>.
+          <b>Open iTerm &amp; Start</b>: new iTerm window running <code>siling run</code>.
           Requires macOS Automation permission for iTerm if the dashboard is
           running under LaunchAgent.<br/>
           <b>Start in background</b>: spawn the tmux session only, no iTerm
@@ -2905,7 +2905,7 @@
         <div class="sync-meta" id="sync-meta">Loading…</div>
         <div class="modal-hint" id="sync-baseline-hint" hidden>
           A comparison baseline is required. Initializing it records the current
-          remote snapshot in Agent Orchestrator's local state database; it does
+          remote snapshot in SiLing's local state database; it does
           not copy or modify project files.
         </div>
         <div class="modal-hint" id="sync-safety-hint">
@@ -3622,7 +3622,7 @@
   $("sync-baseline").addEventListener("click", async () => {
     if (!window.confirm(
       "Use the current remote snapshot as the comparison baseline?\n\n" +
-      "This only writes Agent Orchestrator's local status database. It does not copy or modify project files."
+      "This only writes SiLing's local status database. It does not copy or modify project files."
     )) return;
     try {
       await api("/api/sync/status/baseline", {
@@ -5357,7 +5357,7 @@
     }
 
     function focusSession(runId) {
-      // Notifications may outlive a historical Orchestrator run in the OS
+      // Notifications may outlive a historical SiLing run in the OS
       // notification center. Resolve its native conversation to the current
       // live run before opening anything.
       const requested = sessions.find(x => x.run_id === runId);
@@ -5490,7 +5490,7 @@
             body: reminder
               ? `Session: ${sessionName}\nStill waiting after 10 minutes · ${describe(s)}`
               : `Session: ${sessionName}\n${describe(s)}`,
-            // Repeated Orchestrator resumes of one native conversation share
+            // Repeated SiLing resumes of one native conversation share
             // a tag, so a fresh notification replaces its stale alias.
             tag: "orch-idle-" + notifKey,
             renotify: true,
@@ -7328,7 +7328,7 @@
     btnMonitor.addEventListener("click", () => sendText(runId, "监控要有 5 分钟心跳,不能出问题了几十分钟没察觉。把监控改成每 5 分钟退出报一次状态(有结果就早退),每次收到就复查 + 重挂,这样卡住也能 5 分钟内发现。", true));
     btnLinkFolder.addEventListener("click", () => {
       const root = PROJECTS_ROOT.replace(/\/+$/, "") || "<projects-root>";
-      sendText(runId, `请把当前 task、相关 project 或网页绑定到 Dashboard Files。\n项目目录可以直接用 \`orch link-folder ${root}/<project>\`；task 产出仍按 projects-dir-layout 放到 \`${root}/current/...\`。\n目录用 \`orch link-folder <absolute-folder-path>\`，单文件用 \`orch link-file <absolute-file-path>\`，网页用 \`orch link-url <https-url>\`；完成后告诉我绑定的 absolute path 或 URL。`, true);
+      sendText(runId, `请把当前 task、相关 project 或网页绑定到 Dashboard Files。\n项目目录可以直接用 \`siling link-folder ${root}/<project>\`；task 产出仍按 projects-dir-layout 放到 \`${root}/current/...\`。\n目录用 \`siling link-folder <absolute-folder-path>\`，单文件用 \`siling link-file <absolute-file-path>\`，网页用 \`siling link-url <https-url>\`；完成后告诉我绑定的 absolute path 或 URL。`, true);
     });
     btnSyncProject.addEventListener("click", event => {
       if (btnSyncProject.dataset.action === "cancel") {
@@ -9051,7 +9051,7 @@
   }
 
   // ---------- Projects view (archived logs under projects/<name>/) ----------
-  // This is the long-term memory produced by `orch organize` — a read-only
+  // This is the long-term memory produced by `siling organize` — a read-only
   // archive of past sessions grouped by topic. We lazy-load the log listing
   // per project and remember which folders the user has expanded.
   let projectsData = null;             // [{name, count, latest_mtime}]
@@ -9127,7 +9127,7 @@
       el.innerHTML = `
         <div style="padding: 24px 14px; color: var(--text-dim); font-size: 12px; line-height: 1.5;">
           No projects archived yet.<br/><br/>
-          Run <code>orch organize</code> in a terminal to have an agent
+          Run <code>siling organize</code> in a terminal to have an agent
           sort finished sessions from <code>outputs/</code> into
           <code>projects/&lt;name&gt;/</code>.
         </div>`;
@@ -9433,7 +9433,7 @@
         <div class="folder-context-divider"></div>
         <div class="folder-context-label">Finder tag color</div>
         <div class="folder-tag-grid" id="folder-context-colors"></div>
-        <button id="folder-context-clear-tag" type="button">Clear Orchestrator tag</button>
+        <button id="folder-context-clear-tag" type="button">Clear SiLing tag</button>
       </div>
       <div class="modal-foot">
         <button class="btn-secondary" id="folder-modal-copy">Copy path</button>
@@ -11188,10 +11188,10 @@
         <div class="folder-empty">
           No files, folders, or URLs are linked to this session yet.<br><br>
           From inside the agent session, run:<br>
-          <code>orch link-folder ${projectsRoot}/&lt;project&gt;</code><br>
-          <code>orch link-folder ${projectsRoot}/current/&lt;topic&gt;/&lt;subtask&gt;</code><br>
-          <code>orch link-file ${projectsRoot}/current/&lt;topic&gt;/notes.md</code><br>
-          <code>orch link-url https://github.com/org/repo/pull/123</code>
+          <code>siling link-folder ${projectsRoot}/&lt;project&gt;</code><br>
+          <code>siling link-folder ${projectsRoot}/current/&lt;topic&gt;/&lt;subtask&gt;</code><br>
+          <code>siling link-file ${projectsRoot}/current/&lt;topic&gt;/notes.md</code><br>
+          <code>siling link-url https://github.com/org/repo/pull/123</code>
         </div>`;
       $("folder-modal-tree").innerHTML = "";
       setPreviewHeader("No linked items", "", "file");
@@ -11818,14 +11818,14 @@
   $("btn-new").addEventListener("click", openModal);
 
   // Top-bar "Organize" action — fire-and-forget trigger that spawns a
-  // tmux session running `orch organize`. That session shows up in the
+  // tmux session running `siling organize`. That session shows up in the
   // Active list on the next refresh (its run_id starts with
   // "organize-"), so the user can watch the classification agent work
   // and verify what gets moved. The endpoint itself is async and
   // returns immediately; we do NOT wait for the agent to finish here.
   $("btn-organize").addEventListener("click", async () => {
     const ok = window.confirm(
-      "Run `orch organize` on ended sessions?\n\n" +
+      "Run `siling organize` on ended sessions?\n\n" +
       "An AI agent will classify sessions in outputs/ into folders " +
       "under projects/, then remove the originals from outputs/.\n\n" +
       "It appears in the Active list as `organize-...` — open it to " +

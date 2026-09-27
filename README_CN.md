@@ -1,6 +1,6 @@
 <div align="center">
 
-# Agent Orchestrator
+# SiLing
 
 **随时知道每个 coding agent 在做什么、哪个最重要，以及如何把工作完整找回来。**
 
@@ -13,15 +13,15 @@
 
 </div>
 
-![Agent Orchestrator 通过清晰的 3x2 布局管理六个实时 coding-agent sessions](docs/assets/dashboard-hero.webp)
+![SiLing 通过清晰的 3x2 布局管理六个实时 coding-agent sessions](docs/assets/dashboard-hero.webp)
 
 <p align="center"><sub>在较小屏幕上，3x2 布局仍能让每个 session 清晰可读，同时保留 task 名称、优先级颜色、busy/idle 状态、关联文件和操作按钮。</sub></p>
 
-![Agent Orchestrator 缩放到十二个实时 coding-agent sessions 的总览](docs/assets/dashboard-overview.webp)
+![SiLing 缩放到十二个实时 coding-agent sessions 的总览](docs/assets/dashboard-overview.webp)
 
 <p align="center"><sub>在更大的屏幕上切换到 4x3，一次查看十二个实时 panes；sidebar 仍然管理全部十六个 sessions。本地路径已统一处理为公开演示内容。</sub></p>
 
-![在多任务 Dashboard 上放大任意一个实时 Agent Orchestrator session](docs/assets/focus-mode.webp)
+![在多任务 Dashboard 上放大任意一个实时 SiLing session](docs/assets/focus-mode.webp)
 
 <p align="center"><sub>随时放大任意 session，查看完整 TTY 输出和操作；处理完后回到多任务总览，底层工作不会中断。</sub></p>
 
@@ -29,13 +29,13 @@ Codex 和 Claude Code 在单个 terminal 里很强大。真正困难的是同时
 terminal 之后：tab 名称开始失去意义，重要任务埋在窗口里，idle 的 agent 看起来
 和 busy 的一样，而一旦关闭窗口，之后可能连这个 session 在哪里都想不起来。
 
-Agent Orchestrator 把这些 terminal sessions 变成一个可持续恢复、可视化的 task
+SiLing 把这些 terminal sessions 变成一个可持续恢复、可视化的 task
 board。每个 agent 都有自己的名称、优先级、实时状态、workspace、关联文件和
 恢复入口。
 
 ## Terminal tabs 无法提供的掌控感
 
-| 只使用 terminal | Agent Orchestrator |
+| 只使用 terminal | SiLing |
 | --- | --- |
 | 每个 tab 看起来都差不多 | 为 task 设置容易记住的自定义标签 |
 | 紧急任务和普通任务混在一起 | 使用 `P0`、`P1`、`P2` 排序和分组 |
@@ -97,12 +97,12 @@ grid 里的红、黄、蓝、绿，再打开真正需要关注的 task。
 ## 原生生命周期信号与真正有用的通知
 
 Terminal 是否还在输出是重要信号，但它不一定能区分 agent 正在思考，还是已经把
-控制权交还给用户。Agent Orchestrator 可以安装 Claude Code 的原生生命周期 hook，
+控制权交还给用户。SiLing 可以安装 Claude Code 的原生生命周期 hook，
 让 waiting、permission、failure 和 completion 状态统一进入 sidebar 与 Mission
 Control timeline：
 
 ```bash
-orch install-agent-hooks
+siling install-agent-hooks
 ```
 
 默认 hook 只观察状态，不会批准任何权限。通知会打开对应 session 的完整 TTY
@@ -110,7 +110,7 @@ orch install-agent-hooks
 不会不断堆积。
 
 自动处理权限是另一个独立的显式选项，只适用于可信的单用户环境。
-`--claude-permission-policy orchestrator` 只影响由 Agent Orchestrator 启动的 Claude
+`--claude-permission-policy siling` 只影响由 SiLing 启动的 Claude
 sessions，但它仍然意味着工具请求可以不经人工确认，因此启用前应明确评估风险。
 
 ## Terminal 关掉，工作仍然找得回来
@@ -118,7 +118,7 @@ sessions，但它仍然意味着工具请求可以不经人工确认，因此启
 Terminal agent 最常见的问题并不是进程崩溃，而是人已经忘了哪个 tab、哪个
 目录、哪个 resume command 对应哪个 task。
 
-Agent Orchestrator 会保留多层恢复信息：
+SiLing 会保留多层恢复信息：
 
 1. 记录 task 标签、agent 类型、workspace、logs 和本地 metadata。
 2. 当 agent CLI 暴露原生 session ID 时，自动捕获对应的 Codex、Claude Code
@@ -166,7 +166,10 @@ cd agent-orchestrator-public
 PYTHON=python3.11  # 可替换为任意已安装的 Python 3.10+
 "$PYTHON" -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python orchestrator.py dashboard
+chmod +x siling
+mkdir -p ~/.local/bin
+ln -sf "$PWD/siling" ~/.local/bin/siling
+siling dashboard
 ```
 
 打开 [http://127.0.0.1:7860](http://127.0.0.1:7860)，创建 session、设置标签和
@@ -181,15 +184,15 @@ PYTHON=python3.11  # 可替换为任意已安装的 Python 3.10+
 Dashboard 内置 Progressive Web App 支持。启动 Dashboard 后，可在 Safari 中选择
 **文件 → 添加到程序坞**，或使用 Chrome/Edge 地址栏中的安装按钮。安装后它会以
 独立窗口运行，并出现在程序坞、Launchpad 和 Spotlight 中。由于 session 与 TTY
-来自本地后端，使用应用前仍需保持 `orch dashboard` 运行；后端不可用时应用会显示
+来自本地后端，使用应用前仍需保持 `siling dashboard` 运行；后端不可用时应用会显示
 重连页面，而不会展示缓存的旧 session 状态。
 
-如果希望当前 shell 里的命令更短：
+`siling` 启动器会沿符号链接找到当前仓库，并自动使用仓库内的 virtualenv。如果
+`~/.local/bin` 不在 `PATH` 中，可以在仓库中运行 `./siling`，或把该目录加入 shell
+的 `PATH`。
 
-```bash
-ORCH_REPO="$PWD"
-orch() { "$ORCH_REPO/.venv/bin/python" "$ORCH_REPO/orchestrator.py" "$@"; }
-```
+旧的 `orchestrator.py` 入口、`ORCH_*` 环境变量、状态目录和 `orch-*` tmux 名称继续
+兼容已有 sessions。
 
 ## 一个实用的日常工作流
 
@@ -203,36 +206,36 @@ orch() { "$ORCH_REPO/.venv/bin/python" "$ORCH_REPO/orchestrator.py" "$@"; }
 ## 从 CLI 启动 sessions
 
 ```bash
-orch run                              # Cursor Agent
-orch run claude                       # Claude Code
-orch run codex                        # OpenAI Codex CLI
-orch run codex investigate /path/to/project
+siling run                              # Cursor Agent
+siling run claude                       # Claude Code
+siling run codex                        # OpenAI Codex CLI
+siling run codex investigate /path/to/project
 ```
 
 浏览器和 CLI 工作流使用相同的本地 sessions 和 metadata。
 
-### 导入使用 Orchestrator 之前创建的 sessions
+### 导入使用 SiLing 之前创建的 sessions
 
 在 **New session → Import existing** 中可以扫描 Codex、Claude Code 和 Cursor
 Agent 的原生历史记录。搜索或筛选结果后，一次最多选择 100 个 sessions，导入后
-它们会出现在 Resume 列表中。导入只在 `outputs/` 下创建 Orchestrator metadata
+它们会出现在 Resume 列表中。导入只在 `outputs/` 下创建 SiLing metadata
 索引；原始 transcript 始终保留在原生目录中，不会被复制、移动、编辑或删除。已经
 建立索引的原生 session ID 会自动从导入列表隐藏。
 
 ## 让一个 agent 把任务委派给另一个 agent
 
 Agent 不需要在发现额外工作后停下来等人手工开窗口。它可以直接从当前
-Orchestrator session 创建一个有独立名称、agent、model、effort、workspace 和
+SiLing session 创建一个有独立名称、agent、model、effort、workspace 和
 优先级的子任务：
 
 ```bash
-orch delegate --agent codex --model gpt-5.6-sol --effort high \
+siling delegate --agent codex --model gpt-5.6-sol --effort high \
   --label dependency-audit --priority p1 \
   --prompt "检查 dependency update，并报告 targeted test evidence。"
 ```
 
 子任务会立即出现在 Dashboard 中。默认继承父任务的 workspace 和 Linked Items，
-但运行在独立的 tmux session。Agent 还可以通过 `orch session` 列出 sessions、按
+但运行在独立的 tmux session。Agent 还可以通过 `siling session` 列出 sessions、按
 指定行数读取 TTY 开头或结尾，以及向目标 session 发送 follow-up。完整流程、幂等
 自动化与远端节点行为见 [Agent 委派指南](docs/agent-delegation.md)。
 
@@ -275,15 +278,15 @@ ORCH_DASHBOARD_HOST=0.0.0.0 ./launchd/deploy.sh --install
 HTTPS：
 
 ```bash
-ORCH_DASHBOARD_TOKEN=mysecret orch dashboard --host 0.0.0.0 --https
+ORCH_DASHBOARD_TOKEN=mysecret siling dashboard --host 0.0.0.0 --https
 ```
 
 URL helper 会检测正在运行的 Dashboard 协议和 bind 地址：
 
 ```bash
-orch url            # 打印并复制最佳认证 URL
-orch url -q         # 只输出 URL
-orch url --json     # 检查所有可访问候选地址
+siling url            # 打印并复制最佳认证 URL
+siling url -q         # 只输出 URL
+siling url --json     # 检查所有可访问候选地址
 ```
 
 ## 用一个 Dashboard 管理本地和远端 agents
@@ -292,7 +295,7 @@ Remote Nodes 让 agent 进程和 tmux session 留在真正执行工作的机器�
 呈现在同一个本地 Dashboard 中。Sidebar 会按地点分组；TTY 输入输出通过轻量的
 HTTP/WebSocket 控制面转发；即使浏览器或本地 Dashboard 关闭，远端工作仍会继续。
 
-在远端使用 `orch dashboard --node-only` 启动服务，通过 SSH tunnel 连接，然后在
+在远端使用 `siling dashboard --node-only` 启动服务，通过 SSH tunnel 连接，然后在
 被 Git 忽略的 `dashboard.local.json` 中登记该节点即可。这个能力不要求复制 projects，
 也不要求开启 workspace sync。通用双机配置、安全 token、自动 tunnel 和可选的
 自助重连方式见 [Remote Nodes 指南](docs/remote-nodes.md)。
@@ -325,14 +328,14 @@ Claude Code 和 Codex 发布一份停止状态的 resume handoff。原生 transc
 metadata 会复制到远端，任务会出现在可恢复列表中，但不会被自动启动。是否真正切换
 机器仍由用户明确决定，也不会在后台悄悄启动第二个 agent。
 
-比较 baseline 保存在 project tree 之外的 Agent Orchestrator 本地状态目录中。复制
+比较 baseline 保存在 project tree 之外的 SiLing 本地状态目录中。复制
 [`examples/dashboard.local.json`](examples/dashboard.local.json)，选择需要跟踪的
-workspaces；确认两台机器使用相同 Agent Orchestrator revision 后，再启用
+workspaces；确认两台机器使用相同 SiLing revision 后，再启用
 `sync_status`。
 
 ## Local-first 安全模型
 
-Agent Orchestrator 可以向本地 terminal sessions 发送输入，应当把它视为一个
+SiLing 可以向本地 terminal sessions 发送输入，应当把它视为一个
 高权限开发者工具。
 
 - 默认只监听 localhost。
@@ -352,4 +355,4 @@ Dashboard-first 是主要支持的体验。由于各 agent CLI 暴露的 session
 不同，resume 能力是 best-effort。项目面向可信的本地开发者机器，而不是托管式
 多用户部署。旧版 YAML recipe runner 仍为高级用户保留。
 
-Agent Orchestrator 采用 [MIT License](LICENSE)。
+SiLing 采用 [MIT License](LICENSE)。

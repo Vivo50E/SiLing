@@ -1,6 +1,6 @@
 #!/bin/bash
 # Resume watcher (permission auto-accept + logging) on an existing tmux session, then attach.
-# Usage: orch continue [session] [--prompt MSG] [--no-attach]
+# Usage: siling continue [session] [--prompt MSG] [--no-attach]
 #
 # If session is omitted, lists all live orch-* sessions and prompts for selection.
 # The watcher runs in the background, exactly like run.sh's watcher loop.

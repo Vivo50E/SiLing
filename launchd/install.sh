@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install / reload the orch dashboard LaunchAgent.
+# Install / reload the siling dashboard LaunchAgent.
 #
 # Two modes:
 #   ./launchd/install.sh          # full install (writes plist, bootstraps)
@@ -140,7 +140,7 @@ if lsof -iTCP:"$DASHBOARD_PORT" -sTCP:LISTEN -n -P >/dev/null 2>&1; then
   else
     echo "  Open: http://127.0.0.1:$DASHBOARD_PORT/"
   fi
-  echo "  Run 'orch url' to copy an authenticated URL."
+  echo "  Run 'siling url' to copy an authenticated URL."
 else
   echo "⚠ nothing listening on $DASHBOARD_PORT yet. Recent errors:"
   tail -5 "$OUTPUTS_DIR/_dashboard.err.log" 2>/dev/null | sed 's/^/    /'

@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "Agent Orchestrator",
-  "short_name": "Orchestrator",
-  "description": "A local-first command center for coding-agent sessions.",
+  "name": "SiLing",
+  "short_name": "SiLing",
+  "description": "SiLing is a local-first command center for coding-agent sessions.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

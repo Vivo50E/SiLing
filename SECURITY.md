@@ -13,7 +13,7 @@ transcripts, local paths, and other personal data.
 
 ## Deployment model
 
-Agent Orchestrator can send input to local tmux sessions and should be treated
+SiLing can send input to local tmux sessions and should be treated
 as a privileged developer tool.
 
 - The default dashboard bind is localhost-only.

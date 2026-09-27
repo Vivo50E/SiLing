@@ -1,4 +1,4 @@
-const CACHE_NAME = "agent-orchestrator-pwa-v1";
+const CACHE_NAME = "siling-pwa-v2";
 const OFFLINE_ASSETS = [
   "/static/offline.html",
   "/static/icons/orchestrator-192.png",

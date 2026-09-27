@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Stop Agent Orchestrator tmux sessions without touching unrelated sessions.
-# Usage: orch clean [-f]
+# Stop SiLing tmux sessions without touching unrelated sessions.
+# Usage: siling clean [-f]
 
 set -euo pipefail
 
@@ -9,7 +9,7 @@ for arg in "$@"; do
     case "$arg" in
         -f|--force) FORCE=true ;;
         -h|--help)
-            echo "usage: orch clean [-f|--force]"
+            echo "usage: siling clean [-f|--force]"
             exit 0
             ;;
         *)
@@ -25,11 +25,11 @@ while IFS= read -r session; do
 done < <(tmux list-sessions -F '#{session_name}' 2>/dev/null || true)
 
 if [[ ${#SESSIONS[@]} -eq 0 ]]; then
-    echo "No Agent Orchestrator tmux sessions found."
+    echo "No SiLing tmux sessions found."
     exit 0
 fi
 
-echo "Stopping Agent Orchestrator tmux sessions:"
+echo "Stopping SiLing tmux sessions:"
 printf '  %s\n' "${SESSIONS[@]}"
 if $FORCE; then
     echo "Note: --force is retained for compatibility; tmux sessions are stopped individually."
@@ -48,4 +48,4 @@ if [[ ${#FAILED[@]} -gt 0 ]]; then
     exit 1
 fi
 
-echo "Stopped ${#SESSIONS[@]} Agent Orchestrator session(s)."
+echo "Stopped ${#SESSIONS[@]} SiLing session(s)."

@@ -2003,7 +2003,8 @@ _FINDER_TAG_COLORS = {
     7: ("orange", "#ff9500"),
 }
 _FINDER_TAG_NAMES = {name: idx for idx, (name, _hex) in _FINDER_TAG_COLORS.items()}
-_ORCH_TAG_PREFIX = "Agent Orchestrator "
+_SILING_TAG_PREFIX = "SiLing "
+_LEGACY_TAG_PREFIXES = ("Agent Orchestrator ",)
 
 
 def _read_xattr(path: Path, attr: str) -> Optional[bytes]:
@@ -2118,13 +2119,19 @@ def _finder_tag_meta(path: Path) -> dict[str, Any]:
 def _set_finder_tag_color(path: Path, color: str) -> dict[str, Any]:
     color = color.strip().lower()
     if color in {"clear", "none", ""}:
-        existing = [t for t in _finder_tag_list(path) if not t.startswith(_ORCH_TAG_PREFIX)]
+        existing = [
+            t for t in _finder_tag_list(path)
+            if not t.startswith((_SILING_TAG_PREFIX, *_LEGACY_TAG_PREFIXES))
+        ]
     else:
         if color not in _FINDER_TAG_NAMES or color == "none":
             raise HTTPException(400, "unsupported tag color")
         idx = _FINDER_TAG_NAMES[color]
-        existing = [t for t in _finder_tag_list(path) if not t.startswith(_ORCH_TAG_PREFIX)]
-        existing.insert(0, f"{_ORCH_TAG_PREFIX}{color}\n{idx}")
+        existing = [
+            t for t in _finder_tag_list(path)
+            if not t.startswith((_SILING_TAG_PREFIX, *_LEGACY_TAG_PREFIXES))
+        ]
+        existing.insert(0, f"{_SILING_TAG_PREFIX}{color}\n{idx}")
 
     if existing:
         _write_xattr(path, _FINDER_TAG_ATTR, plistlib.dumps(existing))
@@ -8247,7 +8254,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             await remote_http_client.aclose()
 
     app = FastAPI(
-        title="Agent Orchestrator Dashboard",
+        title="SiLing Dashboard",
         version="0.2.0",
         lifespan=lifespan,
     )
@@ -8286,7 +8293,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                         url = build_access_url(ip, port, scheme, token)
                         if url and url != last:
                             body = (
-                                "Agent Orchestrator Dashboard\n"
+                                "SiLing Dashboard\n"
                                 f"updated: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
                                 f"url:     {url}\n"
                                 "\n"
@@ -10682,7 +10689,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         agent: str = Query("", max_length=24),
         node_id: str = Query("local", max_length=64),
     ):
-        """List native CLI histories not yet indexed by Orchestrator."""
+        """List native CLI histories not yet indexed by SiLing."""
         if node_id != "local":
             node = remote_nodes.get(node_id)
             if node is None:
@@ -11441,7 +11448,7 @@ def _ensure_self_signed_cert(cert_dir: Path) -> tuple[Path, Path]:
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Agent Orchestrator Dashboard")
+    ap = argparse.ArgumentParser(description="SiLing Dashboard")
     ap.add_argument("--host", default="127.0.0.1",
                     help="bind address (default: 127.0.0.1). Non-loopback "
                          "addresses require --token or $ORCH_DASHBOARD_TOKEN.")

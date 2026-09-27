@@ -841,8 +841,8 @@ def _dashboard_api_base(explicit: str = "") -> str:
         if scheme:
             return f"{scheme}://127.0.0.1:{port}"
     raise SystemExit(
-        "Agent Orchestrator Dashboard is not reachable. Set "
-        "$ORCH_DASHBOARD_URL or start `orch dashboard`."
+        "SiLing Dashboard is not reachable. Set "
+        "$ORCH_DASHBOARD_URL or start `siling dashboard`."
     )
 
 
@@ -987,7 +987,7 @@ def cmd_session_read(args):
     lines = 50000 if getattr(args, "all", False) else args.lines
     run_id = args.run_id or os.environ.get("ORCH_RUN_ID", "")
     if not run_id:
-        raise SystemExit("run_id is required outside an Orchestrator session")
+        raise SystemExit("run_id is required outside a SiLing session")
     payload = _dashboard_api_request(
         args,
         f"/api/sessions/{quote(run_id, safe='')}/read"
@@ -1002,7 +1002,7 @@ def cmd_session_read(args):
 def cmd_session_status(args):
     run_id = args.run_id or os.environ.get("ORCH_RUN_ID", "")
     if not run_id:
-        raise SystemExit("run_id is required outside an Orchestrator session")
+        raise SystemExit("run_id is required outside a SiLing session")
     payload = _dashboard_api_request(
         args,
         f"/api/sessions/{quote(run_id, safe='')}",
@@ -1065,7 +1065,7 @@ def cmd_session_send(args):
 def cmd_session_configure(args):
     run_id = args.run_id or os.environ.get("ORCH_RUN_ID", "")
     if not run_id:
-        raise SystemExit("run_id is required outside an Orchestrator session")
+        raise SystemExit("run_id is required outside a SiLing session")
     if not args.model and not args.effort:
         raise SystemExit("--model or --effort is required")
     payload = _dashboard_api_request(
@@ -1208,7 +1208,7 @@ def cmd_dashboard(args):
         print(f"          key ={key_path}")
         print("          (self-signed — accept the browser warning once)")
     if args.token:
-        print("Token:    configured (hidden; run 'orch url' for browser access)")
+        print("Token:    configured (hidden; run 'siling url' for browser access)")
     else:
         print("Token:    (none — open access; pass --token or set $ORCH_DASHBOARD_TOKEN to lock)")
     if args.ttyd:
@@ -1269,7 +1269,7 @@ def cmd_agent_event(args):
         # Lifecycle telemetry must never block a Claude turn. Keep stdout
         # empty (hook stdout can become model context) and emit only a terse
         # diagnostic on stderr.
-        print(f"orch agent-event ignored: {exc}", file=sys.stderr)
+        print(f"siling agent-event ignored: {exc}", file=sys.stderr)
 
 
 def cmd_install_agent_hooks(args):
@@ -1284,7 +1284,7 @@ def cmd_install_agent_hooks(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Agent Orchestrator")
+    parser = argparse.ArgumentParser(description="SiLing")
     sub = parser.add_subparsers(dest="command")
 
     p_start = sub.add_parser("start", help="Start tasks from a YAML config")
@@ -1462,7 +1462,7 @@ def main():
     p_organize.set_defaults(func=cmd_organize)
 
     p_clean = sub.add_parser(
-        "clean", help="Stop Agent Orchestrator tmux sessions"
+        "clean", help="Stop SiLing tmux sessions"
     )
     p_clean.add_argument(
         "-f", "--force", action="store_true",
@@ -1568,7 +1568,7 @@ def main():
     p_agent_event.add_argument("--agent", required=True, choices=("claude",))
     p_agent_event.add_argument(
         "--permission-policy", default="observe",
-        choices=("observe", "orchestrator"),
+        choices=("observe", "siling", "orchestrator"),
     )
     p_agent_event.set_defaults(func=cmd_agent_event)
 
@@ -1581,15 +1581,15 @@ def main():
         help="Claude settings JSON (default: ~/.claude/settings.json)",
     )
     p_hooks.add_argument(
-        "--orch-path", default="",
-        help="orch executable recorded in hook commands (default: auto-detect)",
+        "--siling-path", "--orch-path", dest="orch_path", default="",
+        help="siling executable recorded in hook commands (default: auto-detect)",
     )
     p_hooks.add_argument(
         "--claude-permission-policy", default="observe",
-        choices=("observe", "orchestrator"),
+        choices=("observe", "siling", "orchestrator"),
         help=(
             "native Claude permission handling: observe only (default), or "
-            "auto-approve requests from Orchestrator-launched sessions"
+            "auto-approve requests from SiLing-launched sessions"
         ),
     )
     p_hooks.set_defaults(func=cmd_install_agent_hooks)

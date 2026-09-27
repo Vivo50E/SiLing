@@ -1,4 +1,4 @@
-"""Federate sessions from remote Agent Orchestrator dashboard nodes.
+"""Federate sessions from remote SiLing dashboard nodes.
 
 The local dashboard remains the browser-facing control plane.  Each remote
 node runs the ordinary dashboard bound to its loopback interface and is

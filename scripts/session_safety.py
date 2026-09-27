@@ -40,7 +40,7 @@ def probe_live_orch_sessions(timeout: float = 3) -> tuple[set[str], bool]:
 
 
 def list_live_orch_sessions(timeout: float = 3) -> set[str]:
-    """Return live non-shadow Agent Orchestrator tmux session names."""
+    """Return live non-shadow SiLing tmux session names."""
     sessions, _ok = probe_live_orch_sessions(timeout=timeout)
     return sessions
 

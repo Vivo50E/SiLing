@@ -1,16 +1,16 @@
 # Agent-to-agent delegation
 
-Agent Orchestrator can expose its tmux sessions as a small, scriptable control
+SiLing can expose its tmux sessions as a small, scriptable control
 surface. An agent can create a child session, inspect a bounded part of another
 session's terminal history, and send it a follow-up without taking over the
 browser.
 
 ## Create a child task
 
-Run this inside an Orchestrator-launched session:
+Run this inside an SiLing-launched session:
 
 ```bash
-orch delegate \
+siling delegate \
   --agent codex \
   --model gpt-5.6-sol \
   --effort high \
@@ -28,7 +28,7 @@ same Dashboard like any other task.
 Claude Code uses the same interface; model and effort remain separate fields:
 
 ```bash
-orch delegate \
+siling delegate \
   --agent claude \
   --model opus \
   --effort xhigh \
@@ -43,15 +43,15 @@ that key with different parameters is rejected.
 ## Discover and inspect sessions
 
 ```bash
-orch session list --alive
-orch session list --alive --json
-orch session status <run-id>
-orch session status <run-id> --json
+siling session list --alive
+siling session list --alive --json
+siling session status <run-id>
+siling session status <run-id> --json
 
-orch session read "$ORCH_RUN_ID" --head -n 80
-orch session read <run-id> -n 200
-orch session read <run-id> -n 200 --json
-orch session read <run-id> --all --head
+siling session read "$ORCH_RUN_ID" --head -n 80
+siling session read <run-id> -n 200
+siling session read <run-id> -n 200 --json
+siling session read <run-id> --all --head
 ```
 
 `read` returns joined plain text from tmux while the session is alive and falls
@@ -62,8 +62,8 @@ only when the recent tail is insufficient.
 ## Send a follow-up
 
 ```bash
-orch session send <run-id> "Please report the failing test name and stop."
-orch session send <run-id> --file ./follow-up.md
+siling session send <run-id> "Please report the failing test name and stop."
+siling session send <run-id> --file ./follow-up.md
 ```
 
 The default submits the text with Enter. Add `--no-enter` to stage text in the
@@ -72,9 +72,9 @@ target input without submitting it.
 Native goals use the same message path. Codex supports its full lifecycle:
 
 ```bash
-orch session send <run-id> "/goal Investigate the regression and preserve evidence."
-orch session send <run-id> "/goal edit"
-orch session send <run-id> "/goal clear"
+siling session send <run-id> "/goal Investigate the regression and preserve evidence."
+siling session send <run-id> "/goal edit"
+siling session send <run-id> "/goal clear"
 ```
 
 Claude Code supports `/goal <condition>`, no-argument `/goal` for status, and
@@ -88,8 +88,8 @@ When a Codex or Claude Code session is waiting at its normal input prompt, its
 runtime selection can be changed without recreating the session:
 
 ```bash
-orch session configure <run-id> --model gpt-5.6-sol --effort high
-orch session configure <run-id> --model fable --effort xhigh
+siling session configure <run-id> --model gpt-5.6-sol --effort high
+siling session configure <run-id> --model fable --effort xhigh
 ```
 
 The command drives the agent's native model picker and rejects unavailable
@@ -108,7 +108,7 @@ the result through normal Remote Nodes federation.
 From the local machine, delegation can also target a configured node:
 
 ```bash
-orch delegate --node devbox --agent codex --prompt "Run the remote smoke test."
+siling delegate --node devbox --agent codex --prompt "Run the remote smoke test."
 ```
 
 ## API surface

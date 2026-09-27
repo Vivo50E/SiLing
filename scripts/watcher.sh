@@ -1,5 +1,5 @@
 #!/bin/bash
-# Daemonized permission-watcher + pane-logger for an orch tmux session.
+# Daemonized permission-watcher + pane-logger for an siling tmux session.
 #
 # Usage:
 #   watcher.sh <tmux_session> <log_file> <run_dir>
@@ -10,7 +10,7 @@
 #   of the parent orch-* shell, the watcher died as soon as:
 #     - the user detached from tmux (`Ctrl+b d` returns the parent,
 #       which then hits its EXIT trap and kill'd the watcher),
-#     - the terminal window hosting `orch run` was closed (SIGHUP),
+#     - the terminal window hosting `siling run` was closed (SIGHUP),
 #     - macOS logged out / the parent terminal crashed.
 #   The tmux session kept running (it was created detached), so the
 #   agent was still alive but nobody was around to auto-press `y` on
@@ -77,7 +77,7 @@ cleanup() {
     tmux capture-pane -t "$SESSION" -p -S - 2>/dev/null \
         | python3 "$LOG_WRITER" "$LOGFILE" 2>/dev/null || true
     # Only delete the pid file if it still belongs to us. Otherwise
-    # we'd race with a replacement watcher started by `orch continue`
+    # we'd race with a replacement watcher started by `siling continue`
     # and unlink its freshly-written pid file. See run.sh's
     # _kill_stale_watcher() for the paired guard.
     if [ -f "$PID_FILE" ] && [ "$(cat "$PID_FILE" 2>/dev/null)" = "$$" ]; then

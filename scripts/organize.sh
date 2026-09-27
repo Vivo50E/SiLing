@@ -1,12 +1,12 @@
 #!/bin/bash
 # Organize past sessions into project folders using an AI agent, then prune.
-# Usage: orch organize [--stale DURATION] [claude|cursor|codex]
+# Usage: siling organize [--stale DURATION] [claude|cursor|codex]
 # Examples:
-#   orch organize                  # organize all inactive sessions
-#   orch organize 3h               # only sessions not updated in 3 hours
-#   orch organize --stale 1d       # only sessions not updated in 1 day
-#   orch organize 30m claude       # stale 30min, use claude agent
-#   orch organize codex            # use OpenAI codex CLI (YOLO mode)
+#   siling organize                  # organize all inactive sessions
+#   siling organize 3h               # only sessions not updated in 3 hours
+#   siling organize --stale 1d       # only sessions not updated in 1 day
+#   siling organize 30m claude       # stale 30min, use claude agent
+#   siling organize codex            # use OpenAI codex CLI (YOLO mode)
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"

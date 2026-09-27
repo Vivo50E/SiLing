@@ -16,7 +16,7 @@ browser -> local Dashboard -> SSH tunnel -> remote node-only Dashboard -> tmux
 
 Only terminal bytes and small session/status payloads cross the tunnel. The
 remote tmux session keeps running when the browser or local Dashboard closes.
-Use compatible Agent Orchestrator revisions on both machines.
+Use compatible SiLing revisions on both machines.
 
 ## 1. Start a node-only Dashboard remotely
 
@@ -24,7 +24,7 @@ On the remote machine:
 
 ```bash
 cd /path/to/agent-orchestrator-public
-.venv/bin/python orchestrator.py dashboard \
+./siling dashboard \
   --node-only --host 127.0.0.1 --port 7861
 ```
 
@@ -47,7 +47,7 @@ ssh -N -L 17861:127.0.0.1:7861 dev-server
 Leave that command running. You should now be able to query the remote node
 through `http://127.0.0.1:17861` on the local machine.
 
-Agent Orchestrator can own the tunnel instead by setting `auto_tunnel` to
+SiLing can own the tunnel instead by setting `auto_tunnel` to
 `true`. Automatic tunnels use non-interactive SSH (`BatchMode=yes`), so the
 host must already work through an SSH agent, key, certificate, or another
 non-interactive authentication method. Interactive or device-code login can

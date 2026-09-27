@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Backward-compatible entrypoint for the Agent Orchestrator dashboard."""
+"""Backward-compatible entrypoint for the SiLing dashboard."""
 
 from agent_orchestrator.dashboard import create_app, main
 

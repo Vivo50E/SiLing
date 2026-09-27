@@ -13,6 +13,8 @@ class ProgressiveWebAppContractTests(unittest.TestCase):
 
         self.assertEqual(manifest["start_url"], "/")
         self.assertEqual(manifest["scope"], "/")
+        self.assertEqual(manifest["name"], "SiLing")
+        self.assertEqual(manifest["short_name"], "SiLing")
         self.assertEqual(manifest["display"], "standalone")
         self.assertEqual(manifest["theme_color"], "#0d1117")
         self.assertIn("standalone", manifest["display_override"])
@@ -27,6 +29,8 @@ class ProgressiveWebAppContractTests(unittest.TestCase):
     def test_index_registers_root_scoped_worker_and_macos_metadata(self):
         index = (STATIC_DIR / "index.html").read_text()
 
+        self.assertIn('<title>SiLing</title>', index)
+        self.assertIn('content="SiLing"', index)
         self.assertIn('rel="manifest" href="/static/manifest.webmanifest"', index)
         self.assertIn('rel="apple-touch-icon"', index)
         self.assertIn('name="apple-mobile-web-app-capable"', index)

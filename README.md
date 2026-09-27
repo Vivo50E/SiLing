@@ -1,6 +1,6 @@
 <div align="center">
 
-# Agent Orchestrator
+# SiLing
 
 **Know what every coding agent is doing, what matters next, and how to get the work back.**
 
@@ -13,15 +13,15 @@
 
 </div>
 
-![Agent Orchestrator managing six live coding-agent sessions in a readable 3x2 view](docs/assets/dashboard-hero.webp)
+![SiLing managing six live coding-agent sessions in a readable 3x2 view](docs/assets/dashboard-hero.webp)
 
 <p align="center"><sub>On a smaller screen, the 3x2 layout keeps every session readable while preserving task names, priority colors, busy and idle state, files, and controls.</sub></p>
 
-![Agent Orchestrator zoomed out to twelve live coding-agent sessions](docs/assets/dashboard-overview.webp)
+![SiLing zoomed out to twelve live coding-agent sessions](docs/assets/dashboard-overview.webp)
 
 <p align="center"><sub>On a larger display, switch to 4x3 and watch twelve live panes at once while the sidebar keeps all sixteen sessions organized. Local paths are normalized for publication.</sub></p>
 
-![Any live Agent Orchestrator session expanded over the multi-task dashboard](docs/assets/focus-mode.webp)
+![Any live SiLing session expanded over the multi-task dashboard](docs/assets/focus-mode.webp)
 
 <p align="center"><sub>Expand any session to inspect its full TTY output and controls, then return to the multi-task view without interrupting the underlying work.</sub></p>
 
@@ -30,13 +30,13 @@ when five or ten terminals are running at once: tab titles stop being useful,
 important work gets buried, an idle agent looks like a busy one, and closing a
 window can make a valuable session hard to find again.
 
-Agent Orchestrator turns those terminal sessions into a durable, visual task
+SiLing turns those terminal sessions into a durable, visual task
 board. Each agent gets a name, priority, live state, workspace, files, and a
 path back into the session.
 
 ## The control you lose with terminal tabs
 
-| Terminal-only workflow | Agent Orchestrator |
+| Terminal-only workflow | SiLing |
 | --- | --- |
 | Every tab looks the same | Give each task a memorable custom label |
 | Urgent work disappears among other windows | Sort and group with `P0`, `P1`, and `P2` |
@@ -106,12 +106,12 @@ actually needs attention.
 
 Terminal output is a useful activity signal, but it cannot always distinguish
 an agent that is thinking from one that has returned control to the user.
-Agent Orchestrator can install native Claude Code lifecycle hooks so waiting,
+SiLing can install native Claude Code lifecycle hooks so waiting,
 permission, failure, and completion transitions update the same sidebar and
 Mission Control timeline:
 
 ```bash
-orch install-agent-hooks
+siling install-agent-hooks
 ```
 
 The default hook is observe-only: it records lifecycle state and does not
@@ -120,8 +120,8 @@ acknowledged when that session is inspected, and replace an older notification
 from the same session instead of accumulating duplicates.
 
 Automatic permission handling is a separate, explicit opt-in for trusted
-single-user environments. `--claude-permission-policy orchestrator` applies
-only to Claude sessions launched by Agent Orchestrator, but it still grants
+single-user environments. `--claude-permission-policy siling` applies
+only to Claude sessions launched by SiLing, but it still grants
 requested tools without a human confirmation; review that tradeoff before
 enabling it.
 
@@ -131,7 +131,7 @@ The usual failure mode with terminal agents is not that the process crashed;
 it is that the human no longer knows which tab, directory, or resume command
 belonged to the task.
 
-Agent Orchestrator keeps several layers of recovery information:
+SiLing keeps several layers of recovery information:
 
 1. It records the task label, agent type, workspace, logs, and local metadata.
 2. When an agent CLI exposes a native session ID, it captures the corresponding
@@ -185,7 +185,10 @@ cd agent-orchestrator-public
 PYTHON=python3.11  # use any installed Python 3.10+
 "$PYTHON" -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python orchestrator.py dashboard
+chmod +x siling
+mkdir -p ~/.local/bin
+ln -sf "$PWD/siling" ~/.local/bin/siling
+siling dashboard
 ```
 
 Open [http://127.0.0.1:7860](http://127.0.0.1:7860), create a session, assign a
@@ -200,16 +203,16 @@ set `ORCH_NEW_SESSION_WORKING_DIR`. If omitted, it follows `projects_root`.
 The Dashboard includes Progressive Web App support. After starting it, choose
 **File → Add to Dock** in Safari, or use the install button in the Chrome/Edge
 address bar. It then runs in its own window and appears in the Dock, Launchpad,
-and Spotlight. The local `orch dashboard` backend must remain running to
+and Spotlight. The local `siling dashboard` backend must remain running to
 provide sessions and TTY access; if it is unavailable, the app shows a reconnect
 screen instead of displaying stale cached session state.
 
-For shorter commands in the current shell:
+The `siling` launcher resolves symlinks back to this repository and uses its
+virtualenv automatically. If `~/.local/bin` is not on `PATH`, run `./siling`
+from the repository or add that directory to your shell's `PATH`.
 
-```bash
-ORCH_REPO="$PWD"
-orch() { "$ORCH_REPO/.venv/bin/python" "$ORCH_REPO/orchestrator.py" "$@"; }
-```
+The older `orchestrator.py` entrypoint, `ORCH_*` environment variables, state
+directories, and `orch-*` tmux names remain compatible with existing sessions.
 
 ## A practical daily workflow
 
@@ -224,19 +227,19 @@ orch() { "$ORCH_REPO/.venv/bin/python" "$ORCH_REPO/orchestrator.py" "$@"; }
 ## Start sessions from the CLI
 
 ```bash
-orch run                              # Cursor Agent
-orch run claude                       # Claude Code
-orch run codex                        # OpenAI Codex CLI
-orch run codex investigate /path/to/project
+siling run                              # Cursor Agent
+siling run claude                       # Claude Code
+siling run codex                        # OpenAI Codex CLI
+siling run codex investigate /path/to/project
 ```
 
 The browser and CLI workflows use the same local sessions and metadata.
 
-### Import sessions created before Orchestrator
+### Import sessions created before SiLing
 
 Choose **New session → Import existing** to scan native Codex, Claude Code, and
 Cursor Agent history. Search or filter the results, select up to 100 sessions,
-and import them into the Resume picker. Import creates only an Orchestrator
+and import them into the Resume picker. Import creates only an SiLing
 metadata index under `outputs/`; original transcripts stay in their native
 locations and are never copied, moved, edited, or deleted. Already indexed
 native session IDs are automatically hidden from the import list.
@@ -244,11 +247,11 @@ native session IDs are automatically hidden from the import list.
 ## Let one agent delegate to another
 
 An agent does not have to stop at reporting that more work is needed. From an
-Orchestrator session it can create a named child task with an exact agent,
+SiLing session it can create a named child task with an exact agent,
 model, effort, workspace, and priority:
 
 ```bash
-orch delegate --agent codex --model gpt-5.6-sol --effort high \
+siling delegate --agent codex --model gpt-5.6-sol --effort high \
   --label dependency-audit --priority p1 \
   --prompt "Audit the dependency update and report targeted test evidence."
 ```
@@ -257,7 +260,7 @@ The child appears in the Dashboard immediately. It inherits the parent
 workspace and Linked Items by default, while remaining an independent tmux
 session. Agents can also list sessions, read a bounded head or tail of their
 TTY history, inspect live status, send follow-ups, and change an idle
-Codex/Claude session's model or effort through `orch session` commands. See the
+Codex/Claude session's model or effort through `siling session` commands. See the
 [agent delegation guide](docs/agent-delegation.md) for the complete workflow,
 idempotent automation, and remote-node behavior.
 
@@ -304,15 +307,15 @@ Non-loopback binds require authentication. For LAN or VPN access, use a token
 and HTTPS:
 
 ```bash
-ORCH_DASHBOARD_TOKEN=mysecret orch dashboard --host 0.0.0.0 --https
+ORCH_DASHBOARD_TOKEN=mysecret siling dashboard --host 0.0.0.0 --https
 ```
 
 The URL helper detects the running Dashboard's protocol and bind address:
 
 ```bash
-orch url            # print and copy the best authenticated URL
-orch url -q         # print only the URL
-orch url --json     # inspect all reachable candidates
+siling url            # print and copy the best authenticated URL
+siling url -q         # print only the URL
+siling url --json     # inspect all reachable candidates
 ```
 
 ## One Dashboard for local and remote agents
@@ -323,7 +326,7 @@ grouped by location, remote TTY input/output is proxied through a small HTTP
 and WebSocket control plane, and the remote work continues if the browser or
 local Dashboard closes.
 
-Run the remote service with `orch dashboard --node-only`, connect it through
+Run the remote service with `siling dashboard --node-only`, connect it through
 an SSH tunnel, and list it in the ignored `dashboard.local.json`. This does
 not require copying projects or enabling workspace sync. See the
 [Remote Nodes guide](docs/remote-nodes.md) for a generic two-machine setup,
@@ -357,22 +360,22 @@ affected paths to become idle, while Shift-click syncs the currently safe items
 immediately. During a queued or running sync the same button becomes **Cancel**.
 The workspace-wide actions remain available as a fallback.
 
-After a session-scoped project sync is verified, Agent Orchestrator also
+After a session-scoped project sync is verified, SiLing also
 publishes a dormant resume handoff for Claude Code and Codex when
 `remote_code_root` is configured. The native transcript and session metadata
 are copied to the remote machine, where the task appears as resumable but is
 not started. This keeps the final decision to switch machines explicit and
 avoids launching a second agent automatically.
 
-The comparison baseline lives outside the project tree in Agent Orchestrator's
+The comparison baseline lives outside the project tree in SiLing's
 local state directory. Copy
 [`examples/dashboard.local.json`](examples/dashboard.local.json), select the
 workspaces that should be tracked, and enable `sync_status` only after the same
-Agent Orchestrator revision is available on both machines.
+SiLing revision is available on both machines.
 
 ## Local-first security
 
-Agent Orchestrator can send input to local terminal sessions and should be
+SiLing can send input to local terminal sessions and should be
 treated as a privileged developer tool.
 
 - The default bind is localhost-only.
@@ -394,4 +397,4 @@ best-effort because each agent CLI exposes different session metadata. The
 project targets trusted local developer machines rather than hosted multi-user
 deployments. The older YAML recipe runner remains available for advanced use.
 
-Agent Orchestrator is released under the [MIT License](LICENSE).
+SiLing is released under the [MIT License](LICENSE).

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Remove the orch-dashboard LaunchAgent and stop the background service.
-# After this, start the dashboard manually from iTerm via: orch dashboard
+# After this, start the dashboard manually from iTerm via: siling dashboard
 set -euo pipefail
 
 LABEL="com.user.orch-dashboard"
@@ -30,7 +30,7 @@ fi
 
 echo
 echo "Done. To start the dashboard manually, from iTerm:"
-echo "  orch dashboard --https            # or: orch dashboard"
+echo "  siling dashboard --https            # or: siling dashboard"
 echo
 echo "Your deployed mirror is still present. Move it to Trash manually if"
 echo "you no longer need it."

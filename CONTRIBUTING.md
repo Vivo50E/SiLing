@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve Agent Orchestrator.
+Thanks for helping improve SiLing.
 
 ## Development setup
 
