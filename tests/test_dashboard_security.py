@@ -502,6 +502,27 @@ class DashboardNewSessionContractTests(unittest.TestCase):
         )
 
 
+class DashboardPaneInputContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.source = (dashboard.STATIC_DIR / "index.html").read_text()
+
+    def test_modified_enter_explicitly_inserts_a_newline(self):
+        newline_handler = self.source.index(
+            'if (e.key === "Enter" && (e.shiftKey || e.altKey))'
+        )
+        send_handler = self.source.index(
+            'if (e.key === "Enter") { e.preventDefault(); sendCurrent();'
+        )
+
+        self.assertLess(newline_handler, send_handler)
+        self.assertIn(
+            'inputEl.setRangeText("\\n", start, end, "end");',
+            self.source,
+        )
+        self.assertIn("Shift/Option+Enter 换行", self.source)
+
+
 class DashboardExitedSessionContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

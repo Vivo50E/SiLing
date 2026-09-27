@@ -7120,7 +7120,7 @@
       </div>
       <div class="pane ${ttyMode && s.alive ? 'pane-tty' : 'empty'} ${terminalThemeClass}"></div>
       <div class="pane-input">
-        <textarea rows="1" placeholder="Enter 发送 · Shift+Enter 换行 · /up /down /enter /esc /clr = 发键"></textarea>
+        <textarea rows="1" placeholder="Enter 发送 · Shift/Option+Enter 换行 · /up /down /enter /esc /clr = 发键"></textarea>
         <button class="btn-send primary">Send</button>
         <button class="btn-progress" title="发送『现在进度如何？』">进度</button>
         <button class="btn-monitor" title="发送 5 分钟心跳监控指令">监控</button>
@@ -7263,6 +7263,12 @@
       inputEl.value = ""; autoGrow(inputEl);
       sendText(runId, visibleText, true);
     };
+    const insertInputNewline = () => {
+      const start = inputEl.selectionStart ?? inputEl.value.length;
+      const end = inputEl.selectionEnd ?? start;
+      inputEl.setRangeText("\n", start, end, "end");
+      autoGrow(inputEl);
+    };
     // Track IME composition so we don't treat "Enter confirms candidate"
     // as "Enter submits message". During composition, keydown fires but
     // the text hasn't been committed to the textarea yet; submitting here
@@ -7286,7 +7292,15 @@
       // belt-and-suspenders flag driven by compositionstart/end.
       if (composing || e.isComposing || e.keyCode === 229) return;
 
-      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendCurrent(); return; }
+      if (e.key === "Enter" && (e.shiftKey || e.altKey)) {
+        // Do not rely on the browser's native textarea action here. Edge PWA
+        // and some keyboard/IME paths suppress the default Shift+Enter edit
+        // even though the modifier reaches this handler.
+        e.preventDefault();
+        insertInputNewline();
+        return;
+      }
+      if (e.key === "Enter") { e.preventDefault(); sendCurrent(); return; }
       // NOTE: no arrow-key keydown interception. Browsers apply textarea
       // behavior (undo / history / caret navigation) to Up/Down at a
       // layer `preventDefault()` can't fully override, so we instead
