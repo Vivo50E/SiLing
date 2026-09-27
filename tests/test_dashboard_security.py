@@ -568,6 +568,17 @@ class DashboardExitedSessionContractTests(unittest.TestCase):
         self.assertIn("/stop`, { method: \"POST\" }", end_block)
         self.assertIn("closePane(runId);", end_block)
 
+    def test_live_agent_gets_a_terminate_control(self):
+        self.assertIn('class="btn-terminate"', self.source)
+        self.assertIn("stopSession(runId, btnTerminate)", self.source)
+        stop_start = self.source.index("async function stopSession(")
+        stop_end = self.source.index("async function forceKillSession(", stop_start)
+        stop_block = self.source[stop_start:stop_end]
+        self.assertIn("Resume metadata and transcripts will be kept", stop_block)
+        self.assertIn('/stop`, { method: "POST" }', stop_block)
+        self.assertIn("forceKillSession(runId)", stop_block)
+        self.assertIn("closePane(runId);", stop_block)
+
 
 class DashboardAgentExitDetectionTests(unittest.TestCase):
     def setUp(self):

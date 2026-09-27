@@ -877,6 +877,7 @@
     border-color: rgba(248,81,73,0.62);
     background: rgba(248,81,73,0.08);
   }
+  .pane-head .btn-terminate,
   .pane-head .btn-end-session {
     color: #ff7b72;
     border-color: rgba(248,81,73,0.62);
@@ -884,6 +885,7 @@
     font-size: 13px;
     line-height: 1;
   }
+  .pane-head .btn-terminate:hover,
   .pane-head .btn-end-session:hover {
     color: #ffa198;
     border-color: #ff7b72;
@@ -6066,6 +6068,11 @@
       recoverSession.hidden = !(s.alive && s.agent_exited === true);
       recoverSession.disabled = !!(s.remote && s.node_online === false);
     }
+    const terminateSession = card.querySelector(".btn-terminate");
+    if (terminateSession) {
+      terminateSession.hidden = !(s.alive && s.agent_exited !== true);
+      terminateSession.disabled = !!(s.remote && s.node_online === false);
+    }
     updatePanelStateSelect(ctrl, s.panel_state || "");
     applyPaneTerminalTheme(ctrl, s);
 
@@ -7115,6 +7122,7 @@
           <button class="btn-folders" title="Linked task files and folders">files</button>
           <button class="btn-recover-session" ${s.agent_exited === true ? "" : "hidden"} title="Resume this exited agent in a new session">▶</button>
           <button class="btn-end-session" ${s.agent_exited === true ? "" : "hidden"} title="End this exited session and keep its resume metadata">⏻</button>
+          <button class="btn-terminate" ${s.agent_exited === true ? "hidden" : ""} title="Terminate this session and keep its resume metadata">Terminate</button>
           <button class="btn-unpin" title="Close this pane">×</button>
         </div>
       </div>
@@ -7171,6 +7179,7 @@
     const btnFolders = card.querySelector(".btn-folders");
     const btnRecoverSession = card.querySelector(".btn-recover-session");
     const btnEndSession = card.querySelector(".btn-end-session");
+    const btnTerminate = card.querySelector(".btn-terminate");
     const btnUnpin = card.querySelector(".btn-unpin");
 
     const ctrl = {
@@ -7198,6 +7207,7 @@
     btnFolders.textContent = linkedCount ? `files ${linkedCount}` : "files";
     btnRecoverSession.disabled = !!(s.remote && s.node_online === false);
     btnEndSession.disabled = !!(s.remote && s.node_online === false);
+    btnTerminate.disabled = !!(s.remote && s.node_online === false);
 
     // Wire actions
     // "Magic" slash commands for sending raw keystrokes that the browser
@@ -7383,6 +7393,7 @@
       runId, btnRecoverSession, btnEndSession
     ));
     btnEndSession.addEventListener("click", () => endExitedSession(runId, btnEndSession));
+    btnTerminate.addEventListener("click", () => stopSession(runId, btnTerminate));
     btnUnpin.addEventListener("click", () => {
       if (paneZoomState && paneZoomState.card === card) {
         closePaneZoom();
@@ -8268,20 +8279,43 @@
     overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
   }
 
-  async function stopSession(runId) {
+  async function stopSession(runId, button) {
     const s = sessions.find(x => x.run_id === runId);
     if (!s || !s.alive) return;
-    if (!confirm(`Stop "${s.display_name || s.task}" and save resume info?`)) return;
+    const name = s.display_name || s.task || s.run_name || "session";
+    if (!confirm(`Terminate "${name}"?\n\nResume metadata and transcripts will be kept.`)) return;
+    const previousText = button ? button.textContent : "Terminate";
+    if (button) {
+      button.disabled = true;
+      button.textContent = "…";
+    }
     try {
       const res = await api(`/api/sessions/${encodeURIComponent(runId)}/stop`, { method: "POST" });
+      let ended = !!res.ok;
       if (!res.ok && res.needs_force) {
         const reason = res.reason ? `\n\nReason: ${res.reason}` : "";
         if (confirm(`Graceful stop did not finish.${reason}\n\nForce kill tmux session "${s.tmux_session}"?`)) {
-          await forceKillSession(runId);
+          const forced = await forceKillSession(runId);
+          ended = !!forced?.ok;
         }
       }
-      setTimeout(refreshList, 400);
-    } catch (e) { alert("stop failed: " + e.message); }
+      if (ended) {
+        const idx = slotOf(runId);
+        if (idx >= 0) clearSlot(idx);
+        closePane(runId);
+        saveSlots();
+        renderList();
+        renderGrid();
+        setTimeout(refreshList, s.remote ? 1200 : 300);
+      }
+    } catch (e) {
+      alert("terminate session failed: " + e.message);
+    } finally {
+      if (button && button.isConnected) {
+        button.disabled = false;
+        button.textContent = previousText;
+      }
+    }
   }
 
   async function forceKillSession(runId) {
