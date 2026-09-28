@@ -84,12 +84,11 @@ not need to run `link-file` first. Codex’s `label (/path)` output is also clic
 including indented hard-wrapped paths. Paths must exist on the session’s host and be
 inside the configured allowed roots (`ORCH_LINKED_FOLDER_ROOTS` for extra roots).
 
-Use **Copy history** in the pane header for cross-screen copying. It opens a stable
-snapshot of retained history: scroll, select text (or **Select all**), then press
-⌘C / Ctrl+C. **Back to terminal** returns to the same live session. Reopen the
-view to include newer output.
-
-In Terminal and Codex panes, drag to select text and use the browser's copy shortcut.
+In Terminal and Codex panes, drag to select text and keep holding the mouse while
+scrolling the wheel to extend the selection across screens, directly in the pane.
+Release the mouse, then press ⌘C (macOS) or Ctrl+Shift+C to copy the complete
+selection. Typing returns to live input. Option-drag retains xterm's screen-local
+selection. This uses tmux's `copy-pipe-no-clear -CP` support for clipboard transfer.
 Ctrl-drag passes mouse input to terminal applications; other agent panes retain
 their mouse behavior (Option-drag on macOS selects text). Newly started or
 resumed Codex sessions use inline rendering to preserve terminal scrollback.

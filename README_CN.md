@@ -143,11 +143,10 @@ Dashboard 会明确展示这些状态，而不是让它们消失在 terminal scr
 点击标签或被缩进拆成多行的路径。文件须存在于会话所在主机且位于
 允许目录内；额外目录通过 `ORCH_LINKED_FOLDER_ROOTS` 配置。
 
-跨屏复制时，点击 pane 顶部的 **复制历史 / Copy history**：在已保留历史的静态快照中
-滚动、拖选或全选，然后按 ⌘C / Ctrl+C 复制。点击 **返回终端** 回到原来的实时会话；
-重新打开可读取最新输出。
-
-Terminal 和 Codex pane 支持普通拖选文本后使用浏览器复制快捷键；Ctrl+拖选可向终端程序
+Terminal 和 Codex pane 可直接拖选文本，按住鼠标时滚动滚轮即可跨屏扩展选区。
+松开鼠标后按 ⌘C（macOS）或 Ctrl+Shift+C 复制完整选区；输入时回到实时末尾。
+Option+拖选保留 xterm 当前屏幕内的选择方式。复制依赖 tmux 的 `copy-pipe-no-clear -CP`
+支持。Ctrl+拖选可向终端程序
 传递鼠标操作。其他 Agent pane 保留原有鼠标行为，macOS 可用 Option+拖选选择文本。
 新建或恢复的 Codex session 使用 inline 模式保留终端滚动历史；已有 alternate-screen
 session 需要恢复后才使用新启动参数，未存入终端缓冲区的内容无法通过滚动补回。

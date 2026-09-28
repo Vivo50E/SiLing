@@ -162,12 +162,3 @@ html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-mo
 }
 .si-title { font-size: var(--ui-font-size); }
 .ui-dialog .modal-head, .modal > .modal-head, .modal > .modal-foot { background: transparent; }
-
-.copy-history-dialog { width: min(960px, calc(100vw - 24px)); }
-.copy-history-status { padding: 0 16px; font-size: 12px; }
-.copy-history-text {
-  display: block; box-sizing: border-box; width: calc(100% - 32px);
-  height: min(60dvh, 640px); margin: 12px 16px; resize: none;
-  overflow: auto; white-space: pre; font: 13px/1.5 monospace;
-  background: rgb(var(--surface-rgb)); color: var(--text); user-select: text;
-}

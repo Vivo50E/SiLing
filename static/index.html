@@ -2743,8 +2743,8 @@
     border-color: var(--warn);
   }
 </style>
-<link rel="stylesheet" href="/static/ui-foundation.css?v=3" />
-<script src="/static/ui-foundation.js?v=3"></script>
+<link rel="stylesheet" href="/static/ui-foundation.css?v=4" />
+<script src="/static/ui-foundation.js?v=4"></script>
 </head>
 <body>
 
@@ -7437,7 +7437,6 @@
             ${panelStateOptionsHtml(s.panel_state)}
           </select>
           <button class="btn-folders" title="Linked task files and folders" aria-label="Linked task files and folders">files</button>
-          <button class="btn-copy-history" data-i18n="copyHistory">Copy history</button>
           <button class="btn-zoom" title="Open a larger pane view" aria-label="Zoom pane">${ui.icon("zoom")}</button>
           <button class="btn-pane-more" data-i18n-label="more">${ui.icon("more")}</button>
         </div>
@@ -7474,50 +7473,6 @@
     `;
     grid.appendChild(card);
     ui.translate(card);
-    const copyHistory = document.createElement("dialog");
-    copyHistory.className = "ui-dialog copy-history-dialog";
-    copyHistory.id = `copy-history-${paneMenuSerial}`;
-    copyHistory.setAttribute("aria-label", ui.t("copyHistory"));
-    copyHistory.innerHTML = `
-      <div class="modal-head"><h2 data-i18n="copyHistory"></h2><button data-dialog-close aria-label="Close">×</button></div>
-      <p class="copy-history-status" role="status"></p>
-      <textarea class="copy-history-text" readonly spellcheck="false" aria-label="${escapeHtml(ui.t("copyHistory"))}"></textarea>
-      <div class="modal-foot"><button class="copy-history-select" data-i18n="selectAll"></button><button data-dialog-close data-i18n="backToTerminal"></button></div>
-    `;
-    card.appendChild(copyHistory);
-    ui.translate(copyHistory);
-    const historyText = copyHistory.querySelector("textarea");
-    const historyStatus = copyHistory.querySelector("[role=status]");
-    const historySelect = copyHistory.querySelector(".copy-history-select");
-    let historyRequest = null;
-    ui.wireDialog(copyHistory, card.querySelector(".btn-copy-history"), () => {
-      historyRequest?.abort();
-      const request = historyRequest = new AbortController();
-      historyText.value = "";
-      historySelect.disabled = true;
-      historyStatus.textContent = ui.t("historyLoading");
-      // A fixed snapshot lets native selection span scrollback without tmux
-      // redraws moving or erasing selected text. Keep the live iframe intact.
-      api(`/api/sessions/${encodeURIComponent(runId)}/pane`, {signal: request.signal})
-        .then(text => {
-          if (request.signal.aborted || !copyHistory.isConnected) return;
-          historyText.value = String(text);
-          historyStatus.textContent = ui.t(text ? "historyHelp" : "historyEmpty");
-          historySelect.disabled = !text;
-          historyText.scrollTop = historyText.scrollHeight;
-        }).catch(error => {
-          if (!request.signal.aborted) historyStatus.textContent = `${ui.t("historyError")}: ${error.message}`;
-        });
-    });
-    copyHistory.addEventListener("close", () => {
-      // The close event can arrive after a rapid reopen. Do not cancel the
-      // new request; beforeOpen already aborted the previous one.
-      if (!copyHistory.open) historyRequest?.abort();
-    });
-    historySelect.addEventListener("click", () => {
-      historyText.focus();
-      historyText.select();
-    });
     const paneMenu = card.querySelector(".pane-menu");
     const moveSelect = card.querySelector(".pane-move-select");
     ui.wireDialog(paneMenu, card.querySelector(".btn-pane-more"), () => {
@@ -8116,6 +8071,9 @@
         return;
       }
       if (!frameDocument || ttyShortcutDocuments.has(frameDocument)) return;
+      iframe.contentWindow.silingReadSelection = () => api(
+        `/api/sessions/${encodeURIComponent(runId)}/selection`, {method: "POST"},
+      );
       ttyShortcutDocuments.add(frameDocument);
       // Pointer events inside an iframe do not bubble to the dashboard grid.
       // Treat direct terminal inspection as reading the waiting notification.
@@ -8179,6 +8137,7 @@
           const theme = terminalThemeValue(s.terminal_theme);
           const ifr = document.createElement("iframe");
           ifr.dataset.nativeSelection = sessionPrefersNativeSelection(s) ? "true" : "false";
+          ifr.dataset.inlineSelection = ifr.dataset.nativeSelection;
           ifr.src = resp.url;
           if (theme === "light") ifr.classList.add("terminal-light-frame");
           if (theme === "soft-dark") ifr.classList.add("terminal-soft-dark-frame");

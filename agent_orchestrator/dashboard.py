@@ -523,6 +523,33 @@ def _tmux_send_keys(argv: list, *, retries: int = 2,
     return False, last_err
 
 
+def _tmux_copy_selection(session: str) -> str:
+    """Read the cross-screen selection without changing user paste buffers."""
+    def run(*args):
+        result = subprocess.run(["tmux", *args], capture_output=True,
+                                text=True, timeout=5)
+        if result.returncode:
+            raise RuntimeError((result.stderr or "tmux copy failed").strip())
+        return result.stdout
+    info = run("display-message", "-p", "-t", session,
+               "#{pane_id} #{selection_present}").strip().split()
+    if len(info) != 2 or info[1] != "1":
+        raise RuntimeError("No terminal text is selected")
+    with tempfile.TemporaryDirectory(prefix="siling-selection-") as directory:
+        target = Path(directory) / "text"
+        done = Path(directory) / "done"
+        # -C suppresses OSC clipboard writes; -P suppresses paste-buffer
+        # creation (which could otherwise evict the user's oldest buffer).
+        command = f"cat > {shlex.quote(str(target))}; touch {shlex.quote(str(done))}"
+        run("send-keys", "-t", info[0], "-X", "copy-pipe-no-clear", "-CP", command)
+        deadline = time.monotonic() + 3
+        while not done.exists():
+            if time.monotonic() >= deadline:
+                raise RuntimeError("Timed out reading terminal selection (tmux copy-pipe -CP required)")
+            time.sleep(0.01)
+        return target.read_text(errors="replace")
+
+
 def _tmux_target_pane(session: str) -> tuple[str, str]:
     """Resolve a session to an explicit live pane target.
 
@@ -7864,7 +7891,7 @@ async def _forward_tty_input(upstream, session: str, message: bytes | str,
     await upstream.send(message)
 
 
-def _codex_sessions_from_snapshot(outputs_dir: Path) -> set[str]:
+def _live_input_sessions_from_snapshot(outputs_dir: Path) -> set[str]:
     snapshot = _safe_read_json(outputs_dir / ".active_sessions_snapshot.json") or {}
     entries = snapshot.get("sessions")
     if not isinstance(entries, list):
@@ -7873,7 +7900,7 @@ def _codex_sessions_from_snapshot(outputs_dir: Path) -> set[str]:
         str(entry["tmux_session"])
         for entry in entries
         if isinstance(entry, dict) and entry.get("tmux_session")
-        and str(entry.get("agent") or "").strip().lower() == "codex"
+        and str(entry.get("agent") or "").strip().lower() in {"codex", "terminal"}
     }
 
 
@@ -8289,7 +8316,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         reserved_ports={port},
         session_themes=_terminal_themes_by_tmux_session(outputs_dir),
     )
-    codex_live_input_sessions = _codex_sessions_from_snapshot(outputs_dir)
+    live_input_sessions = _live_input_sessions_from_snapshot(outputs_dir)
     dashboard_config_path = Path(
         os.environ.get("ORCH_DASHBOARD_CONFIG", str(DEFAULT_DASHBOARD_CONFIG))
     ).expanduser()
@@ -9072,10 +9099,10 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         session = r.get("tmux_session", "")
         if not session or not tmux_alive(session):
             return {"ok": False, "reason": "tmux session not alive"}
-        if str(r.get("agent") or "").strip().lower() == "codex":
-            codex_live_input_sessions.add(session)
+        if str(r.get("agent") or "").strip().lower() in {"codex", "terminal"}:
+            live_input_sessions.add(session)
         else:
-            codex_live_input_sessions.discard(session)
+            live_input_sessions.discard(session)
         port = ttyd.ensure(session, theme=str(r.get("terminal_theme") or ""))
         if not port:
             return {"ok": False, "reason": "failed to launch ttyd"}
@@ -9174,7 +9201,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                                 continue
                             await _forward_tty_input(
                                 up, session, data,
-                                resume_live=session in codex_live_input_sessions,
+                                resume_live=session in live_input_sessions,
                             )
                     except (WebSocketDisconnect, WsClosed):
                         return
@@ -9559,6 +9586,19 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             "affected_run_ids": affected or [run_id],
             "entries_removed": len(affected) or 1,
         }
+
+    @app.post("/api/sessions/{run_id}/selection")
+    def copy_session_selection(run_id: str):
+        r = _lookup_run_light(outputs_dir, run_id)
+        if not r:
+            raise HTTPException(404, "run not found")
+        session = r.get("tmux_session", "")
+        if not session:
+            raise HTTPException(409, "session has no terminal")
+        try:
+            return {"text": _tmux_copy_selection(session)}
+        except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @app.get("/api/sessions/{run_id}/pane", response_class=PlainTextResponse)
     def get_pane(run_id: str):

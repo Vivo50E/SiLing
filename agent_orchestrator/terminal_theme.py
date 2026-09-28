@@ -129,21 +129,30 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     let pendingUrl = "";
     let startX = 0;
     let startY = 0;
-    // Shell and Codex panes favor native selection; other agents keep their
-    // mouse protocol. Ctrl-drag remains available to terminal applications.
+    // Shell and Codex use tmux selection to span its history buffer. Older
+    // dashboard frames keep native selection; Option-drag still selects in
+    // xterm, and Ctrl-drag remains available to terminal applications.
     const nativeSelection = (event) => {
       try {
         return window.frameElement?.dataset.nativeSelection === "true"
           && event.button === 0 && !event.ctrlKey;
       } catch (_) { return false; }
     };
+    let tmuxSelectionPending = false;
+    const inlineSelection = () => {
+      try { return window.frameElement?.dataset.inlineSelection === "true"; }
+      catch (_) { return false; }
+    };
     const originalForceSelection = selection.shouldForceSelection.bind(selection);
     selection.shouldForceSelection = (event) => (
-      nativeSelection(event) || originalForceSelection(event)
+      (nativeSelection(event) && (!inlineSelection() || mode === "native-link" || event.detail >= 2))
+        || originalForceSelection(event)
     );
     const originalTriggerMouseEvent = mouse.triggerMouseEvent.bind(mouse);
     mouse.triggerMouseEvent = (event) => (
-      mode ? false : originalTriggerMouseEvent(event)
+      mode === "tmux-selection"
+        ? (event.button === 0 && event.action === 0 ? false : originalTriggerMouseEvent(event))
+        : mode ? false : originalTriggerMouseEvent(event)
     );
     mouse.__orchInteractionPatch = true;
 
@@ -401,7 +410,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       clearHover();
       startX = event.clientX;
       startY = event.clientY;
-      if (event.altKey) {
+      if (event.altKey || (nativeSelection(event) && event.detail >= 2)) {
         // Older xterm.js releases still emit a mouse-release report after an
         // Option-drag selection. tmux redraws on that report and erases the
         // selection. Keep mouse reporting muted through the matching mouseup.
@@ -410,13 +419,21 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       }
       pendingUrl = urlForEvent(event);
       if (nativeSelection(event)) {
-        mode = pendingUrl ? "native-link" : "selection";
+        mode = pendingUrl ? "native-link" : inlineSelection() ? "tmux-selection" : "selection";
+        tmuxSelectionPending = false;
+        if (mode === "tmux-selection") terminal.clearSelection?.();
         return;
       }
       if (!pendingUrl) return;
       mode = "link";
     }, true);
 
+    document.addEventListener("mousemove", (event) => {
+      if (mode === "tmux-selection" && (event.buttons & 1)
+          && Math.hypot(event.clientX - startX, event.clientY - startY) > 3) {
+        tmuxSelectionPending = true;
+      }
+    }, true);
     screen.addEventListener("mousemove", (event) => {
       if (event.buttons) return;
       const link = linkForEvent(event);
@@ -430,6 +447,12 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     terminal.onWriteParsed?.(clearHover);
 
     document.addEventListener("mouseup", (event) => {
+      if (mode === "tmux-selection") {
+        // Suppress the default drag-end copy-and-cancel: retain the highlighted
+        // tmux selection so wheel scrolling and the copy shortcut can use it.
+        setTimeout(clearMode, 0);
+        return;
+      }
       if (mode === "selection") {
         // Let xterm finalize the selection first; keep the mouse report muted
         // until every listener for this mouseup event has run.
@@ -444,6 +467,12 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       if (mode === "native-link" && moved) {
         setTimeout(clearMode, 0);
         return;
+      }
+      if (mode === "native-link") {
+        // We stop the click below to bypass ttyd's link dialog. Finalize
+        // xterm's selection first, otherwise its document drag listener can
+        // swallow the next real drag's initial mouse movement.
+        (selection._handleMouseUp || selection._onMouseUp)?.call(selection, event);
       }
       // ttyd's built-in xterm handler displays a confirmation dialog for
       // every OSC 8 link. Handle the validated link here, before that
@@ -476,6 +505,33 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
         }
       }
       clearMode();
+    }, true);
+
+    document.addEventListener("keydown", (event) => {
+      if (!inlineSelection()) return;
+      const copy = event.key.toLowerCase() === "c"
+        && ((event.metaKey && !event.ctrlKey) || (event.ctrlKey && event.shiftKey));
+      if (copy && tmuxSelectionPending && !terminal.hasSelection?.()) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const read = window.silingReadSelection;
+        if (!read) return;
+        const text = Promise.resolve().then(read).then(result => {
+          if (!result.text) throw new Error("No terminal text is selected");
+          return result.text;
+        });
+        // Construct ClipboardItem during the trusted key event. Safari keeps
+        // its user gesture permission while the selection request completes.
+        const copying = window.ClipboardItem && navigator.clipboard?.write
+          ? navigator.clipboard.write([new ClipboardItem({
+              "text/plain": text.then(value => new Blob([value], {type: "text/plain"})),
+            })])
+          : text.then(value => navigator.clipboard.writeText(value));
+        copying.catch(error => window.alert("Copy failed: " + error.message));
+      } else if (event.key === "Escape"
+          || (!event.metaKey && !event.altKey && event.key.length === 1)) {
+        tmuxSelectionPending = false;
+      }
     }, true);
 
     window.addEventListener("blur", () => { clearMode(); clearHover(); });

@@ -1,6 +1,7 @@
 """Behavior checks for terminal selection and Codex launch commands."""
 
 import json
+import os
 import asyncio
 from pathlib import Path
 import re
@@ -46,6 +47,57 @@ class PaneInteractionTests(unittest.TestCase):
             finally:
                 subprocess.run(base + ["kill-server"], capture_output=True, timeout=5)
 
+    @unittest.skipUnless(shutil.which("tmux"), "tmux required")
+    def test_copy_selection_reads_offscreen_lines_without_changing_buffers(self):
+        with tempfile.TemporaryDirectory(prefix="siling-copy-", dir="/tmp") as temp:
+            socket = str(Path(temp) / "tmux.sock")
+            def tmux(*args):
+                return subprocess.check_output(["tmux", "-S", socket, *args],
+                                               text=True, timeout=5)
+            try:
+                tmux("-f", "/dev/null", "new-session", "-d", "-s", "check",
+                     "-x", "80", "-y", "20",
+                     "i=0; while [ $i -lt 80 ]; do echo copy-line-$i; i=$((i+1)); done; exec cat")
+                for _ in range(100):
+                    if "copy-line-79" in tmux("capture-pane", "-p", "-t", "check", "-S", "-"):
+                        break
+                    time.sleep(0.01)
+                tmux("set-buffer", "-b", "personal", "keep me")
+                tmux("copy-mode", "-t", "check")
+                for command in ("history-top", "start-of-line", "begin-selection"):
+                    tmux("send-keys", "-t", "check", "-X", command)
+                tmux("send-keys", "-t", "check", "-X", "-N", "39", "cursor-down")
+                tmux("send-keys", "-t", "check", "-X", "end-of-line")
+                with patch.dict(os.environ, {"TMUX": f"{socket},0,0"}):
+                    copied = dashboard._tmux_copy_selection("check")
+                self.assertEqual(copied.splitlines(), [f"copy-line-{i}" for i in range(40)])
+                self.assertEqual(tmux("show-buffer", "-b", "personal"), "keep me")
+                self.assertEqual(tmux("list-buffers", "-F", "#{buffer_name}").splitlines(), ["personal"])
+                self.assertEqual(tmux("display-message", "-p", "-t", "check", "#{selection_present}").strip(), "1")
+                tmux("send-keys", "-t", "check", "-X", "cancel")
+                with patch.dict(os.environ, {"TMUX": f"{socket},0,0"}):
+                    with self.assertRaisesRegex(RuntimeError, "No terminal text"):
+                        dashboard._tmux_copy_selection("check")
+            finally:
+                subprocess.run(["tmux", "-S", socket, "kill-server"],
+                               capture_output=True, timeout=5)
+
+    def test_selection_api_resolves_the_requested_session(self):
+        with patch.object(dashboard.TtydManager, "_sweep_orphans", return_value=0):
+            app = dashboard.create_app(Path("/nonexistent/siling-copy-test"),
+                                       ttyd_enabled=False, remote_nodes_enabled=False)
+        with TestClient(app) as client, patch.object(dashboard, "_lookup_run_light") as lookup, \
+                patch.object(dashboard, "_tmux_copy_selection", return_value="selected\ntext") as copy:
+            lookup.return_value = {"tmux_session": "private-test"}
+            response = client.post("/api/sessions/example/selection")
+            self.assertEqual(response.json(), {"text": "selected\ntext"})
+            copy.assert_called_once_with("private-test")
+            lookup.return_value = None
+            self.assertEqual(client.post("/api/sessions/missing/selection").status_code, 404)
+            lookup.return_value = {"tmux_session": "private-test"}
+            copy.side_effect = RuntimeError("No terminal text is selected")
+            self.assertEqual(client.post("/api/sessions/example/selection").status_code, 409)
+
     @unittest.skipUnless(shutil.which("node"), "Node.js required")
     def test_wrapped_links_highlight_and_open_the_complete_target(self):
         script = terminal_theme._TTYD_INTERACTION_SCRIPT.split(">", 1)[1].rsplit("</script>", 1)[0]
@@ -55,7 +107,7 @@ class PaneInteractionTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_tty_route_enables_live_input_only_for_codex(self):
+    def test_tty_route_enables_live_input_for_codex_and_shell(self):
         with patch.object(dashboard.TtydManager, "_sweep_orphans", return_value=0):
             app = dashboard.create_app(Path("/nonexistent/siling-input-test"),
                                        ttyd_enabled=True, remote_nodes_enabled=False)
@@ -69,7 +121,7 @@ class PaneInteractionTests(unittest.TestCase):
                 patch.object(dashboard, "_lookup_run_light") as lookup, \
                 patch.object(dashboard.websockets, "connect", return_value=upstream_context), \
                 patch.object(dashboard, "_forward_tty_input", forward):
-            for agent, expected in (("codex", True), ("claude", False)):
+            for agent, expected in (("codex", True), ("terminal", True), ("claude", False)):
                 lookup.return_value = {"agent": agent, "tmux_session": "test-session"}
                 self.assertTrue(client.get("/api/sessions/test/tty").json()["ok"])
                 with client.websocket_connect("/tty/test-session/ws") as socket:
@@ -125,9 +177,10 @@ class PaneInteractionTests(unittest.TestCase):
     def test_reconnecting_codex_sessions_restore_live_input_policy(self):
         entries = [None, {}, {"agent": "codex"},
                    {"agent": "codex", "tmux_session": "codex-test"},
-                   {"agent": "claude", "tmux_session": "claude-test"}]
+                   {"agent": "claude", "tmux_session": "claude-test"},
+                   {"agent": "terminal", "tmux_session": "shell-test"}]
         with patch.object(dashboard, "_safe_read_json", return_value={"sessions": entries}):
-            self.assertEqual(dashboard._codex_sessions_from_snapshot(Path("/unused")), {"codex-test"})
+            self.assertEqual(dashboard._live_input_sessions_from_snapshot(Path("/unused")), {"codex-test", "shell-test"})
 
     def test_narrow_header_keeps_priority_in_accessible_action_row(self):
         source = (Path(__file__).resolve().parents[1] / "static" / "index.html").read_text()
