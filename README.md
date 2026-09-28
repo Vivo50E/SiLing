@@ -80,7 +80,8 @@ running when the tab is closed.
 
 Click an absolute local path or a `file://` link in a terminal to open it in SiLing’s
 Files preview. The clicked item is linked to that session automatically; agents do
-not need to run `link-file` first. Paths must exist on the session’s host and be
+not need to run `link-file` first. Codex’s `label (/path)` output is also clickable,
+including indented hard-wrapped paths. Paths must exist on the session’s host and be
 inside the configured allowed roots (`ORCH_LINKED_FOLDER_ROOTS` for extra roots).
 
 Use **Copy history** in the pane header for cross-screen copying. It opens a stable

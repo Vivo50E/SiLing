@@ -150,3 +150,13 @@ const fileUri='file:///tmp/a%20b.png';
 rows=[row(fileUri.slice(0,20)),row(fileUri.slice(20),true)];
 click(18,0);
 assert.equal(messages.at(-1).message.path,'/tmp/a b.png','Click the end of an encoded file URI');
+
+// Codex prints local Markdown links as label (path), hard-wrapped with indent.
+const hardPath = '/Users/demo/Documents/OSS/project/outputs/run/artifacts/copy-history.png';
+rows = [row('效果图 (/Users/'), row('  demo/Documents/'), row('  OSS/project/'),
+  row('  outputs/run/'), row('  artifacts/copy-'), row('  history.png)。')];
+term.rows = rows.length;
+for (const [x,y] of [[1,0],[9,0],[4,2],[4,5]]) {
+  click(x,y);
+  assert.equal(messages.at(-1).message.path,hardPath,'Label and every hard-wrapped segment open the entire path');
+}

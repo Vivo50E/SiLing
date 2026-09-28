@@ -139,7 +139,8 @@ SiLing 会保留多层恢复信息：
 Dashboard 会明确展示这些状态，而不是让它们消失在 terminal scrollback 里。
 
 点击终端里的本地绝对路径或 `file://` 链接，即可在 SiLing Files 中预览，并自动关联
-到该终端所属会话，无需 agent 先执行 `link-file`。文件须存在于会话所在主机且位于
+到该终端所属会话，无需 agent 先执行 `link-file`。Codex 显示的“标签（路径）”也支持
+点击标签或被缩进拆成多行的路径。文件须存在于会话所在主机且位于
 允许目录内；额外目录通过 `ORCH_LINKED_FOLDER_ROOTS` 配置。
 
 跨屏复制时，点击 pane 顶部的 **复制历史 / Copy history**：在已保留历史的静态快照中

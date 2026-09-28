@@ -227,12 +227,14 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     const linkForEvent = (event) => {
       const coords = coordsForEvent(event);
       if (!coords) return null;
-      const [col, row] = coords;
+      let [col, row] = coords;
       const buffer = terminal.buffer.active;
       const line = row >= 0 && row < buffer.length
         ? buffer.getLine(row)
         : null;
       if (!line) return null;
+      // A click on the second column of a wide glyph belongs to that glyph.
+      if (col > 0 && line.getCell(col)?.getWidth() === 0) col -= 1;
 
       // Claude and Codex render Markdown links as OSC 8 hyperlinks: the
       // visible label may be `owner/repo#123` while the URL is stored in the
@@ -270,6 +272,53 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
           return { url: cleanOscUrl, ranges: rangesForCells(cells) };
         }
       } catch (_) {}
+
+      // Codex renders local Markdown links as "label (/absolute/path)".
+      // Its own line wrapping uses indented hard line breaks, not xterm's
+      // isWrapped flag, so neither OSC metadata nor soft-wrap parsing works.
+      // Reconstruct only a bounded, explicitly parenthesized local target.
+      let paragraph = "";
+      const paragraphCells = [];
+      let paragraphOffset = -1;
+      for (let y = Math.max(0, row - 24); y < Math.min(buffer.length, row + 25); y += 1) {
+        const candidate = buffer.getLine(y);
+        let lineText = "";
+        const lineCells = [];
+        for (let x = 0; x < terminal.cols; x += 1) {
+          const cell = candidate?.getCell(x);
+          if (!cell?.getWidth()) continue;
+          if (y === row && x === col) paragraphOffset = paragraph.length + lineText.length;
+          const chars = cell.getChars() || " ";
+          lineText += chars;
+          for (let i = 0; i < chars.length; i += 1) {
+            lineCells.push({row: y, col: x, width: cell.getWidth()});
+          }
+        }
+        const trimmed = lineText.trimEnd();
+        paragraph += trimmed + "\n";
+        paragraphCells.push(...lineCells.slice(0, trimmed.length), null);
+      }
+      for (const match of paragraph.matchAll(/\((?:\/|file:\/\/)/g)) {
+        const start = match.index;
+        let end = start + 1;
+        let depth = 1;
+        for (; end < paragraph.length; end += 1) {
+          if (paragraph[end] === "(") depth += 1;
+          if (paragraph[end] === ")" && --depth === 0) break;
+        }
+        if (depth) continue;
+        const rawTarget = paragraph.slice(start + 1, end).replace(/\n[ \t]*/g, "");
+        if (/\s/.test(rawTarget)) continue;
+        const target = cleanLinkTarget(rawTarget);
+        if (!cleanLocalPath(target)) continue;
+        const label = paragraph.slice(0, start).match(/(\[[^\]\n]+\]|[^\s()[\]，。；：！？、:]+)[ \t]*$/u);
+        const begin = label ? start - label[0].length : start;
+        if (paragraphOffset >= begin && paragraphOffset <= end) {
+          return {url: target, ranges: rangesForCells(
+            paragraphCells.slice(begin, end + 1).filter(Boolean),
+          )};
+        }
+      }
 
       let first = row;
       while (first > 0 && buffer.getLine(first)?.isWrapped) first -= 1;
