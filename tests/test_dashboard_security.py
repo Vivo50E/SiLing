@@ -852,6 +852,43 @@ class DashboardPanelStateContractTests(unittest.TestCase):
         self.assertIn('.pane-state-select[data-state="lead"]', self.source)
 
 
+class DashboardInternalLinkSettingsContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.source = (dashboard.STATIC_DIR / "index.html").read_text()
+
+    def test_internal_link_setting_is_explicit_and_persistent(self):
+        self.assertIn('id="btn-settings"', self.source)
+        self.assertIn('id="settings-open-links-internally"', self.source)
+        self.assertIn(
+            'const OPEN_LINKS_INTERNALLY_KEY = "siling_open_links_internally";',
+            self.source,
+        )
+        self.assertIn(
+            'localStorage.getItem(OPEN_LINKS_INTERNALLY_KEY) === "1"',
+            self.source,
+        )
+        self.assertIn(
+            "localStorage.setItem(\n      OPEN_LINKS_INTERNALLY_KEY,",
+            self.source,
+        )
+
+    def test_internal_links_open_as_projects_tabs(self):
+        self.assertIn("function openProjectsBrowserUrl(rawUrl)", self.source)
+        self.assertIn("createProjectsBrowserTab(url);", self.source)
+        self.assertIn(
+            'event.data?.type !== "siling:open-web-url"', self.source,
+        )
+        self.assertIn("event.origin !== window.location.origin", self.source)
+        self.assertIn("frame.contentWindow === event.source", self.source)
+        self.assertIn(
+            'event.target.closest("a[data-open-web-link]")', self.source,
+        )
+
+    def test_linked_item_open_button_respects_the_preference(self):
+        self.assertIn("openPreferredWebUrl(f.path);", self.source)
+
+
 class DashboardSidebarLocationGroupingContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -1137,6 +1174,9 @@ class TerminalThemeTests(unittest.TestCase):
         self.assertIn(b"cleanHttpUrl(raw)", patched)
         self.assertIn(b"balance < 0 && url.endsWith(closing)", patched)
         self.assertIn(b'screen.addEventListener("mousemove"', patched)
+        self.assertIn(b"siling_open_links_internally", patched)
+        self.assertIn(b"window.parent.postMessage(", patched)
+        self.assertIn(b'type: "siling:open-web-url"', patched)
         self.assertIn(b"window.open(pendingUrl", patched)
         self.assertEqual(
             terminal_theme.patch_ttyd_index_interactions(patched),

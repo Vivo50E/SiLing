@@ -147,6 +147,8 @@ Dashboard 会明确展示这些状态，而不是让它们消失在 terminal scr
 - 绑定整个项目或 task 文件夹，直接在 Dashboard 中浏览目录树。
 - 当 task 跨越多个位置时，可以单独绑定文件或 URL。
 - 预览 Markdown、源码、图片、CSV 数据和报告。
+- 可在 **Settings → Open web links inside SiLing** 中选择将 terminal、Markdown
+  和 Linked Items 里的 HTTP(S) 链接打开为内嵌 Projects 标签页。
 - 让实现笔记、验证证据和发布产出始终靠近产生它们的 agent。
 - 几天后恢复工作时，可以快速找回完整上下文。
 

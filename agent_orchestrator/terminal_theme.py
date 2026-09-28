@@ -277,7 +277,19 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       event.preventDefault();
       event.stopImmediatePropagation();
       if (!moved) {
-        window.open(pendingUrl, "_blank", "noopener,noreferrer");
+        let openInternally = false;
+        try {
+          openInternally = window.parent !== window
+            && window.parent.localStorage.getItem("siling_open_links_internally") === "1";
+        } catch (_) {}
+        if (openInternally) {
+          window.parent.postMessage(
+            { type: "siling:open-web-url", url: pendingUrl },
+            window.location.origin,
+          );
+        } else {
+          window.open(pendingUrl, "_blank", "noopener,noreferrer");
+        }
       }
       clearMode();
     }, true);

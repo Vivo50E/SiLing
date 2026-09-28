@@ -165,6 +165,8 @@ Linked Items attaches that context directly to the session.
   Dashboard.
 - Link individual files or URLs when the task spans several locations.
 - Preview Markdown, source files, images, CSV data, and reports.
+- Optionally open terminal, Markdown, and linked HTTP(S) URLs in an embedded
+  Projects tab via **Settings → Open web links inside SiLing**.
 - Keep implementation notes, validation evidence, and release artifacts close
   to the agent that produced them.
 - Recover context quickly when resuming work days later.

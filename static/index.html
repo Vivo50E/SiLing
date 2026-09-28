@@ -1164,6 +1164,18 @@
   }
   .modal-close:hover { color: var(--text); }
   .modal-body { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  .settings-row {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto;
+    gap: 14px; align-items: center;
+    padding: 12px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg);
+  }
+  .settings-row-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .settings-row-help {
+    display: block; margin-top: 4px;
+    color: var(--text-dim); font-size: 11px; line-height: 1.45;
+  }
+  .settings-row input[type="checkbox"] { width: 18px; height: 18px; }
   .reconnect-modal { max-width: 620px; background: var(--bg-soft); }
   .reconnect-steps {
     display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2855,6 +2867,31 @@
     </div>
   </div>
 
+  <!-- Dashboard settings modal --------------------------------------- -->
+  <div class="modal-scrim" id="settings-modal" tabindex="-1" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <div class="modal-title">Settings</div>
+        <button class="modal-close" id="settings-close" title="Close">×</button>
+      </div>
+      <div class="modal-body">
+        <label class="settings-row" for="settings-open-links-internally">
+          <span>
+            <span class="settings-row-title">Open web links inside SiLing</span>
+            <span class="settings-row-help">
+              Open terminal, Markdown, and Linked Items HTTP(S) links as Projects tabs.
+              Sites that block embedding can still be opened with Open in browser.
+            </span>
+          </span>
+          <input id="settings-open-links-internally" type="checkbox" />
+        </label>
+      </div>
+      <div class="modal-foot">
+        <button class="btn-primary" id="settings-close-2">Done</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-scrim" id="reconnect-modal" hidden>
     <div class="modal reconnect-modal">
       <div class="modal-head">
@@ -3126,6 +3163,7 @@
         <button id="btn-open-notes" title="Open daily report (⌘D)">daily report</button>
         <button id="btn-open-projects-browser" title="Open local Projects browser">projects</button>
         <button id="btn-open-git-status" title="Open git status (⌘G)">git status</button>
+        <button id="btn-settings" title="Dashboard settings">settings</button>
         <button id="btn-self-update" title="Review, test, and apply a committed self-improvement branch">apply update</button>
       </div>
       <div class="layout-picker" id="layout-picker">
@@ -3173,8 +3211,10 @@
   let NEW_SESSION_WORKING_DIR = DEFAULT_DASHBOARD_CONFIG.new_session_working_dir;
   let REMOTE_NODES = [];
   const PROJECTS_BROWSER_TABS_KEY = "orch_projects_browser_tabs_v1";
+  const OPEN_LINKS_INTERNALLY_KEY = "siling_open_links_internally";
   const GLOBAL_TERMINAL_THEME_KEY = "orch_global_terminal_theme";
   const DEFAULT_TERMINAL_THEME = "soft-dark";
+  let openLinksInternally = localStorage.getItem(OPEN_LINKS_INTERNALLY_KEY) === "1";
   const PANEL_STATE_OPTIONS = [
     ["", "Flag"],
     ["lead", "Lead"],
@@ -3272,6 +3312,44 @@
     ["done", "Done"],
     ["unflagged", "Unflagged"],
   ];
+
+  // ---------- Dashboard settings ----------
+  const settingsModal = $("settings-modal");
+  const internalLinksSetting = $("settings-open-links-internally");
+
+  function syncSettingsControls() {
+    internalLinksSetting.checked = openLinksInternally;
+  }
+
+  function openSettingsModal() {
+    syncSettingsControls();
+    settingsModal.hidden = false;
+    requestAnimationFrame(() => settingsModal.focus({ preventScroll: true }));
+  }
+
+  function closeSettingsModal() {
+    settingsModal.hidden = true;
+  }
+
+  $("btn-settings").addEventListener("click", openSettingsModal);
+  $("settings-close").addEventListener("click", closeSettingsModal);
+  $("settings-close-2").addEventListener("click", closeSettingsModal);
+  internalLinksSetting.addEventListener("change", () => {
+    openLinksInternally = internalLinksSetting.checked;
+    localStorage.setItem(
+      OPEN_LINKS_INTERNALLY_KEY,
+      openLinksInternally ? "1" : "0",
+    );
+  });
+  settingsModal.addEventListener("click", (event) => {
+    if (event.target === settingsModal) closeSettingsModal();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (!settingsModal.hidden && event.key === "Escape") {
+      event.preventDefault();
+      closeSettingsModal();
+    }
+  });
 
   // ---------- Auth token ----------
   const urlParams = new URLSearchParams(location.search);
@@ -8930,6 +9008,53 @@
     requestAnimationFrame(() => projectsBrowserModal.focus({ preventScroll: true }));
     ensureProjectsBrowserTab();
   }
+
+  function normalizedHttpUrl(rawUrl) {
+    try {
+      const url = new URL(String(rawUrl || "").trim(), window.location.href);
+      return url.protocol === "http:" || url.protocol === "https:" ? url.href : "";
+    } catch (_error) {
+      return "";
+    }
+  }
+
+  function openProjectsBrowserUrl(rawUrl) {
+    const url = normalizedHttpUrl(rawUrl);
+    if (!url) return false;
+    projectsBrowserModal.hidden = false;
+    restoreProjectsBrowserTabs();
+    createProjectsBrowserTab(url);
+    requestAnimationFrame(() => projectsBrowserModal.focus({ preventScroll: true }));
+    return true;
+  }
+
+  function openPreferredWebUrl(rawUrl) {
+    const url = normalizedHttpUrl(rawUrl);
+    if (!url) return false;
+    if (openLinksInternally) return openProjectsBrowserUrl(url);
+    window.open(url, "_blank", "noopener,noreferrer");
+    return true;
+  }
+
+  window.addEventListener("message", (event) => {
+    if (event.origin !== window.location.origin) return;
+    if (event.data?.type !== "siling:open-web-url") return;
+    const fromTtyPane = Array.from(document.querySelectorAll(".pane iframe"))
+      .some(frame => frame.contentWindow === event.source);
+    if (!fromTtyPane || !openLinksInternally) return;
+    openProjectsBrowserUrl(event.data.url);
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!openLinksInternally || !(event.target instanceof Element)) return;
+    const anchor = event.target.closest("a[data-open-web-link]");
+    if (!anchor) return;
+    const url = normalizedHttpUrl(anchor.getAttribute("href"));
+    if (!url) return;
+    event.preventDefault();
+    openProjectsBrowserUrl(url);
+  });
+
   const closeProjectsBrowserModal = () => { projectsBrowserModal.hidden = true; };
   $("btn-open-projects-browser").addEventListener("click", openProjectsBrowserModal);
   $("projects-browser-add-tab").addEventListener("click", () => {
@@ -10750,7 +10875,7 @@
     $("folder-modal-preview").innerHTML = `
       <div class="markdown-body">
         <h2>${escapeHtml(title)}</h2>
-        <p><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a></p>
+        <p><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" data-open-web-link>${escapeHtml(url)}</a></p>
         <table>
           <tr><th>Type</th><td>URL</td></tr>
           <tr><th>Scheme</th><td>${escapeHtml((url.split(":")[0] || "").toUpperCase())}</td></tr>
@@ -11032,6 +11157,7 @@
       }
       anchor.target = "_blank";
       anchor.rel = "noopener noreferrer";
+      anchor.dataset.openWebLink = "";
     });
   }
 
@@ -11414,7 +11540,7 @@
     const entry = currentEntry();
     try {
       if (linkedItemType(f) === "url") {
-        window.open(f.path, "_blank", "noopener,noreferrer");
+        openPreferredWebUrl(f.path);
       } else if (entry && entry.type === "file") {
         await api(`/api/sessions/${encodeURIComponent(folderModalState.runId)}/folders/file/open`, {
           method: "POST",
