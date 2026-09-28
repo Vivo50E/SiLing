@@ -151,6 +151,25 @@ rows=[row(fileUri.slice(0,20)),row(fileUri.slice(20),true)];
 click(18,0);
 assert.equal(messages.at(-1).message.path,'/tmp/a b.png','Click the end of an encoded file URI');
 
+// Claude prints bare SSH paths across indented hard lines, without OSC or parentheses.
+const barePath = '/localhome/demo/work/reports/test_report.md';
+const bareChunks = barePath.match(/.{1,18}/g);
+rows = bareChunks.map((part,i) => row('  ' + part + (i === bareChunks.length - 1 ? '？' : '')));
+term.rows = rows.length;
+for (let y=0;y<rows.length;y++) {
+  click(3,y);
+  assert.equal(messages.at(-1).message.path,barePath,'Every bare hard-wrapped path segment opens the full remote path');
+}
+rows = [row('  /localhome/demo'),row('  /report.md')];
+click(3,1);
+assert.equal(messages.at(-1).message.path,'/localhome/demo/report.md','A wrapped directory separator belongs to the same path');
+rows = [row('  /tmp/report.md'),row('  /tmp/next.md')];
+click(3,0);
+assert.equal(messages.at(-1).message.path,'/tmp/report.md','Separate absolute paths must not be joined');
+rows = [row('  /tmp/a'),row('  explanation')];
+click(3,0);
+assert.equal(messages.at(-1).message.path,'/tmp/a','Short rows must not absorb following text');
+
 // Codex prints local Markdown links as label (path), hard-wrapped with indent.
 const hardPath = '/Users/demo/Documents/OSS/project/outputs/run/artifacts/copy-history.png';
 rows = [row('效果图 (/Users/'), row('  demo/Documents/'), row('  OSS/project/'),

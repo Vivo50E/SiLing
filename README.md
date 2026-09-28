@@ -255,9 +255,9 @@ real workspace and gives each task a stable place from which to track its work.
 For a local Terminal pane running `ssh`, open its **More** menu and set
 **SSH file host** to an existing SSH alias (for example `dev-server`) or
 `user@hostname`. This setting belongs to that session in the current browser;
-clear it after returning to a local shell. Absolute file links printed in the
-terminal are fetched through SSH and opened in Files without restarting the
-terminal or its agent. HTTP links keep their normal behavior.
+clear it after returning to a local shell. Absolute file links, including bare
+paths split across indented terminal rows, are fetched through SSH and opened
+in Files without restarting the terminal or its agent. HTTP links keep their normal behavior.
 
 The Dashboard host must already have noninteractive SSH access and a verified
 host key; use `~/.ssh/config` for custom ports, jump hosts and identity files.

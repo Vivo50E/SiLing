@@ -310,25 +310,30 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
         paragraphCells.push(...lineCells.slice(0, trimmed.length), null);
       }
 
-      // CLI-rendered bare URLs (notably authorization prompts) may use hard
+      // CLI-rendered bare URLs and absolute SSH file paths may use hard
       // line breaks with indentation and a small right gutter. Recover those
-      // only across near-full rows with matching indentation and URL-only
+      // only across near-full rows with matching indentation and whitespace-free
       // continuations. Never decode/re-encode query data or join across prose,
       // blank lines, another URI, or a short final row. OSC metadata above
       // remains authoritative. The paragraph window bounds work per event.
       for (let i = 0; i < physicalLines.length; i += 1) {
         const head = physicalLines[i];
-        const match = head.text.match(/^([ \t]*)(https?:\/\/[^\s<>"'`]+)$/i);
+        const match = head.text.match(/^([ \t]*)(https?:\/\/[^\s<>"'`]+|\/(?!\/)[^\s<>"'`]+)$/i);
         if (!match) continue;
         const indent = match[1];
+        const local = match[2].startsWith("/");
         let target = match[2];
         let mapped = head.cells.slice(indent.length);
         let previous = head;
         let joined = false;
         for (let j = i + 1; j < physicalLines.length; j += 1) {
           const next = physicalLines[j];
-          const part = next.text.match(/^([ \t]*)([A-Za-z0-9._~:/?#\[\]@!$&()*+,;=%-]+)$/);
+          const part = next.text.match(local
+            ? /^([ \t]*)([^\s<>"'`]+)$/
+            : /^([ \t]*)([A-Za-z0-9._~:/?#\[\]@!$&()*+,;=%-]+)$/);
           if (!part || /^[a-z][a-z0-9+.-]*:/i.test(part[2])) break;
+          if (local && ((part[2].startsWith("/") && /\.[A-Za-z0-9]{1,8}$/.test(target))
+              || /[，。；：！？、]$/u.test(target))) break;
           const end = previous.cells[previous.cells.length - 1];
           if (!next.wrapped && (part[1] !== indent || !end
               || end.col + end.width < terminal.cols - 8)) break;

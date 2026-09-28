@@ -121,6 +121,23 @@ try {
   await screenshot('hard-wrapped-web-link');
   await evaluate(`window.frameElement.dataset.inlineSelection='true';window.frameElement.dataset.nativeSelection='true';`);
   console.log('PASS: hard-wrapped web URL click targets and hover ranges under Claude mouse policy');
+  const barePath='/localhome/demo/work/'+('reports/'.repeat(18))+'test_report.md';
+  const pathChunks=barePath.match(new RegExp('.{1,'+(columns-4)+'}','g'));
+  const pathRows=pathChunks.map((part,i)=>'  '+part+(i===pathChunks.length-1?'？':''));
+  tmux('send-keys','-t','check',"printf '%s\\n' '' "+pathRows.map(s=>"'"+s+"'").join(' '),'Enter');
+  await pause(500);
+  await evaluate('term.scrollToBottom()');
+  const pathCells=await evaluate(`(()=>{const rows=${JSON.stringify(pathRows)};const b=term.buffer.active;const r=document.querySelector('.xterm-screen').getBoundingClientRect();return rows.map(row=>{for(let y=b.viewportY;y<Math.min(b.length,b.viewportY+term.rows);y++){if(b.getLine(y).translateToString(true)===row)return {x:r.x+3.5*r.width/term.cols,y:r.y+(y-b.viewportY+.5)*r.height/term.rows};}})})()`);
+  assert.ok(pathCells.length>1 && pathCells.every(Boolean),'Bare SSH path fragments are visible');
+  for(const cell of pathCells) {
+    await cdp('Input.dispatchMouseEvent',{type:'mouseMoved',...cell,buttons:0});
+    assert.equal(await evaluate(`document.querySelector('.siling-link-highlight')?.children.length`),pathRows.length);
+    await cdp('Input.dispatchMouseEvent',{type:'mousePressed',...cell,button:'left',buttons:1,clickCount:1});
+    await cdp('Input.dispatchMouseEvent',{type:'mouseReleased',...cell,button:'left',buttons:0,clickCount:1});
+    assert.equal(await evaluate(`window.localMessages.at(-1)?.path`),barePath);
+  }
+  await screenshot('hard-wrapped-ssh-path');
+  console.log('PASS: bare hard-wrapped SSH paths open complete targets from every line');
   // Exercise tmux history itself, not a separately rendered text snapshot.
   await evaluate(`window.silingReadSelection=()=>fetch('http://127.0.0.1:${selectionPort}').then(r=>r.json());Object.defineProperty(navigator.clipboard,'write',{value:async items=>{window.copiedText=await(await items[0].getType('text/plain')).text();}});void 0;`);
   tmux('send-keys','-t','check','i=1; while [ $i -le 150 ]; do echo cross-screen-$i; i=$((i+1)); done','Enter');
