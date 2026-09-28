@@ -5785,7 +5785,9 @@
         // nodes briefly disappear while SSH tunnels reconnect after a local
         // Dashboard restart; clearing those ids here permanently destroyed
         // the user's saved pane positions before the node came back.
-        const alive = new Set(sessions.map(s => s.run_id));
+        const alive = new Set(
+          sessions.filter(s => s.alive).map(s => s.run_id)
+        );
         let changed = false;
         for (let i = 0; i < slots.length; i++) {
           if (slots[i] && !alive.has(slots[i])
@@ -12466,9 +12468,12 @@
       }
     }
     setLayout(layout);
-    // Auto-place first session if all slots empty
-    if (sessions.length && slots.every(x => !x)) {
-      slots[0] = sessions[0].run_id;
+    // Auto-place the first live session if all slots are empty. Ended runs
+    // stay in the history API, but must not reappear after the user clears
+    // their pane layout and reloads the Dashboard.
+    const firstLiveSession = sessions.find(s => s.alive);
+    if (firstLiveSession && slots.every(x => !x)) {
+      slots[0] = firstLiveSession.run_id;
       saveSlots();
     }
     renderList();

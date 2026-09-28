@@ -579,6 +579,20 @@ class DashboardExitedSessionContractTests(unittest.TestCase):
         self.assertIn("forceKillSession(runId)", stop_block)
         self.assertIn("closePane(runId);", stop_block)
 
+    def test_ended_sessions_are_not_restored_into_empty_slots(self):
+        self.assertIn(
+            "sessions.filter(s => s.alive).map(s => s.run_id)",
+            self.source,
+        )
+        self.assertIn(
+            "const firstLiveSession = sessions.find(s => s.alive);",
+            self.source,
+        )
+        self.assertIn(
+            "slots[0] = firstLiveSession.run_id;",
+            self.source,
+        )
+
 
 class DashboardAgentExitDetectionTests(unittest.TestCase):
     def setUp(self):
