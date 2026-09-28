@@ -64,7 +64,7 @@ const server = http.createServer((req, res) => {
     if (url.pathname === '/api/health') value = { ttyd: true };
     if (url.pathname === '/api/sessions') value = { sessions, snapshot: { ready: true } };
     if (url.pathname === '/api/host') value = { best_url: 'https://dashboard.example/?token=fixture-secret' };
-    if (url.pathname.endsWith('/tty')) value = { ok: true, url: '/fixture-tty/' + url.pathname.split('/')[3] };
+    if (url.pathname.endsWith('/tty')) value = { ok: true, selection_copy: url.pathname.includes('/fixture-1/') ? undefined : true, url: '/fixture-tty/' + url.pathname.split('/')[3] };
     return res.end(JSON.stringify(value));
   }
   const relative = url.pathname === '/' ? 'static/index.html' : url.pathname.slice(1);
@@ -133,6 +133,11 @@ try {
   }
   assert.equal(await evaluate(`document.querySelectorAll('.pane iframe').length`), 4, JSON.stringify(errors));
   console.log('Dashboard booted with four isolated terminal frames');
+  if (!baseline) {
+    assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-2"] iframe').dataset.inlineSelection`), 'true', 'Shell uses inline selection when supported');
+    assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-1"] iframe').dataset.inlineSelection`), 'false', 'Older nodes retain native selection');
+  }
+
   if (!baseline) {
     const beforeLinks=frameLoads;
     await evaluate(`window.postMessage({type:'siling:open-local-path',path:'/fixture/spoof.png'},location.origin)`);

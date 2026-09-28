@@ -123,7 +123,9 @@ class PaneInteractionTests(unittest.TestCase):
                 patch.object(dashboard, "_forward_tty_input", forward):
             for agent, expected in (("codex", True), ("terminal", True), ("claude", False)):
                 lookup.return_value = {"agent": agent, "tmux_session": "test-session"}
-                self.assertTrue(client.get("/api/sessions/test/tty").json()["ok"])
+                tty_response = client.get("/api/sessions/test/tty").json()
+                self.assertTrue(tty_response["ok"])
+                self.assertTrue(tty_response["selection_copy"])
                 with client.websocket_connect("/tty/test-session/ws") as socket:
                     socket.send_bytes(b"0hello")
                     self.assertEqual(socket.receive()["type"], "websocket.close")

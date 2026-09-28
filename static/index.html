@@ -8137,7 +8137,8 @@
           const theme = terminalThemeValue(s.terminal_theme);
           const ifr = document.createElement("iframe");
           ifr.dataset.nativeSelection = sessionPrefersNativeSelection(s) ? "true" : "false";
-          ifr.dataset.inlineSelection = ifr.dataset.nativeSelection;
+          ifr.dataset.inlineSelection = ifr.dataset.nativeSelection === "true"
+            && resp.selection_copy === true ? "true" : "false";
           ifr.src = resp.url;
           if (theme === "light") ifr.classList.add("terminal-light-frame");
           if (theme === "soft-dark") ifr.classList.add("terminal-soft-dark-frame");

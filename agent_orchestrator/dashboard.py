@@ -9107,7 +9107,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         if not port:
             return {"ok": False, "reason": "failed to launch ttyd"}
         # NOTE trailing slash matters — ttyd serves SPA from `/`.
-        return {"ok": True, "url": f"/tty/{session}/"}
+        return {"ok": True, "url": f"/tty/{session}/", "selection_copy": True}
 
     # ---- Reverse proxy for ttyd (HTTP + WebSocket) ----
     # Keeps the iframe same-origin with the dashboard.
