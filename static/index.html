@@ -2743,6 +2743,8 @@
     border-color: var(--warn);
   }
 </style>
+<link rel="stylesheet" href="/static/ui-foundation.css?v=1" />
+<script src="/static/ui-foundation.js?v=1"></script>
 </head>
 <body>
 
@@ -2844,7 +2846,7 @@
           <input id="new-label" type="text" placeholder="e.g. fix sglang bench flake" autocomplete="off" />
         </label>
         <label class="fld" id="new-agent-field">
-          <span>Agent</span>
+          <span>Agent <span id="new-agent-badge"></span></span>
           <select id="new-agent">
             <option value="cursor">cursor (Cursor Agent)</option>
             <option value="claude">claude (Claude Code)</option>
@@ -2897,13 +2899,36 @@
   </div>
 
   <!-- Dashboard settings modal --------------------------------------- -->
-  <div class="modal-scrim" id="settings-modal" tabindex="-1" hidden>
+  <dialog class="modal-scrim" id="settings-modal" aria-labelledby="settings-title" tabindex="-1" hidden>
     <div class="modal">
       <div class="modal-head">
-        <div class="modal-title">Settings</div>
+        <div class="modal-title" id="settings-title" data-i18n="settings">Settings</div>
         <button class="modal-close" id="settings-close" title="Close">×</button>
       </div>
-      <div class="modal-body">
+      <div class="settings-shell">
+        <nav class="settings-nav" aria-label="Settings sections">
+          <button data-settings-section="appearance" aria-current="true" data-i18n="appearance">Appearance</button>
+          <button data-settings-section="terminal" data-i18n="terminal">Terminal</button>
+          <button data-settings-section="notifications" data-i18n="notifications">Notifications</button>
+          <button data-settings-section="browsing" data-i18n="browsing">Browsing &amp; files</button>
+          <button data-settings-section="connections" data-i18n="connections">Connections &amp; updates</button>
+        </nav>
+        <label class="settings-mobile-nav"><span class="ui-secondary" data-i18n="settings">Settings</span><select id="settings-section-picker" aria-label="Settings section"><option value="appearance" data-i18n="appearance">Appearance</option><option value="terminal" data-i18n="terminal">Terminal</option><option value="notifications" data-i18n="notifications">Notifications</option><option value="browsing" data-i18n="browsing">Browsing &amp; files</option><option value="connections" data-i18n="connections">Connections &amp; updates</option></select></label>
+        <div class="settings-content">
+        <section class="settings-section" id="settings-section-appearance">
+          <h2 data-i18n="appearance">Appearance</h2>
+          <p class="ui-secondary" data-i18n="scope">Saved in this browser only. Changes apply immediately; running sessions are not restarted.</p>
+          <label class="settings-row"><span data-i18n="theme">App theme</span><select data-appearance="theme"><option value="system" data-i18n="system">System</option><option value="dark" data-i18n="dark">Dark</option><option value="light" data-i18n="light">Light</option></select></label>
+          <label class="settings-row"><span data-i18n="density">Density</span><select data-appearance="density"><option value="comfortable" data-i18n="comfortable">Comfortable</option><option value="compact" data-i18n="compact">Compact</option></select></label>
+          <label class="settings-row"><span data-i18n="fontSize">Interface text size</span><select data-appearance="fontSize"><option value="14">14 px</option><option value="15">15 px</option><option value="16">16 px</option></select></label>
+          <label class="settings-row"><span data-i18n="motion">Motion</span><select data-appearance="motion"><option value="system" data-i18n="system">System</option><option value="reduce" data-i18n="reduce">Reduce motion</option></select></label>
+          <label class="settings-row"><span data-i18n="language">Language</span><select data-appearance="language"><option value="system" data-i18n="system">System</option><option value="en">English</option><option value="zh">中文</option></select></label>
+          <p class="ui-secondary" data-i18n="appearanceHelp">App appearance is separate from each terminal's palette and font.</p>
+          <button id="settings-reset-appearance" data-i18n="reset">Reset appearance</button>
+        </section>
+        <section class="settings-section" id="settings-section-browsing" hidden>
+          <h2 data-i18n="browsing">Browsing &amp; files</h2>
+          <p class="ui-secondary" data-i18n="scope">Saved in this browser only.</p>
         <label class="settings-row" for="settings-open-links-internally">
           <span>
             <span class="settings-row-title">Open web links inside SiLing</span>
@@ -2927,12 +2952,42 @@
             <output id="settings-panel-opacity-value" for="settings-panel-opacity">100%</output>
           </span>
         </label>
+        </section>
+        <section class="settings-section" id="settings-section-terminal" hidden>
+          <h2 data-i18n="terminal">Terminal</h2>
+          <p class="ui-secondary">Terminal mode is saved in this browser. Applying a palette changes all open sessions; use a pane's More menu to change only that session.</p>
+          <button id="btn-toggle-tty" title="Use full tty (ttyd)">tty: off</button>
+          <div class="global-theme-controls" aria-label="Apply terminal theme to open panes">
+            <select id="global-theme-select" aria-label="Theme to apply to all open panes"><option value="soft-dark">Soft Dark</option><option value="soft-light">Soft Light</option><option value="soft-green">Soft Green</option><option value="light">Light</option><option value="">Dark</option></select>
+            <button id="btn-apply-global-theme">Apply to open panes</button>
+          </div>
+          <p class="ui-secondary">Enter sends; Shift/Option+Enter inserts a newline. Selecting text copies normally. Codex input automatically returns from history to the live terminal.</p>
+          <h2 data-i18n="flags">Role, priority &amp; manual flags</h2>
+          <p class="ui-secondary" data-i18n="flagsHelp"></p>
+        </section>
+        <section class="settings-section" id="settings-section-notifications" hidden>
+          <h2 data-i18n="notifications">Notifications</h2>
+          <p class="ui-secondary">Browser-local policy. Permission is controlled by your browser; the bell in the sidebar enables notifications.</p>
+          <label>Priority reminders<select id="priority-reminder-select"><option value="off">reminders: off</option><option value="p0">Lead/P0 reminder: 10m</option><option value="p0p1">Lead/P0/P1 reminder: 10m</option></select></label>
+          <p class="ui-secondary">The pane Monitor button requests a five-minute heartbeat from the agent. Silence alone is not proof of failure, and this reminder setting is not a heartbeat watchdog.</p>
+        </section>
+        <section class="settings-section" id="settings-section-connections" hidden>
+          <h2 data-i18n="connections">Connections &amp; updates</h2>
+          <p class="ui-secondary" data-i18n="connectionHelp"></p>
+          <div class="url-bar" id="url-bar" role="button" tabindex="0" aria-label="Copy Dashboard login link">
+            <span class="url-label">Link</span><span class="url-value" id="url-bar-value">…</span><span class="url-alts" id="url-bar-alts"></span>
+          </div>
+          <p class="ui-secondary">Update checks and actions affect the Dashboard service, not just this browser. Applying an update may restart the service after verification.</p>
+          <div class="settings-inline-actions"><button id="btn-sync-status" title="Read-only workspace sync status" hidden>sync: …</button><button id="btn-self-update" title="Check, test, and apply updates">apply update</button></div>
+        </section>
+        </div>
       </div>
       <div class="modal-foot">
-        <button class="btn-primary" id="settings-close-2">Done</button>
+        <p class="ui-secondary" id="settings-save-status" role="status"></p>
+        <button class="btn-primary" id="settings-close-2" data-i18n="done">Done</button>
       </div>
     </div>
-  </div>
+  </dialog>
 
   <div class="modal-scrim" id="reconnect-modal" hidden>
     <div class="modal reconnect-modal">
@@ -3169,44 +3224,23 @@
   </div>
 
   <main class="main">
-    <div class="url-bar" id="url-bar" title="Click to copy the URL to your clipboard, then paste on your phone">
-      <span class="url-label">📱</span>
-      <span class="url-value" id="url-bar-value">…</span>
-      <span class="url-alts" id="url-bar-alts"></span>
-    </div>
-
     <div class="topbar-global">
-      <button class="hamburger" id="btn-menu">☰</button>
+      <button class="hamburger" id="btn-menu" aria-label="Session list">☰</button>
+      <button class="ui-button primary" id="btn-new-primary" data-ui-icon="plus" data-i18n-label="new"><span data-i18n="new">New</span></button>
+      <button class="ui-button" id="btn-search-primary" data-ui-icon="search" data-i18n-label="search"><span data-i18n="search">Search</span></button>
       <span class="pill" id="pill-count">0 panes</span>
-      <button id="btn-toggle-tty" title="Use full tty (ttyd)">tty: off</button>
-      <div class="panel-actions-left" aria-label="Saved active-session actions">
-        <button id="btn-save-active" title="Save all currently active sessions for later restore">save active</button>
-        <button id="btn-restore-active" title="Restore the last saved active-session set">restore saved</button>
-        <div class="global-theme-controls" aria-label="Apply terminal theme to open panes">
-          <select id="global-theme-select" title="Theme to apply to all currently open panes">
-            <option value="soft-dark">Soft Dark</option>
-            <option value="soft-light">Soft Light</option>
-            <option value="soft-green">Soft Green</option>
-            <option value="light">Light</option>
-            <option value="">Dark</option>
-          </select>
-          <button id="btn-apply-global-theme" title="Apply selected terminal theme to all currently open panes">apply theme</button>
-        </div>
-      </div>
       <div class="spacer"></div>
       <div class="quick-actions" aria-label="Quick actions">
         <button id="btn-mission-control" title="Monitor progress across all active sessions">mission control</button>
-        <select id="priority-reminder-select" title="Optional reminders for high-priority sessions that remain waiting and unseen">
-          <option value="off">reminders: off</option>
-          <option value="p0">Lead/P0 reminder: 10m</option>
-          <option value="p0p1">Lead/P0/P1 reminder: 10m</option>
-        </select>
-        <button id="btn-sync-status" title="Read-only workspace sync status" hidden>sync: …</button>
-        <button id="btn-open-notes" title="Open daily report (⌘D)">daily report</button>
-        <button id="btn-open-projects-browser" title="Open local Projects browser">projects</button>
-        <button id="btn-settings" title="Dashboard settings">settings</button>
-        <button id="btn-self-update" title="Check, test, and apply Agent or Git upstream updates">apply update</button>
+        <button class="ui-button" id="btn-open-projects-browser" data-ui-icon="folder" aria-label="Projects &amp; files" title="Projects &amp; files"><span>Projects</span></button>
       </div>
+      <button class="ui-button" id="btn-layout-menu" data-ui-icon="grid" data-i18n-label="layout"><span data-i18n="layout">Layout</span></button>
+      <button class="ui-button" id="btn-workspace-menu" data-ui-icon="workspace" data-i18n-label="workspace"><span data-i18n="workspace">Workspace</span></button>
+      <button class="ui-button" id="btn-settings" data-ui-icon="settings" data-i18n-label="settings"><span data-i18n="settings">Settings</span></button>
+    </div>
+    <dialog class="ui-dialog" id="layout-menu" aria-labelledby="layout-menu-title">
+      <div class="modal-head"><h2 id="layout-menu-title" data-i18n="layout">Layout</h2><button data-dialog-close aria-label="Close">×</button></div>
+      <div class="modal-body">
       <div class="layout-picker" id="layout-picker">
         <button data-layout="1" class="toggle-on">1</button>
         <button data-layout="cols-2">2↔</button>
@@ -3219,12 +3253,23 @@
         <button data-layout="cols-4x4">4×4</button>
         <button data-layout="cols-5x3">5×3</button>
       </div>
+      </div>
+    </dialog>
+    <dialog class="ui-dialog" id="workspace-menu" aria-labelledby="workspace-menu-title">
+      <div class="modal-head"><h2 id="workspace-menu-title" data-i18n="workspace">Workspace</h2><button data-dialog-close aria-label="Close">×</button></div>
+      <div class="modal-body">
+      <div class="panel-actions-left ui-menu-group" aria-label="Saved active-session actions">
+        <button id="btn-save-active" title="Save all currently active sessions for later restore">Save active sessions</button>
+        <button id="btn-restore-active" title="Restore the last saved active-session set">Restore saved sessions</button>
+      </div>
       <div class="panel-actions" aria-label="Panel actions">
         <button id="btn-show-active" title="Fill panes with the most recently active sessions, ignoring flags">show active</button>
         <button id="btn-sort-panes" title="Fill panes from all active sessions by flag priority, then sustained activity">sort panes</button>
       </div>
-      <button id="btn-clear-pins" title="Clear all pinned panes">clear</button>
-    </div>
+      <button id="btn-clear-pins" title="Clear all pinned panes; sessions keep running">Close all panes (keep sessions)</button>
+      <button id="btn-open-notes" title="Open daily report (⌘D)">Daily report</button>
+      </div>
+    </dialog>
 
     <div class="grid" id="grid">
       <div class="empty-state" id="empty-state">
@@ -3237,6 +3282,12 @@
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
+  const ui = window.SiLingUI;
+  let appearance = ui.read(localStorage);
+  ui.apply(appearance);
+  document.querySelectorAll("[data-ui-icon]").forEach(button => {
+    button.insertAdjacentHTML("afterbegin", ui.icon(button.dataset.uiIcon));
+  });
   const DEFAULT_DASHBOARD_CONFIG = {
     notes_url: "",
     projects_browser_url: "http://127.0.0.1:8080/",
@@ -3278,14 +3329,14 @@
     ["done", "Done"],
   ];
   const PANE_STATE_SHORT_LABELS = {
-    "": "F",
+    "": "Flag",
     lead: "Lead",
     p0: "P0",
     p1: "P1",
     p2: "P2",
-    blocked: "B",
-    watching: "W",
-    done: "D",
+    blocked: "Blocked",
+    watching: "Watching",
+    done: "Done",
   };
   const TERMINAL_THEME_OPTIONS = [
     ["", "Dark"],
@@ -3366,6 +3417,9 @@
     internalLinksSetting.checked = openLinksInternally;
     panelOpacitySetting.value = String(panelOpacityPercent);
     panelOpacityValue.textContent = `${panelOpacityPercent}%`;
+    settingsModal.querySelectorAll("[data-appearance]").forEach(control => {
+      control.value = String(appearance[control.dataset.appearance]);
+    });
   }
 
   function applyPanelOpacity(value, persist = false) {
@@ -3377,26 +3431,95 @@
     panelOpacitySetting.value = String(panelOpacityPercent);
     panelOpacityValue.textContent = `${panelOpacityPercent}%`;
     if (persist) {
-      localStorage.setItem(PANEL_OPACITY_KEY, String(panelOpacityPercent));
+      persistBrowserSetting(PANEL_OPACITY_KEY, String(panelOpacityPercent));
     }
   }
 
   function openSettingsModal() {
     syncSettingsControls();
     settingsModal.hidden = false;
-    requestAnimationFrame(() => settingsModal.focus({ preventScroll: true }));
+    settingsModal.showModal();
+    (window.innerWidth <= 600 ? $("settings-section-picker") : settingsModal.querySelector('[aria-current="true"]')).focus({ preventScroll: true });
   }
 
   function closeSettingsModal() {
+    settingsModal.close();
     settingsModal.hidden = true;
   }
+
+  settingsModal.addEventListener("close", () => {
+    settingsModal.hidden = true;
+    $("btn-settings").focus({ preventScroll: true });
+  });
+  ui.containDialogFocus(settingsModal);
+  settingsModal.querySelectorAll("[data-settings-section]").forEach(button => {
+    button.addEventListener("click", () => {
+      settingsModal.querySelectorAll("[data-settings-section]").forEach(other => {
+        other.setAttribute("aria-current", String(other === button));
+      });
+      settingsModal.querySelectorAll(".settings-section").forEach(section => {
+        section.hidden = section.id !== `settings-section-${button.dataset.settingsSection}`;
+      });
+      $("settings-section-picker").value = button.dataset.settingsSection;
+    });
+  });
+  $("settings-section-picker").addEventListener("change", event => {
+    settingsModal.querySelector(`[data-settings-section="${event.target.value}"]`)?.click();
+  });
+  // Preserve the existing opacity preference and event handlers.
+  $("settings-section-appearance").insertBefore(
+    panelOpacitySetting.closest("label"), $("settings-reset-appearance"),
+  );
+  function saveAppearance(next) {
+    appearance = ui.normalize(next);
+    ui.apply(appearance);
+    syncSettingsControls();
+    const saved = ui.write(localStorage, appearance);
+    showPreferenceSaveStatus(saved);
+  }
+  function showPreferenceSaveStatus(saved) {
+    const status = $("settings-save-status");
+    status.textContent = ui.t(saved ? "saved" : "saveError");
+    status.classList.toggle("error", !saved);
+  }
+  function persistBrowserSetting(key, value) {
+    try { localStorage.setItem(key, value); showPreferenceSaveStatus(true); }
+    catch { showPreferenceSaveStatus(false); }
+  }
+  settingsModal.querySelectorAll("[data-appearance]").forEach(control => {
+    control.addEventListener("change", () => saveAppearance({ ...appearance, [control.dataset.appearance]: control.value }));
+  });
+  $("settings-reset-appearance").addEventListener("click", () => {
+    saveAppearance(ui.defaults);
+    applyPanelOpacity(100, true);
+  });
+  ["btn-sync-status", "btn-self-update"].forEach(id => {
+    $(id).addEventListener("click", closeSettingsModal, { capture: true });
+  });
+  ui.wireDialog($("layout-menu"), $("btn-layout-menu"));
+  ui.wireDialog($("workspace-menu"), $("btn-workspace-menu"));
+  $("workspace-menu").querySelectorAll("button:not([data-dialog-close])").forEach(button => {
+    button.addEventListener("click", () => $("workspace-menu").close(), { capture: true });
+  });
+  $("layout-picker").querySelectorAll("button").forEach(button => {
+    const [columns, rows] = button.dataset.layout.replace("cols-", "").split("x").map(Number);
+    const count = columns * (rows || 1);
+    button.insertAdjacentHTML("afterbegin", `<span class="layout-thumbnail" aria-hidden="true" style="--cols:${columns}">${"<i></i>".repeat(count)}</span>`);
+    button.setAttribute("aria-label", `${columns} × ${rows || 1} panes`);
+    button.addEventListener("click", () => $("layout-menu").close());
+  });
+  $("btn-new-primary").addEventListener("click", () => openNewSessionModal());
+  $("btn-search-primary").addEventListener("click", () => {
+    if (document.querySelector(".app").classList.contains("mobile")) $("sidebar").classList.add("open");
+    $("sess-search-input").focus();
+  });
 
   $("btn-settings").addEventListener("click", openSettingsModal);
   $("settings-close").addEventListener("click", closeSettingsModal);
   $("settings-close-2").addEventListener("click", closeSettingsModal);
   internalLinksSetting.addEventListener("change", () => {
     openLinksInternally = internalLinksSetting.checked;
-    localStorage.setItem(
+    persistBrowserSetting(
       OPEN_LINKS_INTERNALLY_KEY,
       openLinksInternally ? "1" : "0",
     );
@@ -6158,6 +6281,10 @@
   }
 
   function sessionDotPresentation(s) {
+    if (s?.remote && s.node_online === false) {
+      return { classes: "dead", title: "Node offline · execution unknown" };
+    }
+    if (s?.agent_exited === true) return { classes: "dead", title: "Agent exited" };
     const activity = sessionActivityMode(s);
     if (activity === "foreground") {
       return {
@@ -6292,6 +6419,7 @@
           ${stateBadge}
           ${canLabel ? `<button class="btn-rename" title="Rename (label)">✎</button>` : ""}
         </div>
+        <div class="si-agent">${ui.agentBadge(s.agent)}<span class="ui-secondary">${escapeHtml(_dot.title)}</span></div>
       </div>
     `;
   }
@@ -6323,6 +6451,7 @@
       })
       .map(x => x.s);
     const filtered = sorted.filter(s => {
+      if (!sessionMatchesQuery(s, searchQuery)) return false;
       if (sidebarPriorityFilter === "all") return true;
       return sidebarGroupKey(s.panel_state) === sidebarPriorityFilter;
     });
@@ -6688,7 +6817,7 @@
     const search = $("sess-search");
     const priority = $("sess-priority-filter");
     const status = $("sess-search-status");
-    if (search) search.hidden = true;
+    if (search) search.hidden = false;
     if (priority) priority.hidden = false;
     if (status) {
       status.hidden = true;
@@ -6756,6 +6885,7 @@
     if (name !== "1") g.classList.add(name);
     $("layout-picker").querySelectorAll("button").forEach(b => {
       b.classList.toggle("toggle-on", b.dataset.layout === name);
+      b.setAttribute("aria-pressed", String(b.dataset.layout === name));
     });
   }
 
@@ -7052,6 +7182,12 @@
     el.className = "pane-card empty-slot";
     el.dataset.slot = String(idx);
     el.style.order = String(idx);
+    if (slots[idx] && pendingRecoveredSessions.has(slots[idx])) {
+      el.setAttribute("role", "status");
+      el.setAttribute("aria-busy", "true");
+      el.innerHTML = `<div class="empty-slot-inner"><div class="slot-label">${SLOT_MARKS[idx] || idx + 1}</div><div>Starting session…</div><small>Waiting for session inventory</small></div>`;
+      return el;
+    }
     el.tabIndex = 0;
     el.setAttribute("role", "button");
     el.setAttribute("aria-label", `Start a new session in pane ${idx + 1}`);
@@ -7252,6 +7388,7 @@
     closePaneZoom();
   }, { capture: true });
 
+  let paneMenuSerial = 0;
   function openPane(runId, slotIdx) {
     const grid = $("grid");
 
@@ -7288,26 +7425,20 @@
         <div class="pane-drag-region" title="Drag this title area to another pane slot">
           <span class="slot-badge" draggable="true" title="Drag to move to another slot">${SLOT_MARKS[slotIdx] || (slotIdx+1)}</span>
           <span class="dot ${sessionDotPresentation(s).classes}" title="${sessionDotPresentation(s).title}"></span>
+          ${ui.agentBadge(s.agent)}
           <span class="title" title="${escapeHtml(s.display_name || s.task)}">${escapeHtml(s.display_name || s.task || s.run_name)}</span>
           ${s.remote ? `<span class="pane-node-badge ${s.node_online === false ? "offline" : ""}" title="${escapeHtml(s.node_online === false ? (s.node_error || "Remote node offline") : `Running on ${s.node_label || s.node_id}`)}">${escapeHtml(s.node_label || s.node_id || "remote")}</span>` : ""}
           <span class="pill pane-round">${s.max_rounds ? `${s.round || 0}/${s.max_rounds}` : ""}</span>
+          <span class="pane-idle" data-mode="idle" title="Sustained idle time">idle</span>
         </div>
         <div class="pane-actions">
           <button class="btn-mission-view" title="Return to Mission Control">Mission</button>
-          <span class="pane-idle" data-mode="idle" title="Sustained idle time">idle</span>
-          <select class="pane-theme-select" title="Terminal theme" data-theme="${escapeHtml(terminalThemeValue(s.terminal_theme))}">
-            ${terminalThemeOptionsHtml(s.terminal_theme)}
-          </select>
-          <select class="pane-state-select" title="${escapeHtml(panelStateControlTitle(s.panel_state))}" data-state="${escapeHtml(s.panel_state || "")}">
+          <select class="pane-state-select" aria-label="Role, priority or manual flag" title="${escapeHtml(panelStateControlTitle(s.panel_state))}" data-state="${escapeHtml(s.panel_state || "")}">
             ${panelStateOptionsHtml(s.panel_state)}
           </select>
-          <button class="btn-zoom" title="Open a larger pane view">⛶</button>
-          <button class="btn-reload" title="Reconnect this pane (if display is glitchy)">↻</button>
-          <button class="btn-folders" title="Linked task files and folders">files</button>
-          <button class="btn-recover-session" ${s.agent_exited === true ? "" : "hidden"} title="Resume this exited agent in a new session">▶</button>
-          <button class="btn-end-session" ${s.agent_exited === true ? "" : "hidden"} title="End this exited session and keep its resume metadata">⏻</button>
-          <button class="btn-terminate" ${s.agent_exited === true ? "hidden" : ""} title="Terminate this session and keep its resume metadata">Terminate</button>
-          <button class="btn-unpin" title="Close this pane">×</button>
+          <button class="btn-folders" title="Linked task files and folders" aria-label="Linked task files and folders">files</button>
+          <button class="btn-zoom" title="Open a larger pane view" aria-label="Zoom pane">${ui.icon("zoom")}</button>
+          <button class="btn-pane-more" data-i18n-label="more">${ui.icon("more")}</button>
         </div>
       </div>
       <div class="pane ${ttyMode && s.alive ? 'pane-tty' : 'empty'} ${terminalThemeClass}"></div>
@@ -7319,8 +7450,46 @@
         <button class="btn-link-folder" title="Link a folder, file, or URL to this pane">Link</button>
           <button class="btn-sync-project" ${s.remote ? "hidden" : ""} title="Sync this session's project and publish a remote resume handoff when idle (Shift-click: sync safe items now)">Sync</button>
       </div>
+      <dialog class="ui-dialog pane-menu" id="pane-menu-${++paneMenuSerial}" aria-label="Pane actions">
+        <div class="modal-head"><h2>${ui.agentBadge(s.agent)} ${escapeHtml(s.display_name || s.task || s.run_name)}</h2><button data-dialog-close aria-label="Close">×</button></div>
+        <div class="modal-body">
+          <div class="ui-menu-group">
+            <label><span data-i18n="terminalTheme">Terminal theme</span><select class="pane-theme-select" data-theme="${escapeHtml(terminalThemeValue(s.terminal_theme))}">${terminalThemeOptionsHtml(s.terminal_theme)}</select></label>
+            <button class="btn-reload" data-i18n="reconnect" data-dialog-close>Reconnect display</button>
+            <label><span data-i18n="move">Move / swap with pane</span><select class="pane-move-select"></select></label>
+          </div>
+          <div class="ui-menu-group">
+            <button class="btn-unpin" data-i18n="closePane" data-dialog-close>Close pane</button>
+            <p class="ui-secondary" data-i18n="closeHelp"></p>
+          </div>
+          <div class="ui-menu-group">
+            <button class="btn-recover-session" ${s.agent_exited === true ? "" : "hidden"} data-dialog-close>Resume exited agent</button>
+            <button class="btn-end-session" ${s.agent_exited === true ? "" : "hidden"} data-dialog-close>End exited session</button>
+            <button class="btn-terminate danger" ${s.agent_exited === true ? "hidden" : ""} data-dialog-close>Terminate session</button>
+            <p class="ui-secondary" data-i18n="terminateHelp"></p>
+          </div>
+        </div>
+      </dialog>
     `;
     grid.appendChild(card);
+    ui.translate(card);
+    const paneMenu = card.querySelector(".pane-menu");
+    const moveSelect = card.querySelector(".pane-move-select");
+    ui.wireDialog(paneMenu, card.querySelector(".btn-pane-more"), () => {
+      moveSelect.innerHTML = slots.map((id, index) =>
+        `<option value="${index}">${escapeHtml(SLOT_MARKS[index] || index + 1)}${id === runId ? " · current" : id ? " · swap" : " · empty"}</option>`
+      ).join("");
+      moveSelect.value = String(slotOf(runId));
+    });
+    moveSelect.addEventListener("change", () => {
+      const from = slotOf(runId);
+      const to = Number(moveSelect.value);
+      if (from >= 0 && Number.isInteger(to) && to >= 0 && to < slots.length) {
+        swapSlots(from, to);
+        saveSlots(); renderList(); renderGrid();
+      }
+      paneMenu.close();
+    });
 
     // At constrained widths, put actions below the title to keep them reachable.
     const ro = new ResizeObserver((entries) => {
@@ -9901,6 +10070,7 @@
     if (ev.target === folderModal) closeFolderModal();
   });
   function handleFolderModalKeydown(ev) {
+    if (document.querySelector("dialog[open]")) return;
     if (folderModal.hidden) return;
     const key = ev.key || "";
     const isSearchShortcut = (ev.metaKey || ev.ctrlKey) && !ev.altKey && !ev.shiftKey
@@ -12228,6 +12398,7 @@
   }
 
   function updateNewSessionMode() {
+    $("new-agent-badge").innerHTML = ui.agentBadge($("new-agent").value);
     const kind = $("new-kind").value;
     const isResume = kind === "resume";
     const isImport = kind === "import";
@@ -12279,6 +12450,7 @@
     const btnBg = $("new-submit-bg");
     const both = [btnIterm, btnBg];
     const requestedSlot = newSessionTargetSlot;
+    const requestedLayout = layout;
     both.forEach(b => b.disabled = true);
     const active = (mode === "background") ? btnBg : btnIterm;
     active.textContent = "Starting…";
@@ -12335,9 +12507,14 @@
           expiresAt: Date.now() + 30000,
           zoom: false,
         });
-        slots[requestedSlot] = newRunId;
-        saveSlots();
-        renderGrid();
+        const destination = ui.createdSessionSlot(slots, requestedSlot, requestedLayout, layout, newRunId);
+        if (destination >= 0) {
+          slots[destination] = newRunId;
+          saveSlots();
+          renderGrid();
+        } else {
+          alert("Session created. All panes are occupied; open the new session from the session list.");
+        }
       }
       closeModal();
       $("new-label").value = "";
@@ -12546,6 +12723,17 @@
     return u.toString();
   }
 
+  function maskedDashboardUrl(value) {
+    try {
+      const url = new URL(value);
+      if (url.username) url.username = "hidden";
+      if (url.password) url.password = "hidden";
+      for (const key of [...url.searchParams.keys()]) url.searchParams.set(key, "hidden");
+      url.hash = "";
+      return url.toString();
+    } catch { return "Dashboard login link"; }
+  }
+
   async function refreshPhoneUrl() {
     let info;
     try { info = await api("/api/host"); } catch { return; }
@@ -12556,16 +12744,16 @@
     const altEl = $("url-bar-alts");
     bar.style.display = "flex";
     bar.dataset.url = bestUrl;
-    valEl.textContent = bestUrl;
+    valEl.textContent = maskedDashboardUrl(bestUrl);
     // Render secondary candidates as a compact list on the right.
     const others = (info.candidates || [])
       .filter(c => c.url && c.url !== bestUrl)
-      .map(c => `[${c.iface}] ${c.url}`);
+      .map(c => `[${c.iface}] ${maskedDashboardUrl(c.url)}`);
     altEl.textContent = others.length
       ? ("alt: " + others.join("  ·  "))
       : (info.best_url ? "" : "current page URL; no LAN/VPN candidate detected");
     // Long tooltip with all candidates, in case text is ellipsized.
-    bar.title = "Click to copy\n\n" + bestUrl +
+    bar.title = "Click to copy login link (contains credentials)\n\n" + maskedDashboardUrl(bestUrl) +
       (others.length ? ("\n\nAlternatives:\n  " + others.join("\n  ")) : "");
   }
   $("url-bar").addEventListener("click", async () => {
@@ -12590,12 +12778,17 @@
     }
     const valEl = $("url-bar-value");
     const prev = valEl.textContent;
-    valEl.textContent = copied ? "✓ copied — paste on your phone" : url;
+    valEl.textContent = copied ? "✓ copied — paste on your phone" : "Copy failed — use the browser address bar";
     bar.classList.add("flash");
     setTimeout(() => {
       valEl.textContent = prev;
       bar.classList.remove("flash");
     }, copied ? 1400 : 3500);
+  });
+  $("url-bar").addEventListener("keydown", event => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault(); $("url-bar").click();
+    }
   });
 
   // ---------- Boot ----------

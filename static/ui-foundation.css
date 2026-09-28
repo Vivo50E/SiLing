@@ -1,0 +1,133 @@
+/* Presentation layer only: terminal iframe palettes and session state stay independent. */
+:root {
+  --ui-font-size: 14px;
+  --surface-rgb: 22 27 34;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --radius-panel: 10px;
+  --shadow-panel: 0 16px 48px rgb(0 0 0 / .3);
+  --text-dim: #9aa6b2;
+  color-scheme: dark;
+}
+html[data-app-theme="light"] {
+  --bg: #f5f7fa; --bg-soft: #ffffff; --bg-elev: #edf1f6;
+  --surface-rgb: 255 255 255; --border: #bdc7d3;
+  --text: #1c2633; --text-dim: #536171; --accent: #155cb2;
+  --ok: #24723b; --warn: #855a00; --err: #b42329; color-scheme: light;
+}
+@media (prefers-color-scheme: light) {
+  html[data-app-theme="system"] {
+    --bg: #f5f7fa; --bg-soft: #ffffff; --bg-elev: #edf1f6;
+    --surface-rgb: 255 255 255; --border: #bdc7d3;
+    --text: #1c2633; --text-dim: #536171; --accent: #155cb2;
+    --ok: #24723b; --warn: #855a00; --err: #b42329; color-scheme: light;
+  }
+}
+body { font-size: var(--ui-font-size); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.ui-icon { width: 17px; height: 17px; flex-shrink: 0; vertical-align: middle; }
+.ui-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; }
+.ui-secondary { color: var(--text-dim); font-size: 12px; line-height: 1.5; }
+.topbar-global { overflow: visible; gap: 6px; padding: 8px; }
+.topbar-global .quick-actions { min-width: 0; }
+.topbar-global .pill { font-size: 11px; }
+.topbar-global #btn-mission-control { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-dialog {
+  padding: 0; color: var(--text); background: rgb(var(--surface-rgb) / var(--panel-opacity));
+  border: 1px solid var(--border); border-radius: var(--radius-panel); box-shadow: var(--shadow-panel);
+  width: min(460px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); overflow: auto;
+}
+.ui-dialog::backdrop, #settings-modal::backdrop { background: rgb(0 0 0 / .42); }
+.ui-dialog .modal-body { background: transparent; }
+.ui-dialog h2 { font-size: 15px; margin: 0; }
+.ui-dialog .modal-head { gap: 12px; align-items: flex-start; }
+.ui-dialog .modal-head button { flex: 0 0 auto; }
+.ui-dialog .ui-menu-group { display: grid; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.ui-dialog .ui-menu-group:last-child { border-bottom: 0; padding-bottom: 0; }
+.ui-dialog .ui-menu-group button { text-align: left; min-height: 36px; }
+.ui-dialog label { display: grid; gap: 6px; font-size: 12px; }
+.ui-dialog select { width: 100%; }
+.ui-dialog [hidden] { display: none !important; }
+.ui-dialog .global-theme-controls { flex-wrap: wrap; }
+.ui-dialog .panel-actions-left, .ui-dialog .panel-actions { display: grid; }
+.ui-dialog .layout-picker { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.layout-picker button { display: flex; align-items: center; gap: 12px; min-height: 56px; font-size: 13px; }
+.layout-thumbnail { width: 48px; height: 30px; display: grid; gap: 2px; grid-template-columns: repeat(var(--cols), 1fr); }
+.layout-thumbnail i { background: currentColor; opacity: .65; border-radius: 1px; }
+.layout-picker button[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: -2px; }
+.agent-badge { display: inline-flex; flex-shrink: 0; max-width: 90px; overflow: hidden; white-space: nowrap; font: 600 11px/1.5 -apple-system, sans-serif; padding: 1px 5px; border-radius: 4px; color: var(--text); background: var(--bg-soft); border: 1px solid var(--border); }
+.agent-claude { border-left: 3px solid #c67e56; }
+.agent-codex { border-left: 3px solid #5b9fdc; }
+.agent-cursor { border-left: 3px solid #9b90af; }
+.agent-terminal { border-left: 3px solid #929aa6; }
+.si-agent { margin: 5px 0 0 16px; display: flex; gap: 6px; align-items: center; }
+.pane-actions .pane-state-select { min-width: 76px; width: 76px; }
+.pane-head .pane-actions { flex-shrink: 0; }
+.pane-card.narrow .pane-actions { overflow: visible; flex-wrap: wrap; }
+.pane-menu .pane-theme-select { display: block !important; width: 100%; height: auto; min-height: 36px; }
+.pane-menu .modal-head h2 { min-width: 0; overflow-wrap: anywhere; }
+.pane-menu button, .pane-menu select { font-size: 13px; }
+.pane-menu .btn-unpin, .pane-menu .btn-terminate { width: 100%; }
+.pane-menu p { margin: 0; }
+.pane-drag-region .pane-idle { font-size: 11px; }
+.pane-card.narrow .pane-drag-region .pane-idle { display: none; }
+.modal, .pane-card.zoomed-pane {
+  /* Opacity belongs to ONE backdrop, not nested surfaces or foreground text. */
+  --bg: inherit; --bg-soft: inherit; --bg-elev: inherit;
+  background: rgb(var(--surface-rgb) / var(--panel-opacity));
+}
+#settings-modal { margin: 0; border: 0; width: 100vw; max-width: none; height: 100dvh; max-height: none; background: transparent; color: var(--text); }
+#settings-modal .modal { max-width: 900px; max-height: calc(100dvh - 32px); }
+.settings-shell { display: grid; grid-template-columns: 180px minmax(0, 1fr); min-height: 0; }
+.settings-nav { padding: 12px; border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+.settings-mobile-nav { display: none; }
+.settings-nav button { text-align: left; border-color: transparent; background: transparent; min-height: 36px; }
+.settings-nav button[aria-current="true"] { color: var(--accent); background: var(--bg-elev); border-color: var(--border); }
+.settings-content { overflow: auto; padding: 18px; min-width: 0; }
+.settings-section { display: grid; gap: 12px; }
+.settings-section[hidden] { display: none; }
+.settings-section h2 { margin: 0; font-size: 16px; }
+.settings-row { background: transparent; }
+.settings-row-help { font-size: 12px; }
+.settings-row-title { font-size: var(--ui-font-size); }
+.settings-row select { max-width: 180px; }
+#settings-save-status { min-height: 18px; margin: 0; }
+#settings-modal .modal-foot { align-items: center; }
+#settings-modal .modal-foot button { flex-shrink: 0; }
+#settings-save-status.error { color: var(--err); }
+.settings-inline-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+html[data-density="compact"] .pane-head { padding: 3px 6px; }
+html[data-density="compact"] .session-item { padding-top: 5px; padding-bottom: 5px; }
+html[data-density="compact"] .topbar-global { padding: 4px 8px; }
+html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-motion="reduce"] *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+@media (max-width: 1050px) {
+  .topbar-global .ui-button span { display: none; }
+  .topbar-global .ui-button { min-width: 36px; }
+  .topbar-global #pill-count { display: none; }
+}
+@media (max-width: 600px) {
+  .topbar-global { flex-wrap: wrap; }
+  .settings-shell { grid-template-columns: 1fr; }
+  .settings-nav { display: none; }
+  .settings-mobile-nav { display: grid; gap: 4px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  .settings-nav button { white-space: nowrap; }
+  .settings-content { max-height: calc(100dvh - 230px); padding: 12px; }
+  .settings-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .settings-row select { max-width: 100%; width: 100%; }
+  .settings-range { grid-template-columns: minmax(0, 1fr) 44px; }
+  .settings-row input[type="checkbox"] { width: 24px; height: 24px; }
+  .ui-dialog button, .ui-dialog select, .settings-nav button, .topbar-global button, #settings-modal button, #settings-modal select { min-height: 44px; }
+  .topbar-global #btn-mission-control { max-width: 130px; }
+}
+.folder-modal-window {
+  --bg: inherit; --bg-soft: inherit; --bg-elev: inherit;
+  --border: inherit; --text: inherit; --text-dim: inherit; --accent: inherit;
+  --ok: inherit; --warn: inherit; --err: inherit;
+  background: rgb(var(--surface-rgb) / var(--panel-opacity));
+}
+.si-title { font-size: var(--ui-font-size); }
+.ui-dialog .modal-head, .modal > .modal-head, .modal > .modal-foot { background: transparent; }

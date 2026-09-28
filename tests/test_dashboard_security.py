@@ -609,7 +609,8 @@ class DashboardNewSessionContractTests(unittest.TestCase):
             self.source,
         )
         self.assertIn("let newSessionTargetSlot = null;", self.source)
-        self.assertIn("slots[requestedSlot] = newRunId;", self.source)
+        self.assertIn("slots[destination] = newRunId;", self.source)
+        self.assertIn("ui.createdSessionSlot(slots, requestedSlot, requestedLayout, layout, newRunId)", self.source)
         self.assertIn("pendingRecoveredSessions.set(newRunId, {", self.source)
 
 
@@ -671,7 +672,7 @@ class DashboardExitedSessionContractTests(unittest.TestCase):
         self.assertIn('"ui_metadata_copied"', resume_block)
 
     def test_close_pane_remains_separate_from_ending_session(self):
-        self.assertIn('class="btn-unpin" title="Close this pane">×</button>', self.source)
+        self.assertIn('class="btn-unpin" data-i18n="closePane"', self.source)
         end_start = self.source.index("async function endExitedSession(")
         end_block = self.source[end_start:self.source.index(
             "// ---------- Layout / tty toggles ----------", end_start
@@ -680,7 +681,7 @@ class DashboardExitedSessionContractTests(unittest.TestCase):
         self.assertIn("closePane(runId);", end_block)
 
     def test_live_agent_gets_a_terminate_control(self):
-        self.assertIn('class="btn-terminate"', self.source)
+        self.assertIn('class="btn-terminate danger"', self.source)
         self.assertIn("stopSession(runId, btnTerminate)", self.source)
         stop_start = self.source.index("async function stopSession(")
         stop_end = self.source.index("async function forceKillSession(", stop_start)
@@ -991,7 +992,7 @@ class DashboardInternalLinkSettingsContractTests(unittest.TestCase):
             self.source,
         )
         self.assertIn(
-            "localStorage.setItem(\n      OPEN_LINKS_INTERNALLY_KEY,",
+            "persistBrowserSetting(\n      OPEN_LINKS_INTERNALLY_KEY,",
             self.source,
         )
 
@@ -1050,7 +1051,7 @@ class DashboardPanelOpacitySettingsContractTests(unittest.TestCase):
         )
         self.assertIn("function normalizePanelOpacity(value)", self.source)
         self.assertIn(
-            'localStorage.setItem(PANEL_OPACITY_KEY, String(panelOpacityPercent));',
+            'persistBrowserSetting(PANEL_OPACITY_KEY, String(panelOpacityPercent));',
             self.source,
         )
         self.assertIn(

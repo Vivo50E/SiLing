@@ -184,15 +184,38 @@ terminal path. Wrapped HTTP(S) links highlight all visible segments on hover.
 - Link individual files or URLs when the task spans several locations.
 - Preview Markdown, source files, images, CSV data, and reports.
 - Optionally open terminal, Markdown, and linked HTTP(S) URLs in an embedded
-  Projects tab via **Settings → Open web links inside SiLing**.
+  Projects tab via **Settings → Browsing & files → Open web links inside SiLing**.
 - Adjust popup and expanded-panel background opacity from 60% to 100% via
-  **Settings → Panel opacity**; the default is fully opaque.
+  **Settings → Appearance → Panel opacity**; the default is fully opaque.
 - Keep implementation notes, validation evidence, and release artifacts close
   to the agent that produced them.
 - Recover context quickly when resuming work days later.
 
 The Dashboard does not create a second copy of your project. It remembers the
 real workspace and gives each task a stable place from which to track its work.
+
+### Workbench appearance and controls
+
+Use **New**, **Search**, and **Layout** in the toolbar. Layout retains all ten
+grid options with visual previews. **Workspace** contains save/restore, sorting,
+and close-all actions. Closing a pane does not stop its session.
+
+Each pane shows an agent text badge, a flag selector, Files, Zoom, and **More**.
+More contains reconnect, terminal palette, move/swap, close pane, and terminate.
+Lead is a role; P0/P1/P2 are priorities; Blocked/Watching/Done are manual flags.
+They still share one saved field, so selecting one replaces the previous flag.
+
+**Settings → Appearance** controls app theme (system/dark/light), density,
+interface text size, reduced motion, and language (English/Chinese for the new
+controls). These preferences are browser-local and do not restart sessions or
+change terminal palettes. **Terminal** applies a palette to open panes explicitly;
+**Notifications** holds priority reminders; **Connections & updates** holds the
+login-link copy action and verified-update controls. Displayed login links mask
+credentials, but the copied link grants access: share it only with trusted devices.
+
+The first UI/UX implementation increment and its remaining work are tracked in
+[the implementation report](docs/uiux-implementation-status.md). Mobile single-task
+navigation and service-wide settings editing are not included in this increment.
 
 ## Quick start
 
