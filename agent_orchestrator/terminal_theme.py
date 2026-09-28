@@ -129,6 +129,18 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     let pendingUrl = "";
     let startX = 0;
     let startY = 0;
+    // Plain shell panes favor native selection; other agents keep their
+    // mouse protocol. Ctrl-drag remains available to shell TUI applications.
+    const nativeSelection = (event) => {
+      try {
+        return window.frameElement?.dataset.nativeSelection === "true"
+          && event.button === 0 && !event.ctrlKey;
+      } catch (_) { return false; }
+    };
+    const originalForceSelection = selection.shouldForceSelection.bind(selection);
+    selection.shouldForceSelection = (event) => (
+      nativeSelection(event) || originalForceSelection(event)
+    );
     const originalTriggerMouseEvent = mouse.triggerMouseEvent.bind(mouse);
     mouse.triggerMouseEvent = (event) => (
       mode ? false : originalTriggerMouseEvent(event)
@@ -241,7 +253,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       if (event.button !== 0) return;
       startX = event.clientX;
       startY = event.clientY;
-      if (event.altKey) {
+      if (event.altKey || nativeSelection(event)) {
         // Older xterm.js releases still emit a mouse-release report after an
         // Option-drag selection. tmux redraws on that report and erases the
         // selection. Keep mouse reporting muted through the matching mouseup.
@@ -417,7 +429,8 @@ def patch_ttyd_index_interactions(content: bytes) -> bytes:
     report after an Option-drag selection. The resulting redraw immediately
     clears the selection. The same mouse-reporting path consumes ordinary URL
     clicks. Inject a small, idempotent compatibility layer into the HTML page;
-    it leaves keyboard input and normal tmux mouse behavior unchanged.
+    keyboard input is unchanged. Shell panes favor native text selection;
+    Ctrl-drag retains mouse reporting, as does ordinary dragging in agent panes.
     """
     if not content or _TTYD_INTERACTION_MARKER.encode() in content:
         return content

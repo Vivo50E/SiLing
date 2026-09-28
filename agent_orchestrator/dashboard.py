@@ -3059,7 +3059,7 @@ _UUID_RE = re.compile(
 def _resume_cmd_for(agent: str, resume_id: str) -> str:
     qid = shlex.quote(resume_id)
     if agent == "codex":
-        return f"codex resume --dangerously-bypass-approvals-and-sandbox {qid}"
+        return f"codex resume --no-alt-screen --dangerously-bypass-approvals-and-sandbox {qid}"
     if agent == "claude":
         return f"claude --resume {qid}"
     if agent == "cursor":

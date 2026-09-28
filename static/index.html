@@ -747,9 +747,8 @@
     padding: 6px 10px;
     border-bottom: 1px solid var(--border);
     display: flex; align-items: center; gap: 6px;
-    /* Strictly single row. If too narrow we HIDE low-priority buttons
-       (the .narrow rules below) rather than wrapping — wrapping
-       would push the input bar offscreen on small panes. */
+    /* Wide panes use one row; narrow panes explicitly separate controls
+       from the title instead of allowing unpredictable button wrapping. */
     flex-wrap: nowrap;
     overflow: hidden;
     background: var(--bg-elev);
@@ -773,6 +772,7 @@
   .pane-drag-region {
     flex: 1 1 80px;
     min-width: 0;
+    overflow: hidden;
     align-self: stretch;
     display: flex;
     align-items: center;
@@ -923,20 +923,22 @@
   .pane-state-select[data-state="watching"] { color: #3fb950; border-color: rgba(63,185,80,0.68); }
   .pane-state-select[data-state="done"] { color: var(--text-dim); border-color: var(--border); }
 
-  /* On constrained panes, reserve the left third for the session identity
-     and right-align the useful actions in the remaining two thirds.
-     The title keeps that full left allocation and ellipsizes inside it. */
+  /* Keep identity and controls on separate rows when space is constrained.
+     Left-aligned scrolling keeps priority visible and every action reachable. */
   .pane-card.narrow .pane-head {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    grid-template-columns: minmax(0, 1fr);
   }
   .pane-card.narrow .pane-head .pane-round,
   .pane-card.narrow .pane-head .pane-idle,
   .pane-card.narrow .pane-head .pane-theme-select { display: none; }
   .pane-card.narrow .pane-actions {
     width: 100%;
-    overflow: hidden;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: thin;
   }
+  .pane-card.narrow .pane-state-select { order: -1; }
 
   .pane {
     overflow: auto;
@@ -7328,8 +7330,7 @@
     `;
     grid.appendChild(card);
 
-    // At constrained widths, reserve one third for the session title and
-    // two thirds for the right-aligned actions.
+    // At constrained widths, put actions below the title to keep them reachable.
     const ro = new ResizeObserver((entries) => {
       for (const e of entries) {
         const w = e.contentRect.width;
@@ -7971,6 +7972,7 @@
         if (resp && resp.ok && resp.url) {
           const theme = terminalThemeValue(s.terminal_theme);
           const ifr = document.createElement("iframe");
+          ifr.dataset.nativeSelection = sessionIsTerminal(s) ? "true" : "false";
           ifr.src = resp.url;
           if (theme === "light") ifr.classList.add("terminal-light-frame");
           if (theme === "soft-dark") ifr.classList.add("terminal-soft-dark-frame");

@@ -122,7 +122,8 @@ case "$AGENT_TYPE" in
         # update picker can otherwise consume the first queued task before the
         # Codex prompt exists.  Keep this invocation-local so ordinary Codex
         # launches still use the user's normal update preference.
-        AGENT_CMD="codex --dangerously-bypass-approvals-and-sandbox -c check_for_update_on_startup=false"
+        # Inline rendering preserves tmux scrollback for Dashboard wheel input.
+        AGENT_CMD="codex --no-alt-screen --dangerously-bypass-approvals-and-sandbox -c check_for_update_on_startup=false"
         ;;
     terminal)
         TERMINAL_SHELL="${SHELL:-}"
@@ -192,7 +193,7 @@ if [ -n "$RESUME_ID" ]; then
         codex)
             # `codex resume` is a subcommand; keep any model/sandbox flags
             # before the session id.
-            AGENT_CMD="codex resume --dangerously-bypass-approvals-and-sandbox -c check_for_update_on_startup=false"
+            AGENT_CMD="codex resume --no-alt-screen --dangerously-bypass-approvals-and-sandbox -c check_for_update_on_startup=false"
             if [ -n "$MODEL" ]; then
                 MODEL_Q=$(printf '%q' "$MODEL")
                 AGENT_CMD="$AGENT_CMD -m $MODEL_Q"
@@ -225,7 +226,7 @@ if [ -n "$METADATA_RESUME_ID" ]; then
             METADATA_RESUME_CMD="agent --resume $METADATA_RESUME_ID"
             ;;
         codex)
-            METADATA_RESUME_CMD="codex resume --dangerously-bypass-approvals-and-sandbox -c check_for_update_on_startup=false"
+            METADATA_RESUME_CMD="codex resume --no-alt-screen --dangerously-bypass-approvals-and-sandbox -c check_for_update_on_startup=false"
             if [ -n "$MODEL" ]; then
                 METADATA_RESUME_CMD="$METADATA_RESUME_CMD -m $MODEL"
             fi

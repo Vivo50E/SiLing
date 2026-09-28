@@ -78,6 +78,13 @@ intervene.
 The browser is only the control surface. Background tmux sessions continue
 running when the tab is closed.
 
+In Terminal panes, drag to select text and use the browser's copy shortcut.
+Ctrl-drag passes mouse input to terminal applications; agent panes retain
+their mouse behavior (Option-drag on macOS selects text). Newly started or
+resumed Codex sessions use inline rendering to preserve terminal scrollback.
+Existing alternate-screen sessions must be resumed to use this launch setting;
+history never stored in the terminal buffer cannot be recovered by scrolling.
+
 ## Priority and state you can read at a glance
 
 <p align="center">

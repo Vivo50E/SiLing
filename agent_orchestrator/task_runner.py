@@ -52,7 +52,7 @@ def _resume_cmd_for(agent: str, resume_id: str) -> str:
     if agent == "cursor":
         return f"agent --resume {quoted}"
     if agent == "codex":
-        return f"codex resume --dangerously-bypass-approvals-and-sandbox {quoted}"
+        return f"codex resume --no-alt-screen --dangerously-bypass-approvals-and-sandbox {quoted}"
     return f"{shlex.quote(agent or 'agent')} --resume {quoted}"
 
 
@@ -71,7 +71,7 @@ def _build_agent_command(task: TaskConfig, native_resume_id: str = "") -> str:
     elif task.agent == "cursor":
         cmd = "agent"
     elif task.agent == "codex":
-        cmd = "codex --dangerously-bypass-approvals-and-sandbox"
+        cmd = "codex --no-alt-screen --dangerously-bypass-approvals-and-sandbox"
     else:
         cmd = task.agent
     if task.model:
