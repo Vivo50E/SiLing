@@ -4684,7 +4684,7 @@ def _agent_exited(session: str, pane_text: str | None = None) -> bool:
     if not session or not tmux_alive(session):
         return True
     text = pane_text if pane_text is not None else tmux_capture(session)
-    return _AGENT_EXIT_MARKER in text
+    return _AGENT_EXIT_MARKER in [line.strip() for line in text.splitlines()]
 
 
 def _graceful_stop_agent(session: str, agent: str,
@@ -8567,7 +8567,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             ]
         if (isinstance(value, str)
                 and parent_key in {
-                    "source_run_id", "resumed_from", "parent_run_id",
+                    "source_run_id", "resumed_from", "restarted_from", "parent_run_id",
                 }
                 and value and not parse_qualified_run_id(value)):
             return qualify_run_id(node_id, value)
@@ -8591,7 +8591,8 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                 content=await request.body(),
                 timeout=httpx.Timeout(
                     connect=node.connect_timeout_seconds,
-                    read=max(30.0, node.request_timeout_seconds),
+                    read=max(60.0 if path.endswith("/restart") else 30.0,
+                             node.request_timeout_seconds),
                     write=max(30.0, node.request_timeout_seconds),
                     pool=node.connect_timeout_seconds,
                 ),
@@ -11298,10 +11299,14 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             )
             remote_nodes.request_refresh()
             return result
+        return _resume_run(body)
+
+    def _resume_run(body: dict, source: Optional[dict] = None) -> dict:
+        """Resume a saved run; restart may supply its preflight-checked snapshot."""
         run_id = (body.get("run_id") or "").strip()
         if not run_id:
             raise HTTPException(400, "run_id is required")
-        src = _lookup_run(outputs_dir, run_id)
+        src = source if source is not None else _lookup_run(outputs_dir, run_id)
         if not src:
             raise HTTPException(404, "source run not found")
         if src.get("alive"):
@@ -11540,6 +11545,77 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             "linked_folders_run_dir": linked_copy.get("run_dir", ""),
             "linked_folders_warning": linked_copy.get("warning", ""),
         }
+
+    restart_guard = threading.Lock()
+    restarting_runs: set[str] = set()
+
+    @app.post("/api/sessions/{run_id}/restart")
+    def post_restart(run_id: str):
+        """Gracefully replace one agent process, resuming the same conversation.
+
+        Never force-kill or guess a resume id. A failed launch leaves the saved
+        source available through the normal resume flow. No automatic retry.
+        """
+        with restart_guard:
+            if run_id in restarting_runs:
+                raise HTTPException(409, "agent restart already in progress")
+            restarting_runs.add(run_id)
+        try:
+            src = _lookup_run(outputs_dir, run_id)
+            if not src:
+                raise HTTPException(404, "source run not found")
+            session = src.get("tmux_session", "")
+            if not src.get("alive") or not session or not tmux_alive(session):
+                raise HTTPException(409, "source session is not running; use Resume")
+            agent = _norm_agent(src.get("agent", ""))
+            if agent not in ("claude", "codex", "cursor"):
+                raise HTTPException(400, "restart supports Claude, Codex and Cursor agents only")
+            if not str(src.get("resume_id") or "").strip():
+                raise HTTPException(409, "no saved native resume id; agent was not stopped")
+            resume_agent = _norm_agent((src.get("resume") or {}).get("agent") or agent)
+            if resume_agent != agent:
+                raise HTTPException(409, "resume agent mismatch; agent was not stopped")
+            src = _run_with_native_model_effort(src)
+            if not str(src.get("cwd") or "").strip():
+                raise HTTPException(409, "no saved working directory; agent was not stopped")
+            cwd = _resolve_session_cwd(src.get("cwd") or "")
+            src = {**src, "cwd": cwd}
+            # Validate/persist the exact identity before interrupting anything.
+            saved = src.get("resume") or {}
+            meta = _build_resume_meta(agent, src["resume_id"],
+                                      saved.get("source") or "restart-preflight",
+                                      saved.get("source_path") or "")
+            if not _persist_resume_metadata(src, meta):
+                raise HTTPException(409, "could not save resume metadata; agent was not stopped")
+            stopped = _graceful_stop_agent(session, agent, timeout_s=12.0)
+            if not stopped.get("ok"):
+                return {"ok": False, "stage": "stop", "reason": stopped.get("reason")
+                        or "old session is still running", "restarted_from": run_id}
+            # Keep the pinned identity; do not discover a different conversation
+            # by cwd while other agents may be running in the same project.
+            if not _persist_resume_metadata(src, meta, status="stopped"):
+                return {"ok": False, "stage": "stop", "reason": "could not save stopped state",
+                        "restarted_from": run_id}
+            if tmux_alive(session):
+                tmux_kill(session)
+                kill_shadow_session(session)
+            if tmux_alive(session):
+                return {"ok": False, "stage": "stop", "reason": "could not close exited wrapper",
+                        "restarted_from": run_id}
+            try:
+                result = _resume_run({
+                    "run_id": run_id, "mode": "background",
+                    "label": src.get("display_name") or src.get("task") or "restarted",
+                }, source={**src, "alive": False})
+            except HTTPException as exc:
+                return {"ok": False, "stage": "resume", "reason": str(exc.detail),
+                        "restarted_from": run_id,
+                        "hint": "Agent stopped. Check the session list before retrying; use Resume on the saved source."}
+            session_snapshots.request_refresh()
+            return {**result, "restarted_from": run_id}
+        finally:
+            with restart_guard:
+                restarting_runs.discard(run_id)
 
     @app.post("/api/sessions/{run_id}/stop")
     def post_stop(run_id: str, timeout: float = Query(12.0, ge=2.0, le=60.0)):

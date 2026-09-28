@@ -25,6 +25,7 @@ const sessions = ['claude', 'codex', 'terminal', 'cursor', 'custom-agent'].map((
 const requests = [];
 let frameLoads = 0;
 let pendingCreation;
+let pendingRestart;
 const linkedFixtures = new Map();
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -59,6 +60,7 @@ const server = http.createServer((req, res) => {
   if (url.pathname.startsWith('/api/')) {
     res.setHeader('Content-Type', 'application/json');
     if (url.pathname === '/api/create') { pendingCreation = res; return; }
+    if (url.pathname.endsWith('/restart')) { pendingRestart = res; return; }
     let value = { ok: true };
     if (url.pathname === '/api/config') value = { projects_browser_url: '', remote_nodes: [] };
     if (url.pathname === '/api/health') value = { ttyd: true };
@@ -284,6 +286,58 @@ try {
   await pause(200);
   assert.deepEqual(await evaluate(`JSON.parse(localStorage.getItem('orch_slots')).slice(0,2)`), ['fixture-1','fixture-created'], 'A delayed create uses another empty pane');
   assert.ok(await evaluate(`document.querySelector('.empty-slot[data-slot="1"]').getAttribute('aria-busy') === 'true'`), 'Reserved pane remains pending before inventory arrives');
+  // Restart only the selected agent, preserving the draft and any moved slot.
+  assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-2"] .btn-restart-session').hidden`),true,'Terminal is not an agent restart target');
+  await evaluate(`window.restartPrompts=[];window.restartAlerts=[];window.confirm=text=>{restartPrompts.push(text);return false};window.alert=text=>restartAlerts.push(text);document.querySelector('[data-run-id="fixture-1"] .btn-pane-more').click();document.querySelector('[data-run-id="fixture-1"] .btn-restart-session').click()`);
+  assert.equal(pendingRestart,undefined,'Cancel sends no restart request');
+  assert.ok(await evaluate(`restartPrompts[0].includes('interrupts running work')`),'Confirmation explains interruption');
+  await evaluate(`window.confirm=()=>true;document.querySelector('[data-run-id="fixture-1"] .pane-input textarea').value='restart draft';document.querySelector('[data-run-id="fixture-1"] .btn-pane-more').click();document.querySelector('[data-run-id="fixture-1"] .btn-restart-session').click()`);
+  for(let i=0;i<50&&!pendingRestart;i++) await pause(50);
+  assert.ok(pendingRestart);
+  pendingRestart.end(JSON.stringify({ok:false,stage:'stop',reason:'fixture exit timeout'}));
+  pendingRestart=undefined;
+  for(let i=0;i<50;i++) {
+    if(await evaluate(`restartAlerts.length===1 && !document.querySelector('[data-run-id="fixture-1"] .btn-restart-session').disabled`)) break;
+    await pause(50);
+  }
+  assert.ok(await evaluate(`restartAlerts[0].includes('fixture exit timeout')`),'Failure is actionable');
+  assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-1"] .pane-input textarea').value`),'restart draft');
+  const beforeRestartFrames=frameLoads;
+  await evaluate(`document.querySelector('[data-run-id="fixture-1"] .btn-pane-more').click();document.querySelector('[data-run-id="fixture-1"] .btn-restart-session').click()`);
+  for(let i=0;i<50&&!pendingRestart;i++) await pause(50);
+  assert.ok(pendingRestart);
+  await evaluate(`document.querySelector('[data-run-id="fixture-1"] .btn-restart-session').dispatchEvent(new Event('click'))`);
+  assert.equal(requests.filter(r=>r.path.endsWith('/restart')).length,2,'Duplicate click while pending sends no request');
+  sessions[1].alive=false;
+  await clickIcon('#btn-refresh'); await pause(250);
+  assert.ok(await evaluate(`JSON.parse(localStorage.getItem('orch_slots')).includes('fixture-1')`),'Polling retains restarting pane');
+  assert.ok(await evaluate(`document.querySelector('[data-run-id="fixture-1"] .pane').inert`),'Restart blocks terminal input');
+  assert.ok(await evaluate(`document.querySelector('[data-run-id="fixture-1"] .pane-input textarea').disabled`));
+  await screenshot('agent-restarting');
+  await evaluate(`document.querySelector('[data-run-id="fixture-2"] .btn-pane-more').click();{const move=document.querySelector('[data-run-id="fixture-2"] .pane-move-select');move.value='0';move.dispatchEvent(new Event('change'));}`);
+  sessions.push({...sessions[1],alive:true,run_id:'fixture-restarted',tmux_session:'fixture-restarted'});
+  pendingRestart.end(JSON.stringify({ok:true,run_id:'fixture-restarted',restarted_from:'fixture-1'}));
+  for(let i=0;i<80;i++) {
+    if(await evaluate(`!!document.querySelector('[data-run-id="fixture-restarted"] iframe')`)) break;
+    await pause(100);
+  }
+  assert.equal(await evaluate(`JSON.parse(localStorage.getItem('orch_slots'))[2]`),'fixture-restarted','Restart follows moved pane instead of overwriting another pane');
+  assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-restarted"] .pane-input textarea').value`),'restart draft');
+  assert.equal(frameLoads,beforeRestartFrames+1,'Only the restarted pane attaches a new iframe');
+  pendingRestart=undefined;
+  await evaluate(`document.querySelector('[data-run-id="fixture-restarted"] .btn-pane-more').click();document.querySelector('[data-run-id="fixture-restarted"] .btn-restart-session').click()`);
+  for(let i=0;i<50&&!pendingRestart;i++) await pause(50);
+  assert.ok(pendingRestart);
+  sessions.at(-1).alive=false;
+  pendingRestart.end(JSON.stringify({ok:false,stage:'resume',reason:'fixture spawn failure',hint:'Use Resume on the saved source'}));
+  for(let i=0;i<50;i++) {
+    if(await evaluate(`restartAlerts.length===2`)) break;
+    await pause(50);
+  }
+  await clickIcon('#btn-refresh'); await pause(250);
+  assert.equal(await evaluate(`JSON.parse(localStorage.getItem('orch_slots'))[2]`),'fixture-restarted','Stopped source remains available after failed restart');
+  assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-restarted"] .pane-input textarea').value`),'restart draft','Failed launch preserves draft');
+  assert.equal(requests.filter(r=>r.path.endsWith('/kill')).length,0,'UI never escalates restart to a force kill');
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));
   }

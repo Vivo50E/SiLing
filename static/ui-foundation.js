@@ -80,6 +80,20 @@
     en: { settings: "Settings", appearance: "Appearance", terminal: "Terminal", notifications: "Notifications", browsing: "Browsing & files", connections: "Connections & updates", theme: "App theme", density: "Density", fontSize: "Interface text size", motion: "Motion", language: "Language", scope: "Saved in this browser only. Changes apply immediately; running sessions are not restarted.", reset: "Reset appearance", done: "Done", new: "New", search: "Search", layout: "Layout", workspace: "Workspace", more: "More", files: "Files", zoom: "Zoom", system: "System", dark: "Dark", light: "Light", comfortable: "Comfortable", compact: "Compact", reduce: "Reduce motion", appearanceHelp: "App appearance is separate from each terminal's palette and font.", flags: "Role, priority & manual flags", flagsHelp: "Lead = coordinator; P0 / P1 / P2 = priority, highest first. Blocked / Watching / Done are manual flags, not detected execution states. These currently share one saved flag; selecting one replaces the previous flag.", saveError: "Browser storage is unavailable. This change works for this page, but cannot be saved.", saved: "Saved in this browser.", move: "Move / swap with pane", closePane: "Close pane", closeHelp: "The session keeps running; reopen it from the list.", terminateHelp: "Terminate stops execution. Available resume metadata is kept; unsaved program state may be lost.", reconnect: "Reconnect display", terminalTheme: "Terminal theme", connectionHelp: "Copy the login address for a trusted device on the same network. It grants access to this Dashboard; do not share it publicly." },
     zh: { settings: "设置", appearance: "外观", terminal: "终端", notifications: "通知", browsing: "浏览与文件", connections: "连接与更新", theme: "应用主题", density: "界面密度", fontSize: "界面字号", motion: "动画", language: "语言", scope: "仅保存在当前浏览器。修改即时生效，不会重启正在运行的会话。", reset: "重置外观", done: "完成", new: "新建", search: "搜索", layout: "布局", workspace: "工作区", more: "更多", files: "文件", zoom: "放大", system: "跟随系统", dark: "深色", light: "浅色", comfortable: "舒适", compact: "紧凑", reduce: "减少动画", appearanceHelp: "应用外观独立于每个终端的配色和字号。", flags: "角色、优先级与人工标记", flagsHelp: "Lead = 协调者；P0 / P1 / P2 = 优先级，从高到低。Blocked / Watching / Done 是人工标记，不代表自动检测的运行状态。目前它们共用一个存储字段，选择新标记会替换旧标记。", saveError: "浏览器存储不可用。本次修改仅在当前页面生效，无法保存。", saved: "已保存到当前浏览器。", move: "移动／交换到面板", closePane: "关闭面板", closeHelp: "会话继续运行，可从列表重新打开。", terminateHelp: "终止会停止执行，并保留已有恢复信息；程序中未保存的状态可能丢失。", reconnect: "重连显示", terminalTheme: "终端主题", connectionHelp: "复制登录地址供同一网络的可信设备访问。该链接授予 Dashboard 访问权限，请勿公开分享。" },
   };
+  Object.assign(strings.en, {
+    restartAgent: "Restart agent", restartingAgent: "Restarting agent…",
+    restartHelp: "Interrupts the current turn and resumes the saved conversation in a new process to reload MCP configuration. Not a display reconnect.",
+    restartConfirm: "Restart this agent? This interrupts running work and may lose unsaved input inside the terminal. The saved conversation will be resumed in a new process. External MCP services are not restarted. Other panes are unaffected.",
+    restartStarted: "Agent launch requested; waiting for the resumed pane…",
+    restartFailed: "Restart did not complete or its result is unknown. Check the session list before retrying. If the agent stopped, use Resume on the saved source.",
+  });
+  Object.assign(strings.zh, {
+    restartAgent: "重启当前 Agent", restartingAgent: "正在重启 Agent…",
+    restartHelp: "中断当前执行，用新进程恢复已保存的对话并重新加载 MCP 配置；不是重连显示。",
+    restartConfirm: "重启当前 Agent？这会中断正在执行的任务，终端内未提交的输入可能丢失。将用新进程恢复已保存的对话，不会重启独立的 MCP 服务，也不影响其他面板。",
+    restartStarted: "已请求启动 Agent，正在等待恢复后的面板…",
+    restartFailed: "重启未完成，或结果尚不确定。请先检查会话列表，不要重复重启。若 Agent 已停止，可从已保存的原会话执行恢复。",
+  });
   let language = "en";
   function t(name) { return strings[language][name] || strings.en[name] || name; }
   function translate(root = document) {

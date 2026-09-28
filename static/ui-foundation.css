@@ -100,6 +100,9 @@ button.primary, button.toggle-on { color: var(--on-accent); }
 .pane-menu button, .pane-menu select { font-size: 13px; }
 .pane-menu .btn-unpin, .pane-menu .btn-terminate { width: 100%; }
 .pane-menu p { margin: 0; }
+.pane-menu .btn-restart-session { display: flex; align-items: center; gap: 6px; }
+.agent-restarting .pane { position: relative; }
+.agent-restarting .pane::after { content: attr(data-restart-status); position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; background: var(--bg-soft); color: var(--text); padding: 16px; text-align: center; }
 .pane-drag-region .pane-idle { font-size: 11px; }
 .pane-card.narrow .pane-drag-region .pane-idle { display: none; }
 .modal, .pane-card.zoomed-pane {

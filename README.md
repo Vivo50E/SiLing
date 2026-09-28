@@ -214,6 +214,16 @@ Each pane shows an agent glyph-and-name badge, a flag selector, Files, Zoom, and
 Agent glyphs are original UI symbols, not official brand logos. Common toolbar,
 pane, and Settings navigation icons are bundled SVGs; no icon CDN is required.
 More contains reconnect, terminal palette, move/swap, close pane, and terminate.
+**More → Restart agent** interrupts the selected Claude/Codex/Cursor process and
+launches a background session with the same saved native conversation ID. Use it
+to reload MCP configuration; independent MCP servers are not updated or restarted.
+Confirmation is required. A missing resume ID or invalid workspace prevents the
+stop; an exit timeout never triggers a force kill. The new SiLing run replaces
+only that pane, carrying its name, palette, flag, linked files, and composer draft.
+Unsaved terminal input and in-flight work may be lost; prefer restarting between
+turns. If launching fails after exit, the saved source remains available via
+Resume. Remote nodes must also support the restart endpoint. Terminal-only panes
+do not offer this action. **Reconnect display** never restarts the agent.
 Lead is a role; P0/P1/P2 are priorities; Blocked/Watching/Done are manual flags.
 They still share one saved field, so selecting one replaces the previous flag.
 

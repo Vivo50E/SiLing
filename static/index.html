@@ -2743,8 +2743,8 @@
     border-color: var(--warn);
   }
 </style>
-<link rel="stylesheet" href="/static/ui-foundation.css?v=4" />
-<script src="/static/ui-foundation.js?v=4"></script>
+<link rel="stylesheet" href="/static/ui-foundation.css?v=5" />
+<script src="/static/ui-foundation.js?v=5"></script>
 </head>
 <body>
 
@@ -4020,6 +4020,8 @@
   // appear in the inventory. Keep its requested pane slot during that gap and
   // rebuild the grid once the new run becomes visible.
   const pendingRecoveredSessions = new Map();
+  const restartingSessions = new Set();
+  const retainedRestartFailures = new Set();
 
   function mergePendingPanelStates(nextSessions) {
     for (const session of nextSessions) {
@@ -6033,11 +6035,13 @@
         const byId = new Map(sessions.map(s => [s.run_id, s]));
         let recoveredPaneAppeared = false;
         const recoveredZoomIds = [];
+        const recoveredDrafts = new Map();
         for (const [runId, pending] of pendingRecoveredSessions) {
           if (byId.has(runId)) {
             pendingRecoveredSessions.delete(runId);
             recoveredPaneAppeared = true;
             if (pending.zoom) recoveredZoomIds.push(runId);
+            if (typeof pending.draft === "string") recoveredDrafts.set(runId, pending.draft);
           } else if (Number(pending.expiresAt || 0) <= Date.now()) {
             pendingRecoveredSessions.delete(runId);
           }
@@ -6075,6 +6079,8 @@
         let changed = false;
         for (let i = 0; i < slots.length; i++) {
           if (slots[i] && !alive.has(slots[i])
+              && !restartingSessions.has(slots[i])
+              && !retainedRestartFailures.has(slots[i])
               && !retainPendingRecoveredSlot(slots[i])
               && !retainMissingRemoteSlot(slots[i], remoteNodeStates)) {
             slots[i] = null;
@@ -6083,6 +6089,10 @@
         }
         if (changed) saveSlots();
         if (changed || recoveredPaneAppeared || firstSnapshot) renderGrid();
+        for (const [runId, draft] of recoveredDrafts) {
+          const input = paneCtrls.get(runId)?.inputEl;
+          if (input && !input.value) input.value = draft;
+        }
         for (const runId of recoveredZoomIds) {
           requestAnimationFrame(() => {
             const ctrl = paneCtrls.get(runId);
@@ -6374,6 +6384,11 @@
       terminateSession.hidden = !(s.alive && s.agent_exited !== true);
       terminateSession.disabled = !!(s.remote && s.node_online === false);
     }
+    const restartSession = card.querySelector(".btn-restart-session");
+    if (restartSession) {
+      restartSession.hidden = !s.alive || sessionIsTerminal(s) || s.agent_exited === true;
+      restartSession.disabled = restartingSessions.has(s.run_id) || !!(s.remote && s.node_online === false);
+    }
     updatePanelStateSelect(ctrl, s.panel_state || "");
     applyPaneTerminalTheme(ctrl, s);
 
@@ -6391,6 +6406,11 @@
     if (stateSelect) stateSelect.disabled = disable || !["task", "run"].includes(s.kind);
     const themeSelect = card.querySelector(".pane-theme-select");
     if (themeSelect) themeSelect.disabled = disable || !["task", "run"].includes(s.kind);
+    if (restartingSessions.has(s.run_id)) {
+      card.querySelectorAll("button, select, textarea").forEach(el => { el.disabled = true; });
+    } else {
+      ctrl.inputEl.disabled = disable;
+    }
     if (wasRemoteOffline && s.remote && s.node_online !== false) {
       void attachPaneView(ctrl, { priority: true });
     }
@@ -7463,6 +7483,8 @@
             <p class="ui-secondary" data-i18n="closeHelp"></p>
           </div>
           <div class="ui-menu-group">
+            <button class="btn-restart-session" ${terminalSession || s.agent_exited === true ? "hidden" : ""} data-dialog-close>${ui.icon("refresh")}<span data-i18n="restartAgent">Restart agent</span></button>
+            <p class="ui-secondary" data-i18n="restartHelp" ${terminalSession ? "hidden" : ""}></p>
             <button class="btn-recover-session" ${s.agent_exited === true ? "" : "hidden"} data-dialog-close>Resume exited agent</button>
             <button class="btn-end-session" ${s.agent_exited === true ? "" : "hidden"} data-dialog-close>End exited session</button>
             <button class="btn-terminate danger" ${s.agent_exited === true ? "hidden" : ""} data-dialog-close>Terminate session</button>
@@ -7530,6 +7552,7 @@
     const btnReload = card.querySelector(".btn-reload");
     const btnFolders = card.querySelector(".btn-folders");
     const btnRecoverSession = card.querySelector(".btn-recover-session");
+    const btnRestartSession = card.querySelector(".btn-restart-session");
     const btnEndSession = card.querySelector(".btn-end-session");
     const btnTerminate = card.querySelector(".btn-terminate");
     const btnUnpin = card.querySelector(".btn-unpin");
@@ -7558,6 +7581,7 @@
     const linkedCount = (s.linked_folders || []).length;
     btnFolders.innerHTML = ui.buttonContent("folder", linkedCount ? `files ${linkedCount}` : "files");
     btnRecoverSession.disabled = !!(s.remote && s.node_online === false);
+    btnRestartSession.disabled = !!(s.remote && s.node_online === false);
     btnEndSession.disabled = !!(s.remote && s.node_online === false);
     btnTerminate.disabled = !!(s.remote && s.node_online === false);
 
@@ -7741,6 +7765,7 @@
       }
     });
     btnFolders.addEventListener("click", () => openFolderViewer(runId));
+    btnRestartSession.addEventListener("click", () => restartAgentSession(runId));
     btnRecoverSession.addEventListener("click", () => recoverExitedSession(
       runId, btnRecoverSession, btnEndSession
     ));
@@ -8026,6 +8051,7 @@
   // the card from the DOM, and forget its controller. Safe to call with
   // an id that isn't currently open (no-op).
   function closePane(runId) {
+    retainedRestartFailures.delete(runId);
     const ctrl = paneCtrls.get(runId);
     if (!ctrl) return;
     if (paneZoomState && paneZoomState.card === ctrl.cardEl) closePaneZoom();
@@ -8683,6 +8709,58 @@
     try {
       return await api(`/api/sessions/${encodeURIComponent(runId)}/kill`, { method: "POST" });
     } catch (e) { alert("force kill failed: " + e.message); }
+  }
+
+  async function restartAgentSession(runId) {
+    const s = sessions.find(x => x.run_id === runId);
+    const ctrl = paneCtrls.get(runId);
+    if (!s?.alive || !ctrl || sessionIsTerminal(s) || restartingSessions.has(runId)) return;
+    const name = s.display_name || s.task || s.run_name || "session";
+    if (!confirm(`${ui.t("restartConfirm")}\n\n${name}`)) return;
+    restartingSessions.add(runId);
+    retainedRestartFailures.delete(runId);
+    const draft = ctrl.inputEl.value;
+    const wasZoomed = paneZoomState?.card === ctrl.cardEl;
+    const controls = [...ctrl.cardEl.querySelectorAll("button, select, textarea")];
+    const disabledBefore = controls.map(el => el.disabled);
+    controls.forEach(el => { el.disabled = true; });
+    ctrl.cardEl.classList.add("agent-restarting");
+    ctrl.cardEl.setAttribute("aria-busy", "true");
+    ctrl.paneEl.dataset.restartStatus = ui.t("restartingAgent");
+    ctrl.paneEl.inert = true;
+    ctrl.inputEl.blur();
+    const abort = new AbortController();
+    const timeout = setTimeout(() => abort.abort(), 75000);
+    try {
+      const result = await api(`/api/sessions/${encodeURIComponent(runId)}/restart`, { method: "POST", signal: abort.signal });
+      if (!result?.ok || !result.run_id) {
+        throw new Error([result?.reason, result?.hint].filter(Boolean).join("\n") || "Restart failed");
+      }
+      const newRunId = String(result.run_id);
+      // The user may have moved/closed this pane while the request was pending.
+      const currentSlot = slotOf(runId);
+      if (currentSlot >= 0) {
+        slots[currentSlot] = newRunId;
+        pendingRecoveredSessions.set(newRunId, { expiresAt: Date.now() + 30000, zoom: wasZoomed, draft });
+      }
+      closePane(runId);
+      saveSlots(); renderList(); renderGrid();
+      const input = paneCtrls.get(newRunId)?.inputEl;
+      if (input && !input.value) input.value = draft;
+      $("conn-status").textContent = ui.t("restartStarted");
+    } catch (error) {
+      // Keep the original pane/draft available even if the agent has stopped.
+      retainedRestartFailures.add(runId);
+      alert(`${ui.t("restartFailed")}\n\n${error.message}`);
+    } finally {
+      clearTimeout(timeout);
+      restartingSessions.delete(runId);
+      controls.forEach((el, i) => { if (el.isConnected) el.disabled = disabledBefore[i]; });
+      ctrl.cardEl.classList.remove("agent-restarting");
+      ctrl.cardEl.removeAttribute("aria-busy");
+      ctrl.paneEl.inert = false;
+      void refreshList();
+    }
   }
 
   async function recoverExitedSession(runId, button, endButton) {
