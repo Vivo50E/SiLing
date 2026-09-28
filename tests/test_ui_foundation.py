@@ -62,6 +62,40 @@ class UIFoundationTests(unittest.TestCase):
           assert.ok(badge.includes("&lt;img"));
           assert.ok(!badge.includes("<img"));
           assert.equal(ui.agentIdentity(null).label,"Agent");
+          for (const name of ["__proto__", "constructor", "toString"]) {
+            assert.deepEqual(ui.agentIdentity(name), {kind:"unknown",label:name});
+          }
+          const marks = ["claude", "codex", "cursor", "terminal", "custom"].map(name => {
+            const html=ui.agentBadge(name);
+            assert.ok(html.includes('class="agent-name"'));
+            assert.ok(html.includes('aria-hidden="true"'));
+            return html.match(/<path d="([^"]+)"/)[1];
+          });
+          assert.equal(new Set(marks).size,5);
+        ''')
+
+    def test_icons_and_button_labels_are_safe_and_have_consistent_geometry(self):
+        self.run_js('''
+          for(const name of ["__proto__","constructor","<img>",null]) {
+            assert.equal(ui.icon(name),ui.icon("more"));
+          }
+          for(const name of ["bell","bellOff","bellBlocked","folder","refresh","close"]) {
+            assert.ok(ui.icon(name).includes('viewBox="0 0 24 24"'));
+            assert.ok(ui.icon(name).includes('focusable="false"'));
+          }
+          assert.ok(ui.buttonContent("folder",'<img src=x>').includes("&lt;img src=x&gt;"));
+          assert.ok(!ui.buttonContent("folder",'<img src=x>').includes("<img"));
+        ''')
+
+    def test_notification_rendering_preserves_distinct_toggle_and_permission_states(self):
+        self.run_js('''
+          const attrs={};const button={setAttribute:(k,v)=>attrs[k]=v};
+          for(const [enabled,permission,icon] of [[false,"default","bellOff"],[true,"granted","bell"],[true,"denied","bellBlocked"],[false,"denied","bellOff"]]) {
+            ui.notificationButton(button,enabled,permission);
+            assert.equal(button.innerHTML,ui.icon(icon));
+            assert.equal(attrs["aria-pressed"],String(enabled));
+            assert.equal(attrs["aria-label"].includes("blocked"),enabled&&permission==="denied");
+          }
         ''')
 
     def test_creating_in_a_changed_layout_never_overwrites_an_existing_pane(self):

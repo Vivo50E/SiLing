@@ -78,7 +78,7 @@ const server = http.createServer((req, res) => {
   if (!target.startsWith(root + path.sep) || !fs.existsSync(target) || !fs.statSync(target).isFile()) {
     res.writeHead(404); return res.end();
   }
-  res.setHeader('Content-Type', target.endsWith('.css') ? 'text/css' : target.endsWith('.js') ? 'text/javascript' : 'text/html');
+  res.setHeader('Content-Type', target.endsWith('.svg') ? 'image/svg+xml' : target.endsWith('.css') ? 'text/css' : target.endsWith('.js') ? 'text/javascript' : 'text/html');
   res.end(fs.readFileSync(target));
 });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -119,6 +119,11 @@ try {
   const screenshot = async name => {
     const shot = await cdp('Page.captureScreenshot', { format: 'png' });
     fs.writeFileSync(path.join(artifacts, name + '.png'), Buffer.from(shot.data, 'base64'));
+  };
+  const clickIcon = async selector => {
+    const point = await evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(selector)}+' svg').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+    await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 });
+    await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: 1 });
   };
   await cdp('Page.enable'); await cdp('Runtime.enable');
   await viewport(1280, 800);
@@ -207,6 +212,37 @@ try {
   assert.ok(await evaluate(`(()=>{const e=document.querySelector('.topbar-global');return e.scrollWidth<=e.clientWidth})()`), 'Toolbar must fit at 1280px');
   assert.equal(await evaluate(`document.querySelectorAll('#btn-toggle-tty').length`), 1);
   assert.equal(await evaluate(`document.querySelectorAll('.pane-drag-region .agent-badge').length`), 4);
+  assert.ok(await evaluate(`document.querySelector('.brand-mark').naturalWidth > 0`), 'Bundled brand SVG loads');
+  assert.equal(await evaluate(`document.querySelectorAll('.pane-drag-region .agent-glyph svg').length`), 4);
+  assert.equal(await evaluate(`document.querySelectorAll('.si-agent .agent-glyph svg').length`), 5);
+  await evaluate(`document.querySelector('#btn-new-primary').focus()`);
+  await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+  await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+  assert.equal(await evaluate(`document.activeElement.id`),'btn-search-primary');
+  assert.equal(await evaluate(`getComputedStyle(document.activeElement).outlineStyle`),'solid','Keyboard focus stays visible');
+  await evaluate(`document.querySelector('#btn-organize').disabled=true`);
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('#btn-organize')).cursor`),'not-allowed');
+  await evaluate(`document.querySelector('#btn-organize').disabled=false`);
+  // Exercise the actual notification handler with isolated permission states.
+  await evaluate(`Object.defineProperty(Notification,'permission',{configurable:true,get:()=> 'granted'})`);
+  await clickIcon('#btn-notif');
+  assert.equal(await evaluate(`document.querySelector('#btn-notif').getAttribute('aria-pressed')`), 'true');
+  assert.equal(await evaluate(`document.querySelector('#btn-notif path').getAttribute('d')`), await evaluate(`new DOMParser().parseFromString(SiLingUI.icon('bell'),'text/html').querySelector('path').getAttribute('d')`));
+  await clickIcon('#btn-notif');
+  await evaluate(`Object.defineProperty(Notification,'permission',{configurable:true,get:()=> 'denied'})`);
+  await clickIcon('#btn-notif');
+  assert.ok(await evaluate(`document.querySelector('#btn-notif').getAttribute('aria-label').includes('blocked')`));
+  assert.equal(await evaluate(`document.querySelector('#btn-notif path').getAttribute('d')`), await evaluate(`new DOMParser().parseFromString(SiLingUI.icon('bellBlocked'),'text/html').querySelector('path').getAttribute('d')`));
+  await clickIcon('#btn-notif');
+  sessions[0].linked_folders = [{path:'/fixture/report.md',type:'file',label:'Report'}];
+  await clickIcon('#btn-refresh');
+  for(let i=0;i<50;i++) {
+    if(await evaluate(`document.querySelector('[data-run-id="fixture-0"] .btn-folders').textContent==='files 1'`)) break;
+    await pause(100);
+  }
+  assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-0"] .btn-folders').textContent`),'files 1');
+  assert.equal(await evaluate(`document.querySelectorAll('.btn-folders svg').length`),4,'Polling keeps file icons');
+  assert.equal(await evaluate(`document.querySelectorAll('#btn-mission-control svg').length`),1,'Polling keeps mission icon');
   const frames = frameLoads;
   await evaluate(`document.querySelector('#btn-search-primary').click();const search=document.querySelector('#sess-search-input');search.value='codex';search.dispatchEvent(new Event('input'));`);
   await pause(150);
@@ -215,6 +251,9 @@ try {
   assert.equal(await evaluate(`document.querySelectorAll('.session-item').length`), 5);
   await evaluate(`document.querySelector('.pane-input textarea').value='preserved draft';document.querySelector('#btn-settings').click();`);
   assert.equal(await evaluate(`document.querySelector('#settings-modal').open`), true);
+  await clickIcon('[data-settings-section="terminal"]');
+  assert.equal(await evaluate(`document.querySelector('#settings-section-terminal').hidden`),false);
+  await clickIcon('[data-settings-section="appearance"]');
   for (let i = 0; i < 18; i++) {
     await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
     await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
@@ -228,12 +267,29 @@ try {
   assert.equal(await evaluate(`JSON.parse(localStorage.getItem('siling_appearance_v1')).fontSize`), 16, 'Failed save leaves persisted preference intact');
   await evaluate(`{Storage.prototype.setItem=window.realSetItem;const c=document.querySelector('[data-appearance="fontSize"]');c.value='16';c.dispatchEvent(new Event('change'));}`);
   await screenshot('settings-light');
+  assert.equal(await evaluate(`document.querySelectorAll('.settings-nav svg').length`),5,'Applying appearance keeps navigation icons');
+  await evaluate(`{const c=document.querySelector('[data-appearance="language"]');c.value='zh';c.dispatchEvent(new Event('change'));}`);
+  assert.equal(await evaluate(`document.querySelector('[data-settings-section="appearance"] span').textContent`),'外观');
+  assert.equal(await evaluate(`document.querySelectorAll('.settings-nav svg').length`),5,'Translation keeps icons');
+  await evaluate(`{const c=document.querySelector('[data-appearance="language"]');c.value='en';c.dispatchEvent(new Event('change'));}`);
+  await evaluate(`{const c=document.querySelector('[data-appearance="theme"]');c.value='system';c.dispatchEvent(new Event('change'));}`);
+  for(const [scheme,foreground] of [['dark','rgb(13, 17, 23)'],['light','rgb(255, 255, 255)']]) {
+    await cdp('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:scheme}]});
+    assert.equal(await evaluate(`getComputedStyle(document.querySelector('#btn-new-primary')).color`),foreground,'System theme uses readable foreground on primary buttons');
+  }
+  await evaluate(`{const c=document.querySelector('[data-appearance="theme"]');c.value='light';c.dispatchEvent(new Event('change'));}`);
   await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
   await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
   assert.equal(await evaluate(`document.querySelector('#settings-modal').open`), false);
+  // Native dialog queues its close event; wait for the registered focus restore.
+  for(let i=0;i<50;i++) {
+    if(await evaluate(`document.activeElement.id==='btn-settings'`)) break;
+    await pause(20);
+  }
   assert.equal(await evaluate(`document.activeElement.id`), 'btn-settings');
   assert.equal(await evaluate(`document.querySelector('.pane-input textarea').value`), 'preserved draft');
   assert.equal(frameLoads, frames, 'Appearance must not reload terminal frames');
+  await screenshot('desktop-light');
   await evaluate(`document.querySelector('.btn-pane-more').click()`);
   assert.equal(await evaluate(`document.querySelector('.pane-menu').open`), true);
   await screenshot('pane-actions');
@@ -249,10 +305,12 @@ try {
   for (const [width, height] of [[1440,900],[768,1024],[390,844],[320,740]]) {
     await viewport(width, height);
     assert.ok(await evaluate(`document.documentElement.scrollWidth <= innerWidth`), `Page overflow at ${width}`);
-    await evaluate(`document.querySelector('.btn-pane-more').click()`);
+    await clickIcon('.btn-pane-more');
     assert.ok(await evaluate(`(()=>{const r=document.querySelector('.pane-menu[open]').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight})()`), `Menu clipped at ${width}`);
     await screenshot(`pane-menu-${width}`);
-    await evaluate(`document.querySelector('.pane-menu[open]').close();document.querySelector('#btn-settings').click()`);
+    await clickIcon('.pane-menu[open] [data-dialog-close]');
+    assert.equal(await evaluate(`!!document.querySelector('.pane-menu[open]')`),false,'Clicking close SVG dismisses dialog');
+    await evaluate(`document.querySelector('#btn-settings').click()`);
     assert.ok(await evaluate(`(()=>{const r=document.querySelector('#settings-modal .modal').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight})()`), `Settings clipped at ${width}`);
     await screenshot(`settings-${width}`);
     await evaluate(`document.querySelector('#settings-close-2').click()`);

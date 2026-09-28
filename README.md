@@ -210,7 +210,9 @@ Use **New**, **Search**, and **Layout** in the toolbar. Layout retains all ten
 grid options with visual previews. **Workspace** contains save/restore, sorting,
 and close-all actions. Closing a pane does not stop its session.
 
-Each pane shows an agent text badge, a flag selector, Files, Zoom, and **More**.
+Each pane shows an agent glyph-and-name badge, a flag selector, Files, Zoom, and **More**.
+Agent glyphs are original UI symbols, not official brand logos. Common toolbar,
+pane, and Settings navigation icons are bundled SVGs; no icon CDN is required.
 More contains reconnect, terminal palette, move/swap, close pane, and terminate.
 Lead is a role; P0/P1/P2 are priorities; Blocked/Watching/Done are manual flags.
 They still share one saved field, so selecting one replaces the previous flag.

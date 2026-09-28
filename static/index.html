@@ -2743,8 +2743,8 @@
     border-color: var(--warn);
   }
 </style>
-<link rel="stylesheet" href="/static/ui-foundation.css?v=1" />
-<script src="/static/ui-foundation.js?v=1"></script>
+<link rel="stylesheet" href="/static/ui-foundation.css?v=2" />
+<script src="/static/ui-foundation.js?v=2"></script>
 </head>
 <body>
 
@@ -2754,12 +2754,12 @@
 <div class="app">
   <aside class="sidebar" id="sidebar">
     <div class="brand">
-      <h1>🎛 SiLing</h1>
+      <h1><img class="brand-mark" src="/static/icons/orchestrator.svg" alt="" />SiLing</h1>
       <div class="ctrls">
-        <button id="btn-notif" title="Idle notifications (off)">🔕</button>
-        <button id="btn-organize" title="Run `siling organize`: an AI agent classifies ended sessions into projects/">📁</button>
-        <button id="btn-new" title="New session (opens a new iTerm window)">+</button>
-        <button id="btn-refresh" title="Refresh list">↻</button>
+        <button id="btn-notif" class="ui-icon-button" title="Agent notifications (off)" aria-label="Agent notifications: off"></button>
+        <button id="btn-organize" class="ui-icon-button" data-ui-icon="folder" aria-label="Organize ended sessions" title="Run `siling organize`: an AI agent classifies ended sessions into projects/"></button>
+        <button id="btn-new" class="ui-icon-button" data-ui-icon="plus" aria-label="New session" title="New session"></button>
+        <button id="btn-refresh" class="ui-icon-button" data-ui-icon="refresh" aria-label="Refresh list" title="Refresh list"></button>
       </div>
     </div>
     <div class="sess-search" id="sess-search">
@@ -2903,15 +2903,15 @@
     <div class="modal">
       <div class="modal-head">
         <div class="modal-title" id="settings-title" data-i18n="settings">Settings</div>
-        <button class="modal-close" id="settings-close" title="Close">×</button>
+        <button class="modal-close ui-icon-button" id="settings-close" title="Close" aria-label="Close settings" data-ui-icon="close"></button>
       </div>
       <div class="settings-shell">
         <nav class="settings-nav" aria-label="Settings sections">
-          <button data-settings-section="appearance" aria-current="true" data-i18n="appearance">Appearance</button>
-          <button data-settings-section="terminal" data-i18n="terminal">Terminal</button>
-          <button data-settings-section="notifications" data-i18n="notifications">Notifications</button>
-          <button data-settings-section="browsing" data-i18n="browsing">Browsing &amp; files</button>
-          <button data-settings-section="connections" data-i18n="connections">Connections &amp; updates</button>
+          <button data-settings-section="appearance" aria-current="true" data-ui-icon="palette"><span data-i18n="appearance">Appearance</span></button>
+          <button data-settings-section="terminal" data-ui-icon="agent-terminal"><span data-i18n="terminal">Terminal</span></button>
+          <button data-settings-section="notifications" data-ui-icon="bell"><span data-i18n="notifications">Notifications</span></button>
+          <button data-settings-section="browsing" data-ui-icon="folder"><span data-i18n="browsing">Browsing &amp; files</span></button>
+          <button data-settings-section="connections" data-ui-icon="connection"><span data-i18n="connections">Connections &amp; updates</span></button>
         </nav>
         <label class="settings-mobile-nav"><span class="ui-secondary" data-i18n="settings">Settings</span><select id="settings-section-picker" aria-label="Settings section"><option value="appearance" data-i18n="appearance">Appearance</option><option value="terminal" data-i18n="terminal">Terminal</option><option value="notifications" data-i18n="notifications">Notifications</option><option value="browsing" data-i18n="browsing">Browsing &amp; files</option><option value="connections" data-i18n="connections">Connections &amp; updates</option></select></label>
         <div class="settings-content">
@@ -4907,7 +4907,7 @@
     if (!btn) return;
     const rows = missionRows();
     const attention = rows.filter(s => missionInfo(s).needs_attention).length;
-    btn.textContent = attention ? `mission ${attention}!` : `mission ${rows.length}`;
+    btn.innerHTML = ui.buttonContent("activity", attention ? `mission ${attention}!` : `mission ${rows.length}`);
     btn.classList.toggle("warn", attention > 0);
     btn.title = attention
       ? `${attention} active session${attention === 1 ? " needs" : "s need"} attention`
@@ -5012,7 +5012,7 @@
           </div>
           ${evidence ? `<div class="mission-evidence" title="${escapeHtml(evidence)}">${escapeHtml(evidence)}</div>` : ""}
           <div class="mission-card-foot">
-            <span class="agent">${escapeHtml(s.agent || "agent")}${s.model ? ` · ${escapeHtml(s.model)}` : ""}</span>
+            <span class="agent">${ui.agentBadge(s.agent)}${s.model ? ` · ${escapeHtml(s.model)}` : ""}</span>
             <button class="mission-open" data-run-id="${escapeHtml(s.run_id)}">Open pane</button>
           </div>
         </article>`;
@@ -5464,7 +5464,7 @@
       btnEl.classList.toggle("on", enabled);
       btnEl.classList.toggle("denied",
         enabled && permState === "denied");
-      btnEl.textContent = enabled ? "🔔" : "🔕";
+      ui.notificationButton(btnEl, enabled, permState);
       const lines = [
         enabled ? "Agent notifications: ON"
                 : "Agent notifications: OFF",
@@ -6358,7 +6358,7 @@
     updatePaneIdleBadge(ctrl);
     const linkedCount = (s.linked_folders || []).length;
     const folders = card.querySelector(".btn-folders");
-    if (folders) folders.textContent = linkedCount ? `files ${linkedCount}` : "files";
+    if (folders) folders.innerHTML = ui.buttonContent("folder", linkedCount ? `files ${linkedCount}` : "files");
     const endSession = card.querySelector(".btn-end-session");
     if (endSession) {
       endSession.hidden = !(s.alive && s.agent_exited === true);
@@ -6417,7 +6417,7 @@
           <span class="dot ${_dot.classes}" title="${_dot.title}" aria-label="${_dot.title}"></span>
           <span class="si-title" title="${escapeHtml(display)}">${escapeHtml(display)}</span>
           ${stateBadge}
-          ${canLabel ? `<button class="btn-rename" title="Rename (label)">✎</button>` : ""}
+          ${canLabel ? `<button class="btn-rename" title="Rename (label)" aria-label="Rename session">${ui.icon("edit")}</button>` : ""}
         </div>
         <div class="si-agent">${ui.agentBadge(s.agent)}<span class="ui-secondary">${escapeHtml(_dot.title)}</span></div>
       </div>
@@ -7452,15 +7452,15 @@
           <button class="btn-sync-project" ${s.remote ? "hidden" : ""} title="Sync this session's project and publish a remote resume handoff when idle (Shift-click: sync safe items now)">Sync</button>
       </div>
       <dialog class="ui-dialog pane-menu" id="pane-menu-${++paneMenuSerial}" aria-label="Pane actions">
-        <div class="modal-head"><h2>${ui.agentBadge(s.agent)} ${escapeHtml(s.display_name || s.task || s.run_name)}</h2><button data-dialog-close aria-label="Close">×</button></div>
+        <div class="modal-head"><h2>${ui.agentBadge(s.agent)} ${escapeHtml(s.display_name || s.task || s.run_name)}</h2><button class="ui-icon-button" data-dialog-close aria-label="Close">${ui.icon("close")}</button></div>
         <div class="modal-body">
           <div class="ui-menu-group">
             <label><span data-i18n="terminalTheme">Terminal theme</span><select class="pane-theme-select" data-theme="${escapeHtml(terminalThemeValue(s.terminal_theme))}">${terminalThemeOptionsHtml(s.terminal_theme)}</select></label>
-            <button class="btn-reload" data-i18n="reconnect" data-dialog-close>Reconnect display</button>
+            <button class="btn-reload" data-dialog-close>${ui.icon("refresh")}<span data-i18n="reconnect">Reconnect display</span></button>
             <label><span data-i18n="move">Move / swap with pane</span><select class="pane-move-select"></select></label>
           </div>
           <div class="ui-menu-group">
-            <button class="btn-unpin" data-i18n="closePane" data-dialog-close>Close pane</button>
+            <button class="btn-unpin" data-dialog-close>${ui.icon("close")}<span data-i18n="closePane">Close pane</span></button>
             <p class="ui-secondary" data-i18n="closeHelp"></p>
           </div>
           <div class="ui-menu-group">
@@ -7597,7 +7597,7 @@
     stateSelect.disabled = !["task", "run"].includes(s.kind);
     themeSelect.disabled = !["task", "run"].includes(s.kind);
     const linkedCount = (s.linked_folders || []).length;
-    btnFolders.textContent = linkedCount ? `files ${linkedCount}` : "files";
+    btnFolders.innerHTML = ui.buttonContent("folder", linkedCount ? `files ${linkedCount}` : "files");
     btnRecoverSession.disabled = !!(s.remote && s.node_online === false);
     btnEndSession.disabled = !!(s.remote && s.node_online === false);
     btnTerminate.disabled = !!(s.remote && s.node_online === false);
