@@ -129,8 +129,8 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     let pendingUrl = "";
     let startX = 0;
     let startY = 0;
-    // Plain shell panes favor native selection; other agents keep their
-    // mouse protocol. Ctrl-drag remains available to shell TUI applications.
+    // Shell and Codex panes favor native selection; other agents keep their
+    // mouse protocol. Ctrl-drag remains available to terminal applications.
     const nativeSelection = (event) => {
       try {
         return window.frameElement?.dataset.nativeSelection === "true"
@@ -429,8 +429,8 @@ def patch_ttyd_index_interactions(content: bytes) -> bytes:
     report after an Option-drag selection. The resulting redraw immediately
     clears the selection. The same mouse-reporting path consumes ordinary URL
     clicks. Inject a small, idempotent compatibility layer into the HTML page;
-    keyboard input is unchanged. Shell panes favor native text selection;
-    Ctrl-drag retains mouse reporting, as does ordinary dragging in agent panes.
+    keyboard input is unchanged. Shell and Codex panes favor native selection;
+    Ctrl-drag retains mouse reporting, as does dragging in other agent panes.
     """
     if not content or _TTYD_INTERACTION_MARKER.encode() in content:
         return content

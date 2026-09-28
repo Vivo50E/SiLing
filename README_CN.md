@@ -138,8 +138,8 @@ SiLing 会保留多层恢复信息：
 由于不同 agent CLI 暴露的 metadata 不完全一致，恢复能力是 best-effort；但
 Dashboard 会明确展示这些状态，而不是让它们消失在 terminal scrollback 里。
 
-Terminal pane 支持普通拖选文本后使用浏览器复制快捷键；Ctrl+拖选可向终端程序
-传递鼠标操作。Agent pane 保留原有鼠标行为，macOS 可用 Option+拖选选择文本。
+Terminal 和 Codex pane 支持普通拖选文本后使用浏览器复制快捷键；Ctrl+拖选可向终端程序
+传递鼠标操作。其他 Agent pane 保留原有鼠标行为，macOS 可用 Option+拖选选择文本。
 新建或恢复的 Codex session 使用 inline 模式保留终端滚动历史；已有 alternate-screen
 session 需要恢复后才使用新启动参数，未存入终端缓冲区的内容无法通过滚动补回。
 

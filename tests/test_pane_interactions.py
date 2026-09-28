@@ -22,7 +22,7 @@ class PaneInteractionTests(unittest.TestCase):
         self.assertIn("overflow-x: auto", actions)
         self.assertIn("justify-content: flex-start", actions)
         self.assertIn("order: -1", rule(".pane-card.narrow .pane-state-select"))
-        self.assertIn('ifr.dataset.nativeSelection = sessionIsTerminal(s) ? "true" : "false"', source)
+        self.assertIn('ifr.dataset.nativeSelection = sessionPrefersNativeSelection(s) ? "true" : "false"', source)
 
     def test_codex_launch_and_resume_preserve_scrollback(self):
         task = TaskConfig(name="scroll", initial_prompt="test", agent="codex",
@@ -37,10 +37,20 @@ class PaneInteractionTests(unittest.TestCase):
             self.assertNotIn("--no-alt-screen", module._resume_cmd_for("claude", "id"))
 
     @unittest.skipUnless(shutil.which("node"), "Node.js required")
-    def test_shell_selection_mutes_mouse_reports_without_changing_agent_mouse(self):
+    def test_shell_and_codex_selection_preserves_other_agent_mouse(self):
         script = terminal_theme._TTYD_INTERACTION_SCRIPT.split(">", 1)[1].rsplit("</script>", 1)[0]
+        source = (Path(__file__).resolve().parents[1] / "static" / "index.html").read_text()
+        policy = re.search(r"  function sessionPrefersNativeSelection\(s\) \{.*?\n  \}", source, re.S).group(0)
         harness = r"""
 const assert = require('node:assert/strict');
+eval(POLICY);
+for (const agent of ['terminal', 'codex', ' Codex ']) {
+  assert.equal(sessionPrefersNativeSelection({agent}), true);
+}
+for (const agent of ['claude', 'cursor', '', undefined]) {
+  assert.equal(sessionPrefersNativeSelection({agent}), false);
+}
+assert.equal(sessionPrefersNativeSelection(null), false);
 const screenEvents = {}, documentEvents = {}, timers = [];
 let reported = 0;
 const selection = {
@@ -50,7 +60,7 @@ const selection = {
 const mouse = { triggerMouseEvent: () => { reported++; return true; } };
 global.window = {
   term: { _core: { coreMouseService: mouse, _selectionService: selection } },
-  frameElement: { dataset: { nativeSelection: 'true' } },
+  frameElement: { dataset: { nativeSelection: String(sessionPrefersNativeSelection({agent: 'codex'})) } },
   addEventListener: () => {},
 };
 global.document = {
@@ -81,7 +91,7 @@ mouse.triggerMouseEvent({});
 assert.equal(reported, 2, 'agent mouse protocol remains unchanged');
 """
         result = subprocess.run(
-            ["node", "-e", "const SOURCE = " + json.dumps(script) + ";\n" + harness],
+            ["node", "-e", "const POLICY = " + json.dumps(policy) + ";\nconst SOURCE = " + json.dumps(script) + ";\n" + harness],
             capture_output=True, text=True, timeout=10,
         )
         self.assertEqual(result.returncode, 0, result.stderr)

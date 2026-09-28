@@ -6165,6 +6165,10 @@
     return String(s?.agent || "").trim().toLowerCase() === "terminal";
   }
 
+  function sessionPrefersNativeSelection(s) {
+    return ["terminal", "codex"].includes(String(s?.agent || "").trim().toLowerCase());
+  }
+
   function sessionDotPresentation(s) {
     const activity = sessionActivityMode(s);
     if (activity === "foreground") {
@@ -7972,7 +7976,7 @@
         if (resp && resp.ok && resp.url) {
           const theme = terminalThemeValue(s.terminal_theme);
           const ifr = document.createElement("iframe");
-          ifr.dataset.nativeSelection = sessionIsTerminal(s) ? "true" : "false";
+          ifr.dataset.nativeSelection = sessionPrefersNativeSelection(s) ? "true" : "false";
           ifr.src = resp.url;
           if (theme === "light") ifr.classList.add("terminal-light-frame");
           if (theme === "soft-dark") ifr.classList.add("terminal-soft-dark-frame");
