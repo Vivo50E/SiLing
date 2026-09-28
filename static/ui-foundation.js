@@ -28,12 +28,12 @@
   function agentIdentity(agent) {
     const name = String(agent || "Agent").trim() || "Agent";
     const known = { claude: ["claude", "Claude"], codex: ["codex", "Codex"], cursor: ["cursor", "Cursor"], terminal: ["terminal", "Terminal"] };
-    const [kind, label] = known[name.toLowerCase()] || ["unknown", name];
+    const [kind, label] = Object.hasOwn(known, name.toLowerCase()) ? known[name.toLowerCase()] : ["unknown", name];
     return { kind, label };
   }
   function agentBadge(agent) {
     const { kind, label } = agentIdentity(agent);
-    return `<span class="agent-badge agent-${kind}" title="${escape(label)}">${escape(label)}</span>`;
+    return `<span class="agent-badge agent-${kind}" title="${escape(label)}"><span class="agent-glyph">${icon(`agent-${kind}`)}</span><span class="agent-name">${escape(label)}</span></span>`;
   }
   function createdSessionSlot(slots, requestedSlot, requestedLayout, currentLayout, runId) {
     const existing = slots.indexOf(runId);
@@ -49,9 +49,32 @@
     settings: "M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M10 15v6",
     folder: "M3 7V4h6l3 3h9v13H3z", zoom: "M3 9V3h6M15 3h6v6M21 15v6h-6M9 21H3v-6",
     more: "M5 11v2M12 11v2M19 11v2", workspace: "M3 5h18v15H3zM3 10h18M9 10v10",
+    close: "M6 6l12 12M6 18 18 6", refresh: "M20 8a8 8 0 1 0 0 8M20 3v5h-5",
+    edit: "m15 4 5 5M4 20l5-1L21 7l-4-4L5 15z",
+    bell: "M5 17h14l-2-3V9a5 5 0 0 0-10 0v5zM10 21h4M12 2v2",
+    bellOff: "m3 3 18 18M7 7v7l-2 3h12M10 4a5 5 0 0 1 7 5v3M10 21h4",
+    bellBlocked: "M5 17h14l-2-3V9a5 5 0 0 0-10 0v5zM10 21h4M12 8v3M12 13v.1",
+    activity: "M3 12h4l3-7 4 14 3-7h4",
+    palette: "M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-4 2 2 0 0 1 1-4h3a3 3 0 0 0 3-3 9 9 0 0 0-9-7ZM7 10h.1M10 7h.1M15 7h.1",
+    connection: "M8 12h8M8 7H6a5 5 0 0 0 0 10h2M16 7h2a5 5 0 0 1 0 10h-2",
+    "agent-claude": "M12 3v18M3 12h18M6 6l12 12M6 18 18 6",
+    "agent-codex": "m8 5-6 7 6 7M16 5l6 7-6 7M14 3l-4 18",
+    "agent-cursor": "m5 3 14 9-7 1-3 7z",
+    "agent-terminal": "M3 4h18v16H3zM7 9l3 3-3 3M13 15h4",
+    "agent-unknown": "m12 3 9 5v8l-9 5-9-5V8zM3 8l9 5 9-5M12 13v8",
   };
   function icon(name) {
-    return `<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${paths[name] || paths.more}"/></svg>`;
+    const path = Object.hasOwn(paths, name) ? paths[name] : paths.more;
+    return `<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
+  }
+  function buttonContent(name, label) {
+    return `${icon(name)}<span class="ui-button-label">${escape(label)}</span>`;
+  }
+  function notificationButton(button, enabled, permission) {
+    const blocked = enabled && permission === "denied";
+    button.innerHTML = icon(blocked ? "bellBlocked" : enabled ? "bell" : "bellOff");
+    button.setAttribute("aria-pressed", String(enabled));
+    button.setAttribute("aria-label", `Agent notifications: ${enabled ? "on" : "off"}${blocked ? " — blocked by browser" : ""}`);
   }
   const strings = {
     en: { settings: "Settings", appearance: "Appearance", terminal: "Terminal", notifications: "Notifications", browsing: "Browsing & files", connections: "Connections & updates", theme: "App theme", density: "Density", fontSize: "Interface text size", motion: "Motion", language: "Language", scope: "Saved in this browser only. Changes apply immediately; running sessions are not restarted.", reset: "Reset appearance", done: "Done", new: "New", search: "Search", layout: "Layout", workspace: "Workspace", more: "More", files: "Files", zoom: "Zoom", system: "System", dark: "Dark", light: "Light", comfortable: "Comfortable", compact: "Compact", reduce: "Reduce motion", appearanceHelp: "App appearance is separate from each terminal's palette and font.", flags: "Role, priority & manual flags", flagsHelp: "Lead = coordinator; P0 / P1 / P2 = priority, highest first. Blocked / Watching / Done are manual flags, not detected execution states. These currently share one saved flag; selecting one replaces the previous flag.", saveError: "Browser storage is unavailable. This change works for this page, but cannot be saved.", saved: "Saved in this browser.", move: "Move / swap with pane", closePane: "Close pane", closeHelp: "The session keeps running; reopen it from the list.", terminateHelp: "Terminate stops execution. Available resume metadata is kept; unsaved program state may be lost.", reconnect: "Reconnect display", terminalTheme: "Terminal theme", connectionHelp: "Copy the login address for a trusted device on the same network. It grants access to this Dashboard; do not share it publicly." },
@@ -109,7 +132,7 @@
       if (event.target === dialog || event.target.closest("[data-dialog-close]")) dialog.close();
     });
   }
-  const api = { defaults, key, normalize, read, write, agentIdentity, agentBadge, createdSessionSlot, icon, t, translate, apply, wireDialog, containDialogFocus };
+  const api = { defaults, key, normalize, read, write, agentIdentity, agentBadge, createdSessionSlot, icon, buttonContent, notificationButton, t, translate, apply, wireDialog, containDialogFocus };
   if (typeof module !== "undefined") module.exports = api;
   else window.SiLingUI = api;
 })();

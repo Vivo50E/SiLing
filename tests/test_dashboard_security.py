@@ -672,7 +672,8 @@ class DashboardExitedSessionContractTests(unittest.TestCase):
         self.assertIn('"ui_metadata_copied"', resume_block)
 
     def test_close_pane_remains_separate_from_ending_session(self):
-        self.assertIn('class="btn-unpin" data-i18n="closePane"', self.source)
+        self.assertIn('class="btn-unpin" data-dialog-close', self.source)
+        self.assertIn('<span data-i18n="closePane">Close pane</span>', self.source)
         end_start = self.source.index("async function endExitedSession(")
         end_block = self.source[end_start:self.source.index(
             "// ---------- Layout / tty toggles ----------", end_start
