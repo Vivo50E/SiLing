@@ -536,7 +536,8 @@ def _tmux_target_pane(session: str) -> tuple[str, str]:
         result = subprocess.run(
             [
                 "tmux", "list-panes", "-s", "-t", session, "-F",
-                "#{pane_id}\t#{window_active}\t#{pane_active}\t#{pane_dead}",
+                "#{pane_id}\t#{window_active}\t#{pane_active}\t#{pane_dead}"
+                "\t#{pane_in_mode}",
             ],
             capture_output=True,
             text=True,
@@ -551,16 +552,29 @@ def _tmux_target_pane(session: str) -> tuple[str, str]:
         error = (result.stderr or "").strip() or f"exit={result.returncode}"
         return "", f"cannot resolve target pane: {error}"
 
-    live: list[tuple[str, bool]] = []
+    live: list[tuple[str, bool, bool]] = []
     for raw_line in result.stdout.splitlines():
         fields = raw_line.split("\t")
-        if len(fields) != 4 or fields[3] == "1" or not fields[0].startswith("%"):
+        if len(fields) != 5 or fields[3] == "1" or not fields[0].startswith("%"):
             continue
-        live.append((fields[0], fields[1] == "1" and fields[2] == "1"))
+        live.append((
+            fields[0],
+            fields[1] == "1" and fields[2] == "1",
+            fields[4] == "1",
+        ))
     if not live:
         return "", "session has no live pane"
-    active = next((pane for pane, selected in live if selected), None)
-    return active or live[0][0], ""
+    pane, _selected, in_mode = next(
+        (item for item in live if item[1]), live[0]
+    )
+    if in_mode:
+        ok, error = _tmux_send_keys(
+            ["tmux", "send-keys", "-t", pane, "-X", "cancel"],
+            timeout=5,
+        )
+        if not ok:
+            return "", f"cannot leave pane copy-mode: {error}"
+    return pane, ""
 
 
 # Delay between literal paste and the trailing Enter.
