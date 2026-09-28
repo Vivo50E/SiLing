@@ -53,6 +53,10 @@ const server = http.createServer((req, res) => {
     res.setHeader('Content-Type','image/png');
     return res.end(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64'));
   }
+  if (url.pathname.endsWith('/folders/file')) {
+    res.setHeader('Content-Type','application/json');
+    return res.end(JSON.stringify({ok:true,kind:'markdown',name:'report.md',path:'/fixture/report.md',content:'# Readable Markdown\n\nAn isolated preview fixture.'}));
+  }
   if (url.pathname.endsWith('/pane')) {
     res.setHeader('Content-Type', 'text/plain');
     return res.end(Array.from({length: 300}, (_, i) => `history-${i} <literal>`).join('\n'));
@@ -156,6 +160,55 @@ try {
     assert.equal(frameLoads,beforeLinks,'Opening a file preserves terminal frames');
     await screenshot('terminal-local-link');
     await evaluate(`document.querySelector('#folder-modal-close').click()`);
+  }
+
+  if (!baseline) {
+    const beforePreviewFrames = frameLoads;
+    linkedFixtures.set('fixture-0', [{path:'/fixture/report.md',label:'Report',type:'file',exists:true,allowed:true,
+      entries:[{rel:'',name:'report.md',type:'file',kind:'markdown',previewable:true}],loaded_dirs:['']}]);
+    // Stub only the CDN parser/sanitizer: exercise the actual Files opening and
+    // rendering path with representative HTML, without external network access.
+    const previewHtml = '<h1>Readable Markdown</h1><p>正文应该清晰可读。Theme-aware document preview.</p><blockquote>Quoted supporting text remains readable.</blockquote><p>Inline <code>example()</code> and <a href="https://example.invalid/">documentation link</a>.</p><pre><code>const ready = true;</code></pre><table><thead><tr><th>Check</th><th>Result</th></tr></thead><tbody><tr><td>Text contrast</td><td>Readable</td></tr></tbody></table>';
+    await evaluate(`window.marked={parse:()=>${JSON.stringify(previewHtml)}};window.DOMPurify={sanitize:html=>html};document.querySelector('[data-run-id="fixture-0"] .btn-folders').click()`);
+    for (let i=0;i<80;i++) {
+      if(await evaluate(`!!document.querySelector('.markdown-body h1')`)) break;
+      await pause(50);
+    }
+    assert.ok(await evaluate(`!!document.querySelector('.markdown-body h1')`),'Files renders the Markdown preview');
+    assert.ok(await evaluate(`[...document.querySelectorAll('.folder-section-title')].every(el=>getComputedStyle(el).backgroundImage==='none')`),'Files headers must not keep a fixed light gradient behind theme-colored text');
+    const previewContrast = async () => evaluate(`(()=>{
+      const rgb = color => color.match(/[\\d.]+/g).map(Number);
+      const luminance = color => rgb(color).slice(0,3).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4).reduce((s,v,i)=>s+v*[.2126,.7152,.0722][i],0);
+      const over = (fg,bg) => {const a=fg[3]??1;return [0,1,2].map(i=>fg[i]*a+bg[i]*(1-a)).concat(1)};
+      function background(el) {if(!el)return [255,255,255,1];const c=rgb(getComputedStyle(el).backgroundColor);return over(c,background(el.parentElement))}
+      return [...document.querySelectorAll('.markdown-body h1,.markdown-body p,.markdown-body blockquote,.markdown-body code,.markdown-body a,.markdown-body th,.markdown-body td,.markdown-body .file-plain,.folder-section-title')].map(el=>{
+        const bg=background(el);const fg=over(rgb(getComputedStyle(el).color),bg);
+        const a=luminance('rgb('+fg.slice(0,3).join(',')+')'),b=luminance('rgb('+bg.slice(0,3).join(',')+')');
+        return {tag:el.tagName,contrast:(Math.max(a,b)+.05)/(Math.min(a,b)+.05)};
+      });
+    })()`);
+    for (const [theme,scheme] of [['dark','dark'],['light','light'],['system','dark'],['system','light']]) {
+      await cdp('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:scheme}]});
+      await evaluate(`{const c=document.querySelector('[data-appearance="theme"]');c.value=${JSON.stringify(theme)};c.dispatchEvent(new Event('change'));}`);
+      await screenshot(`markdown-${theme}-${scheme}`);
+      const contrast = await previewContrast();
+      assert.ok(contrast.length>=10,'Measure all representative Markdown elements');
+      assert.ok(contrast.every(item=>item.contrast>=4.5),`Markdown contrast in ${theme}/${scheme}: ${JSON.stringify(contrast)}`);
+      console.log(`Markdown ${theme}/${scheme}: minimum contrast ${Math.min(...contrast.map(item=>item.contrast)).toFixed(2)}:1`);
+    }
+    await evaluate(`window.marked.parse=()=>{throw Error('offline renderer fixture')};document.querySelector('#folder-modal-refresh').click()`);
+    for(let i=0;i<80;i++) {
+      if(await evaluate(`!!document.querySelector('.markdown-body .file-plain')`)) break;
+      await pause(50);
+    }
+    assert.ok(await evaluate(`!!document.querySelector('.markdown-body .file-plain')`),'Unavailable parser uses the plaintext fallback');
+    for(const theme of ['dark','light']) {
+      await evaluate(`{const c=document.querySelector('[data-appearance="theme"]');c.value=${JSON.stringify(theme)};c.dispatchEvent(new Event('change'));}`);
+      assert.ok((await previewContrast()).every(item=>item.contrast>=4.5),`Plaintext fallback stays readable in ${theme}`);
+    }
+    await evaluate(`document.querySelector('#folder-modal-close').click();{const c=document.querySelector('[data-appearance="theme"]');c.value='dark';c.dispatchEvent(new Event('change'));}`);
+    assert.equal(frameLoads,beforePreviewFrames,'Preview and theme changes preserve terminal frames');
+    console.log('PASS: Files Markdown contrast in dark, light and both system themes; plaintext fallback');
   }
 
   await screenshot('desktop-before-interaction');
