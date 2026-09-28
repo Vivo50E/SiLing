@@ -2743,8 +2743,8 @@
     border-color: var(--warn);
   }
 </style>
-<link rel="stylesheet" href="/static/ui-foundation.css?v=2" />
-<script src="/static/ui-foundation.js?v=2"></script>
+<link rel="stylesheet" href="/static/ui-foundation.css?v=3" />
+<script src="/static/ui-foundation.js?v=3"></script>
 </head>
 <body>
 
@@ -7509,7 +7509,11 @@
           if (!request.signal.aborted) historyStatus.textContent = `${ui.t("historyError")}: ${error.message}`;
         });
     });
-    copyHistory.addEventListener("close", () => historyRequest?.abort());
+    copyHistory.addEventListener("close", () => {
+      // The close event can arrive after a rapid reopen. Do not cancel the
+      // new request; beforeOpen already aborted the previous one.
+      if (!copyHistory.open) historyRequest?.abort();
+    });
     historySelect.addEventListener("click", () => {
       historyText.focus();
       historyText.select();
