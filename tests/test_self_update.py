@@ -153,6 +153,19 @@ class SelfUpdateManagerTests(unittest.TestCase):
         self.assertEqual(_git(self.repo, "rev-parse", "HEAD"), upstream_head)
         self.assertEqual((self.repo / "upstream.txt").read_text(), "new upstream code\n")
 
+    def test_same_agent_and_upstream_commit_is_counted_once_as_upstream(self):
+        upstream_head = self._publish_upstream_commit()
+        self.manager.fetch_upstream()
+        _git(self.candidate, "reset", "--hard", upstream_head)
+
+        matching = [
+            item for item in self.manager.status()["candidates"]
+            if item.get("head") == upstream_head
+        ]
+
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(matching[0]["kind"], "upstream")
+
 
 class SelfUpdateDashboardContractTests(unittest.TestCase):
     @classmethod

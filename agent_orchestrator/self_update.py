@@ -302,9 +302,22 @@ class SelfUpdateManager:
             pass
         candidates.sort(key=lambda item: (
             not item.get("eligible"),
-            item.get("kind") == "upstream",
+            item.get("kind") != "upstream",
             item["branch"],
         ))
+        unique_candidates = []
+        seen_heads: set[tuple[str, str]] = set()
+        for candidate in candidates:
+            identity = (
+                str(candidate.get("target_head") or target_head),
+                str(candidate.get("head") or ""),
+            )
+            if identity[1] and identity in seen_heads:
+                continue
+            if identity[1]:
+                seen_heads.add(identity)
+            unique_candidates.append(candidate)
+        candidates = unique_candidates
         return {
             "available": True,
             "target_branch": target_branch,
