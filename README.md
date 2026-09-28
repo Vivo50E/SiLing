@@ -84,6 +84,9 @@ their mouse behavior (Option-drag on macOS selects text). Newly started or
 resumed Codex sessions use inline rendering to preserve terminal scrollback.
 Existing alternate-screen sessions must be resumed to use this launch setting;
 history never stored in the terminal buffer cannot be recovered by scrolling.
+In Codex panes, typing or pasting while browsing tmux history returns to the
+live terminal before sending the input. Scrolling and text selection stay in
+history; escape-prefixed navigation keys keep their history behavior.
 
 ## Priority and state you can read at a glance
 

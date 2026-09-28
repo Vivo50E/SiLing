@@ -142,6 +142,8 @@ Terminal 和 Codex pane 支持普通拖选文本后使用浏览器复制快捷�
 传递鼠标操作。其他 Agent pane 保留原有鼠标行为，macOS 可用 Option+拖选选择文本。
 新建或恢复的 Codex session 使用 inline 模式保留终端滚动历史；已有 alternate-screen
 session 需要恢复后才使用新启动参数，未存入终端缓冲区的内容无法通过滚动补回。
+Codex pane 在浏览 tmux 历史时，开始打字或粘贴会先返回实时终端，再传递输入；
+滚动和文本选择仍保留历史视图，方向键等 Escape 序列仍用于历史导航。
 
 ## 每个 task 都有自己的 Linked Items
 

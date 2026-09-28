@@ -7823,6 +7823,44 @@ def kill_shadow_session(session: str, *, owner: str = "") -> bool:
         return False
 
 
+def _ttyd_input_resumes_live(message: bytes | str) -> bool:
+    """Recognize typing/paste, not ttyd control frames or terminal reports.
+
+    ttyd prefixes input with ASCII '0'. Keep escape-prefixed navigation,
+    mouse and terminal replies untouched; bracketed paste is user input.
+    """
+    data = message.encode("utf-8") if isinstance(message, str) else message
+    if not data.startswith(b"0") or len(data) < 2:
+        return False
+    payload = data[1:]
+    return not payload.startswith(b"\x1b") or payload.startswith(b"\x1b[200~")
+
+
+async def _forward_tty_input(upstream, session: str, message: bytes | str,
+                             *, resume_live: bool) -> None:
+    if resume_live and _ttyd_input_resumes_live(message):
+        # Await cancellation before forwarding the unchanged message. This
+        # also covers IME/paste and prevents the first character being eaten
+        # by copy-mode. Never block output forwarding on the tmux subprocess.
+        pane, error = await asyncio.to_thread(_tmux_target_pane, session)
+        if not pane:
+            raise RuntimeError(error or "cannot resume terminal input")
+    await upstream.send(message)
+
+
+def _codex_sessions_from_snapshot(outputs_dir: Path) -> set[str]:
+    snapshot = _safe_read_json(outputs_dir / ".active_sessions_snapshot.json") or {}
+    entries = snapshot.get("sessions")
+    if not isinstance(entries, list):
+        return set()
+    return {
+        str(entry["tmux_session"])
+        for entry in entries
+        if isinstance(entry, dict) and entry.get("tmux_session")
+        and str(entry.get("agent") or "").strip().lower() == "codex"
+    }
+
+
 class TtydManager:
     def __init__(self, enabled: bool, base_port: int = 7800,
                  reserved_ports: Optional[set[int]] = None,
@@ -8235,6 +8273,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         reserved_ports={port},
         session_themes=_terminal_themes_by_tmux_session(outputs_dir),
     )
+    codex_live_input_sessions = _codex_sessions_from_snapshot(outputs_dir)
     dashboard_config_path = Path(
         os.environ.get("ORCH_DASHBOARD_CONFIG", str(DEFAULT_DASHBOARD_CONFIG))
     ).expanduser()
@@ -9017,6 +9056,10 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         session = r.get("tmux_session", "")
         if not session or not tmux_alive(session):
             return {"ok": False, "reason": "tmux session not alive"}
+        if str(r.get("agent") or "").strip().lower() == "codex":
+            codex_live_input_sessions.add(session)
+        else:
+            codex_live_input_sessions.discard(session)
         port = ttyd.ensure(session, theme=str(r.get("terminal_theme") or ""))
         if not port:
             return {"ok": False, "reason": "failed to launch ttyd"}
@@ -9113,7 +9156,10 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                             data = msg.get("bytes") if msg.get("bytes") is not None else msg.get("text")
                             if data is None:
                                 continue
-                            await up.send(data)
+                            await _forward_tty_input(
+                                up, session, data,
+                                resume_live=session in codex_live_input_sessions,
+                            )
                     except (WebSocketDisconnect, WsClosed):
                         return
                 async def s2c():

@@ -1,18 +1,96 @@
 """Behavior checks for terminal selection and Codex launch commands."""
 
 import json
+import asyncio
 from pathlib import Path
 import re
 import shlex
 import shutil
 import subprocess
 import unittest
+from unittest.mock import AsyncMock, patch
+
+from fastapi.testclient import TestClient
 
 from agent_orchestrator import dashboard, task_runner, terminal_theme
 from agent_orchestrator.config import TaskConfig
 
 
 class PaneInteractionTests(unittest.TestCase):
+    def test_tty_route_enables_live_input_only_for_codex(self):
+        with patch.object(dashboard.TtydManager, "_sweep_orphans", return_value=0):
+            app = dashboard.create_app(Path("/nonexistent/siling-input-test"),
+                                       ttyd_enabled=True, remote_nodes_enabled=False)
+        upstream_context = AsyncMock()
+        forward = AsyncMock(side_effect=RuntimeError("probe complete"))
+        with TestClient(app) as client, \
+                patch.object(dashboard.TtydManager, "available", return_value=True), \
+                patch.object(dashboard.TtydManager, "ensure", return_value=12345), \
+                patch.object(dashboard.TtydManager, "port_for", return_value=12345), \
+                patch.object(dashboard, "tmux_alive", return_value=True), \
+                patch.object(dashboard, "_lookup_run_light") as lookup, \
+                patch.object(dashboard.websockets, "connect", return_value=upstream_context), \
+                patch.object(dashboard, "_forward_tty_input", forward):
+            for agent, expected in (("codex", True), ("claude", False)):
+                lookup.return_value = {"agent": agent, "tmux_session": "test-session"}
+                self.assertTrue(client.get("/api/sessions/test/tty").json()["ok"])
+                with client.websocket_connect("/tty/test-session/ws") as socket:
+                    socket.send_bytes(b"0hello")
+                    self.assertEqual(socket.receive()["type"], "websocket.close")
+                self.assertEqual(forward.await_args.kwargs["resume_live"], expected)
+
+    def test_live_input_distinguishes_typing_from_mouse_and_protocol_frames(self):
+        for message in (b"0hello", "0你好", b"0\r", b"0\x03", b"0\x7f",
+                        b"0\x1b[200~pasted\ntext\x1b[201~"):
+            with self.subTest(message=message):
+                self.assertTrue(dashboard._ttyd_input_resumes_live(message))
+        for message in (b"", b"0", b'1{"columns":80}', b'{"AuthToken":""}',
+                        b"0\x1b[<64;10;5M", b"0\x1b[M !!", b"0\x1b[1;2R",
+                        b"0\x1b[?1;2c", b"0\x1b[I", b"0\x1b[A", b"0\x1b"):
+            with self.subTest(message=message):
+                self.assertFalse(dashboard._ttyd_input_resumes_live(message))
+
+    def test_live_input_cancels_history_before_forwarding_original_bytes(self):
+        order = []
+        payload = b"0first-character"
+        def resolve(session):
+            self.assertEqual(session, "test-session")
+            order.append("cancel")
+            return "%123", ""
+        async def send(message):
+            self.assertIs(message, payload)
+            order.append("send")
+        upstream = AsyncMock()
+        upstream.send.side_effect = send
+        with patch.object(dashboard, "_tmux_target_pane", side_effect=resolve):
+            asyncio.run(dashboard._forward_tty_input(
+                upstream, "test-session", payload, resume_live=True))
+        self.assertEqual(order, ["cancel", "send"])
+
+    def test_other_agents_and_scrolling_do_not_probe_or_cancel_tmux_mode(self):
+        upstream = AsyncMock()
+        with patch.object(dashboard, "_tmux_target_pane") as resolve:
+            for enabled, payload in ((False, b"0hello"), (True, b"0\x1b[<64;1;1M")):
+                asyncio.run(dashboard._forward_tty_input(
+                    upstream, "test-session", payload, resume_live=enabled))
+            resolve.assert_not_called()
+        self.assertEqual(upstream.send.await_count, 2)
+
+    def test_failed_mode_exit_does_not_send_input_to_history_commands(self):
+        upstream = AsyncMock()
+        with patch.object(dashboard, "_tmux_target_pane", return_value=("", "failed")):
+            with self.assertRaisesRegex(RuntimeError, "failed"):
+                asyncio.run(dashboard._forward_tty_input(
+                    upstream, "test-session", b"0text", resume_live=True))
+        upstream.send.assert_not_awaited()
+
+    def test_reconnecting_codex_sessions_restore_live_input_policy(self):
+        entries = [None, {}, {"agent": "codex"},
+                   {"agent": "codex", "tmux_session": "codex-test"},
+                   {"agent": "claude", "tmux_session": "claude-test"}]
+        with patch.object(dashboard, "_safe_read_json", return_value={"sessions": entries}):
+            self.assertEqual(dashboard._codex_sessions_from_snapshot(Path("/unused")), {"codex-test"})
+
     def test_narrow_header_keeps_priority_in_accessible_action_row(self):
         source = (Path(__file__).resolve().parents[1] / "static" / "index.html").read_text()
         def rule(selector):
