@@ -169,6 +169,8 @@ Linked Items attaches that context directly to the session.
 - Preview Markdown, source files, images, CSV data, and reports.
 - Optionally open terminal, Markdown, and linked HTTP(S) URLs in an embedded
   Projects tab via **Settings → Open web links inside SiLing**.
+- Adjust popup and expanded-panel background opacity from 60% to 100% via
+  **Settings → Panel opacity**; the default is fully opaque.
 - Keep implementation notes, validation evidence, and release artifacts close
   to the agent that produced them.
 - Recover context quickly when resuming work days later.

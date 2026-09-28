@@ -23,6 +23,7 @@
     --bg: #0d1117;
     --bg-soft: #161b22;
     --bg-elev: #1f242c;
+    --panel-opacity: 1;
     --border: #30363d;
     --text: #e6edf3;
     --text-dim: #8b949e;
@@ -647,6 +648,9 @@
   }
   .pane-zoom-backdrop[hidden] { display: none; }
   .pane-card.zoomed-pane {
+    --bg: rgb(13 17 23 / var(--panel-opacity));
+    --bg-soft: rgb(22 27 34 / var(--panel-opacity));
+    --bg-elev: rgb(31 36 44 / var(--panel-opacity));
     position: fixed !important;
     z-index: 95;
     left: var(--zoom-left);
@@ -655,6 +659,7 @@
     height: var(--zoom-height);
     box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(88, 166, 255, 0.45);
     border-color: rgba(88, 166, 255, 0.75);
+    backdrop-filter: blur(12px);
   }
   .drop-catcher {
     display: none;
@@ -1144,13 +1149,17 @@
   }
   .modal-scrim[hidden] { display: none; }
   .modal {
+    --bg: rgb(13 17 23 / var(--panel-opacity));
+    --bg-soft: rgb(22 27 34 / var(--panel-opacity));
+    --bg-elev: rgb(31 36 44 / var(--panel-opacity));
     width: 100%; max-width: 540px;
-    background: var(--bg-2);
+    background: var(--bg-soft);
     border: 1px solid var(--border);
     border-radius: 10px;
     box-shadow: 0 12px 40px rgba(0,0,0,0.6);
     display: flex; flex-direction: column;
     overflow: hidden;
+    backdrop-filter: blur(12px);
   }
   .modal-head {
     display: flex; align-items: center; justify-content: space-between;
@@ -1176,6 +1185,14 @@
     color: var(--text-dim); font-size: 11px; line-height: 1.45;
   }
   .settings-row input[type="checkbox"] { width: 18px; height: 18px; }
+  .settings-range {
+    display: grid; grid-template-columns: minmax(120px, 180px) 44px;
+    gap: 10px; align-items: center;
+  }
+  .settings-range input[type="range"] { width: 100%; padding: 0; }
+  .settings-range output {
+    color: var(--text); font-variant-numeric: tabular-nums; text-align: right;
+  }
   .reconnect-modal { max-width: 620px; background: var(--bg-soft); }
   .reconnect-steps {
     display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1752,9 +1769,9 @@
     border-color: var(--accent);
   }
   .folder-modal-window {
-    --bg: #ffffff;
-    --bg-soft: #f6f8fa;
-    --bg-elev: #eef2f7;
+    --bg: rgb(255 255 255 / var(--panel-opacity));
+    --bg-soft: rgb(246 248 250 / var(--panel-opacity));
+    --bg-elev: rgb(238 242 247 / var(--panel-opacity));
     --border: #d0d7de;
     --text: #1f2328;
     --text-dim: #656d76;
@@ -2888,6 +2905,19 @@
           </span>
           <input id="settings-open-links-internally" type="checkbox" />
         </label>
+        <label class="settings-row" for="settings-panel-opacity">
+          <span>
+            <span class="settings-row-title">Panel opacity</span>
+            <span class="settings-row-help">
+              Adjust popup and expanded-panel backgrounds. Text and controls stay fully opaque.
+            </span>
+          </span>
+          <span class="settings-range">
+            <input id="settings-panel-opacity" type="range"
+                   min="60" max="100" step="5" value="100" />
+            <output id="settings-panel-opacity-value" for="settings-panel-opacity">100%</output>
+          </span>
+        </label>
       </div>
       <div class="modal-foot">
         <button class="btn-primary" id="settings-close-2">Done</button>
@@ -3215,9 +3245,22 @@
   let REMOTE_NODES = [];
   const PROJECTS_BROWSER_TABS_KEY = "orch_projects_browser_tabs_v1";
   const OPEN_LINKS_INTERNALLY_KEY = "siling_open_links_internally";
+  const PANEL_OPACITY_KEY = "siling_panel_opacity";
   const GLOBAL_TERMINAL_THEME_KEY = "orch_global_terminal_theme";
   const DEFAULT_TERMINAL_THEME = "soft-dark";
   let openLinksInternally = localStorage.getItem(OPEN_LINKS_INTERNALLY_KEY) === "1";
+  function normalizePanelOpacity(value) {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed)) return 100;
+    return Math.min(100, Math.max(60, Math.round(parsed / 5) * 5));
+  }
+  let panelOpacityPercent = normalizePanelOpacity(
+    localStorage.getItem(PANEL_OPACITY_KEY),
+  );
+  document.documentElement.style.setProperty(
+    "--panel-opacity",
+    String(panelOpacityPercent / 100),
+  );
   const PANEL_STATE_OPTIONS = [
     ["", "Flag"],
     ["lead", "Lead"],
@@ -3319,9 +3362,26 @@
   // ---------- Dashboard settings ----------
   const settingsModal = $("settings-modal");
   const internalLinksSetting = $("settings-open-links-internally");
+  const panelOpacitySetting = $("settings-panel-opacity");
+  const panelOpacityValue = $("settings-panel-opacity-value");
 
   function syncSettingsControls() {
     internalLinksSetting.checked = openLinksInternally;
+    panelOpacitySetting.value = String(panelOpacityPercent);
+    panelOpacityValue.textContent = `${panelOpacityPercent}%`;
+  }
+
+  function applyPanelOpacity(value, persist = false) {
+    panelOpacityPercent = normalizePanelOpacity(value);
+    document.documentElement.style.setProperty(
+      "--panel-opacity",
+      String(panelOpacityPercent / 100),
+    );
+    panelOpacitySetting.value = String(panelOpacityPercent);
+    panelOpacityValue.textContent = `${panelOpacityPercent}%`;
+    if (persist) {
+      localStorage.setItem(PANEL_OPACITY_KEY, String(panelOpacityPercent));
+    }
   }
 
   function openSettingsModal() {
@@ -3343,6 +3403,9 @@
       OPEN_LINKS_INTERNALLY_KEY,
       openLinksInternally ? "1" : "0",
     );
+  });
+  panelOpacitySetting.addEventListener("input", () => {
+    applyPanelOpacity(panelOpacitySetting.value, true);
   });
   settingsModal.addEventListener("click", (event) => {
     if (event.target === settingsModal) closeSettingsModal();

@@ -925,6 +925,41 @@ class DashboardInternalLinkSettingsContractTests(unittest.TestCase):
         self.assertIn("openPreferredWebUrl(f.path);", self.source)
 
 
+class DashboardPanelOpacitySettingsContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.source = (dashboard.STATIC_DIR / "index.html").read_text()
+
+    def test_panel_background_has_an_opaque_default(self):
+        self.assertIn("--panel-opacity: 1;", self.source)
+        self.assertIn("background: var(--bg-soft);", self.source)
+        self.assertNotIn("var(--bg-2)", self.source)
+
+    def test_panel_opacity_setting_is_bounded_and_persistent(self):
+        self.assertIn('id="settings-panel-opacity" type="range"', self.source)
+        self.assertIn('min="60" max="100" step="5" value="100"', self.source)
+        self.assertIn(
+            'const PANEL_OPACITY_KEY = "siling_panel_opacity";',
+            self.source,
+        )
+        self.assertIn("function normalizePanelOpacity(value)", self.source)
+        self.assertIn(
+            'localStorage.setItem(PANEL_OPACITY_KEY, String(panelOpacityPercent));',
+            self.source,
+        )
+        self.assertIn(
+            'document.documentElement.style.setProperty(\n      "--panel-opacity",',
+            self.source,
+        )
+
+    def test_background_alpha_does_not_fade_panel_contents(self):
+        self.assertIn(
+            "--bg-soft: rgb(22 27 34 / var(--panel-opacity));",
+            self.source,
+        )
+        self.assertNotIn(".modal {\n    opacity:", self.source)
+
+
 class DashboardSidebarLocationGroupingContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
