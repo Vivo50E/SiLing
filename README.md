@@ -4,7 +4,7 @@
 
 **Know what every coding agent is doing, what matters next, and how to get the work back.**
 
-[![CI](https://github.com/YAMY1234/agent-orchestrator-public/actions/workflows/ci.yml/badge.svg)](https://github.com/YAMY1234/agent-orchestrator-public/actions/workflows/ci.yml)
+[![CI](https://github.com/Vivo50E/SiLing/actions/workflows/ci.yml/badge.svg)](https://github.com/Vivo50E/SiLing/actions/workflows/ci.yml)
 ![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![macOS and Linux](https://img.shields.io/badge/macOS%20%7C%20Linux-local--first-24292f)
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -12,6 +12,49 @@
 [中文文档](README_CN.md)
 
 </div>
+
+SiLing is an independently maintained fork of
+[Agent Orchestrator by YAMY1234](https://github.com/YAMY1234/agent-orchestrator-public).
+The original project provides the local-first, tmux-backed multi-agent Dashboard;
+SiLing builds on that foundation with additional session controls, terminal
+interaction improvements, and a more configurable workbench. Thanks to the
+upstream authors and contributors for the foundation.
+
+## What this fork adds
+
+The following are additions and improvements maintained in
+[Vivo50E/SiLing](https://github.com/Vivo50E/SiLing), not a list of upstream features:
+
+- **More ways to start work:** managed Terminal-only sessions for manual commands,
+  import of existing native agent conversations, a configurable default Working
+  dir, and session creation directly from empty panes.
+- **Restart an individual agent:** restart supported sessions using their saved
+  native conversation identity, with working-directory and CLI checks. This is
+  separate from reconnecting the display and can reload updated MCP configuration.
+- **Better terminal interaction:** reliable multiline input, improved Codex
+  scrollback and return to live input, and cross-screen text selection/copying in
+  Terminal and Codex panes.
+- **Links and file previews:** optional in-Dashboard web browsing, local terminal
+  paths that open in Files, read-only remote file snapshots from SSH terminals
+  with a configured file host, more reliable wrapped links (including long URL
+  query strings), and Markdown previews that follow the app theme.
+- **A configurable workbench:** grouped Settings, light/dark/system themes,
+  adjustable panel opacity, density and text size, reduced motion, consistent
+  icons, and distinct agent identity badges. New workbench controls support
+  English and Chinese; this is not yet a full interface translation.
+- **Installable app and controlled updates:** PWA installation, the `siling` CLI,
+  and updates that test a specific candidate commit in isolation before explicit
+  approval to apply it. Publishing to this fork's `main` does not deploy it.
+
+The inherited foundation includes multi-agent layouts, task priorities and states,
+linked files/folders/URLs, session save/restore, Mission Control, remote nodes, and
+experimental workspace sync. Those capabilities are credited to Agent Orchestrator.
+
+**Scope:** the UI work is incremental. A dedicated mobile single-session workflow
+and service-wide Settings editor are still planned; see the
+[UI/UX implementation status](docs/uiux-implementation-status.md) for boundaries.
+
+## Dashboard at a glance
 
 ![SiLing managing six live coding-agent sessions in a readable 3x2 view](docs/assets/dashboard-hero.webp)
 
@@ -268,8 +311,8 @@ agent CLI (`codex`, `claude`, or `agent`). Install `ttyd` for the complete
 interactive terminal experience shown above.
 
 ```bash
-git clone https://github.com/YAMY1234/agent-orchestrator-public.git
-cd agent-orchestrator-public
+git clone https://github.com/Vivo50E/SiLing.git
+cd SiLing
 
 PYTHON=python3.11  # use any installed Python 3.10+
 "$PYTHON" -m venv .venv

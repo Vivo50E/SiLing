@@ -4,7 +4,7 @@
 
 **随时知道每个 coding agent 在做什么、哪个最重要，以及如何把工作完整找回来。**
 
-[![CI](https://github.com/YAMY1234/agent-orchestrator-public/actions/workflows/ci.yml/badge.svg)](https://github.com/YAMY1234/agent-orchestrator-public/actions/workflows/ci.yml)
+[![CI](https://github.com/Vivo50E/SiLing/actions/workflows/ci.yml/badge.svg)](https://github.com/Vivo50E/SiLing/actions/workflows/ci.yml)
 ![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![macOS and Linux](https://img.shields.io/badge/macOS%20%7C%20Linux-local--first-24292f)
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -12,6 +12,40 @@
 [English](README.md)
 
 </div>
+
+SiLing 基于 [YAMY1234 的 Agent Orchestrator](https://github.com/YAMY1234/agent-orchestrator-public)
+fork 并独立维护。原项目提供了本地优先、基于 tmux 的多 Agent Dashboard；
+SiLing 在此基础上增加会话控制、改进终端交互，并提供更可配置的工作台。
+感谢原作者和贡献者提供的项目基础。
+
+## SiLing 在 fork 后增加了什么
+
+以下是 [Vivo50E/SiLing](https://github.com/Vivo50E/SiLing) 维护的新增功能和改进，
+与继承自上游的核心能力分开列出：
+
+- **更多会话入口**：增加用于手动执行命令的 Terminal-only 会话、导入已有原生
+  Agent 对话、可配置的默认 Working dir，以及点击空 pane 直接创建会话。
+- **单独重启 Agent**：支持使用已保存的原生对话标识重启会话，先检查工作目录和
+  CLI。它与“重连显示”不同，可用于重新加载更新后的 MCP 配置。
+- **终端交互改进**：可靠的多行输入、Codex 历史滚动和返回实时输入，以及
+  Terminal／Codex pane 内跨屏选中文字并复制。
+- **链接与文件预览**：可选择在 Dashboard 内打开网页，点击终端本地路径进入
+  Files 预览；配置文件主机后，也可预览 SSH 终端中的远程文件只读副本。改善换行
+  链接识别（包括带长查询参数的 URL），Markdown 预览跟随应用主题。
+- **可配置的工作台**：分组设置、深色／浅色／系统主题、面板透明度、界面密度和
+  字号、减少动画、统一图标与不同 Agent 的身份徽标。新增工作台控件支持中英文，
+  尚非全界面翻译。
+- **独立应用与受控更新**：PWA 安装、`siling` CLI，以及先在隔离环境测试指定
+  commit、再明确批准应用的更新流程。推送到本 fork 的 `main` 不等于部署。
+
+多 Agent 布局、任务优先级与状态、文件／目录／URL 关联、会话保存与恢复、
+Mission Control、远程节点和实验性工作区同步等核心能力继承自 Agent Orchestrator，
+并非 SiLing 从零新增。
+
+**当前边界**：UI 改造按阶段推进，手机专用单会话工作流、服务端全局设置编辑器
+仍在计划中，详见 [UI/UX 实施状态](docs/uiux-implementation-status.md)。
+
+## Dashboard 概览
 
 ![SiLing 通过清晰的 3x2 布局管理六个实时 coding-agent sessions](docs/assets/dashboard-hero.webp)
 
@@ -228,8 +262,8 @@ CLI 优先从服务 PATH 查找，再检查 `~/.local/bin`；后台启动使用�
 terminal 体验。
 
 ```bash
-git clone https://github.com/YAMY1234/agent-orchestrator-public.git
-cd agent-orchestrator-public
+git clone https://github.com/Vivo50E/SiLing.git
+cd SiLing
 
 PYTHON=python3.11  # 可替换为任意已安装的 Python 3.10+
 "$PYTHON" -m venv .venv
