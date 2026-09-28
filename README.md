@@ -87,6 +87,8 @@ history never stored in the terminal buffer cannot be recovered by scrolling.
 In Codex panes, typing or pasting while browsing tmux history returns to the
 live terminal before sending the input. Scrolling and text selection stay in
 history; escape-prefixed navigation keys keep their history behavior.
+Wheel-created history mode also exits automatically when you scroll down to
+the latest screen (custom tmux wheel bindings are preserved).
 
 ## Priority and state you can read at a glance
 

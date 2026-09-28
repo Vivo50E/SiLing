@@ -7663,7 +7663,8 @@ def _enable_tmux_sticky_wheel_scrollback() -> bool:
     tmux's default ``WheelUpPane`` binding forwards the wheel whenever the
     pane is in the alternate screen, even when the application did not enable
     mouse tracking. Codex then receives an event it cannot use, so the browser
-    pane appears unable to scroll. Replace only that known default binding;
+    pane appears unable to scroll. Replace only that known default binding
+    or our older sticky binding. Use -e to return to live input at the bottom;
     preserve user-customized bindings and applications (such as Claude Code)
     that explicitly request mouse events.
     """
@@ -7684,14 +7685,30 @@ def _enable_tmux_sticky_wheel_scrollback() -> bool:
             ),
             "",
         )
-        if default_condition not in wheel_binding or "copy-mode -e" not in wheel_binding:
+        legacy_action = [
+            "if-shell", "-F", "#{mouse_any_flag}", "send-keys -M",
+            "copy-mode ; send-keys -X -N 5 scroll-up",
+        ]
+        try:
+            action = shlex.split(wheel_binding)[4:]
+        except ValueError:
+            action = []
+        legacy_binding = action == legacy_action
+        # tmux versions serialize command branches using quotes or braces.
+        # Match complete known actions, not a substring of a custom binding.
+        default_binding = action in [
+            ["if-shell", "-F", default_condition, "send-keys -M", "copy-mode -e"],
+            ["if-shell", "-F", default_condition,
+             "{", "send-keys", "-M", "}", "{", "copy-mode", "-e", "}"],
+        ]
+        if not default_binding and not legacy_binding:
             return True
         updated = subprocess.run(
             [
                 "tmux", "bind-key", "-T", "root", "WheelUpPane",
                 "if-shell", "-F", "#{mouse_any_flag}",
                 "send-keys -M",
-                "copy-mode ; send-keys -X -N 5 scroll-up",
+                "copy-mode -e ; send-keys -X -N 5 scroll-up",
             ],
             capture_output=True, text=True, timeout=3,
         )

@@ -1383,7 +1383,7 @@ class TtydRecoveryTests(unittest.TestCase):
         self.assertTrue(enabled)
         run.assert_called_once()
 
-    def test_default_tmux_wheel_binding_uses_sticky_copy_mode(self):
+    def test_default_tmux_wheel_binding_exits_at_latest_screen(self):
         current = subprocess.CompletedProcess(
             args=["tmux", "list-keys"], returncode=0,
             stdout=(
@@ -1414,9 +1414,28 @@ class TtydRecoveryTests(unittest.TestCase):
                 "tmux", "bind-key", "-T", "root", "WheelUpPane",
                 "if-shell", "-F", "#{mouse_any_flag}",
                 "send-keys -M",
-                "copy-mode ; send-keys -X -N 5 scroll-up",
+                "copy-mode -e ; send-keys -X -N 5 scroll-up",
             ],
         )
+
+    def test_legacy_wheel_binding_is_upgraded_but_custom_and_new_are_preserved(self):
+        for action, updates in (
+            ("copy-mode ; send-keys -X -N 5 scroll-up", True),
+            ("copy-mode -e ; send-keys -X -N 5 scroll-up", False),
+            ("copy-mode ; send-keys -X -N 10 scroll-up", False),
+        ):
+            with self.subTest(action=action):
+                current = subprocess.CompletedProcess(
+                    args=[], returncode=0, stderr="",
+                    stdout='bind-key -T root WheelUpPane if-shell -F "#{mouse_any_flag}" '
+                           f'"send-keys -M" "{action}"\n',
+                )
+                with patch.object(dashboard.subprocess, "run", return_value=current) as run:
+                    self.assertTrue(dashboard._enable_tmux_sticky_wheel_scrollback())
+                self.assertEqual(run.call_count, 2 if updates else 1)
+                if updates:
+                    self.assertEqual(run.call_args.args[0][-1],
+                                     "copy-mode -e ; send-keys -X -N 5 scroll-up")
 
     def test_custom_tmux_wheel_binding_is_preserved(self):
         current = subprocess.CompletedProcess(
@@ -1429,6 +1448,17 @@ class TtydRecoveryTests(unittest.TestCase):
             enabled = dashboard._enable_tmux_sticky_wheel_scrollback()
 
         self.assertTrue(enabled)
+        run.assert_called_once()
+
+    def test_default_looking_custom_tmux_wheel_binding_is_preserved(self):
+        current = subprocess.CompletedProcess(
+            args=[], returncode=0, stderr="",
+            stdout='bind-key -T root WheelUpPane if-shell -F '
+                   '"#{||:#{alternate_on},#{pane_in_mode},#{mouse_any_flag}}" '
+                   '"send-keys -M" "copy-mode -e ; display-message custom"\n',
+        )
+        with patch.object(dashboard.subprocess, "run", return_value=current) as run:
+            self.assertTrue(dashboard._enable_tmux_sticky_wheel_scrollback())
         run.assert_called_once()
 
     def test_persisted_theme_index_reads_active_run_and_task_sessions(self):

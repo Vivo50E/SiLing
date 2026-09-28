@@ -7,6 +7,8 @@ import re
 import shlex
 import shutil
 import subprocess
+import tempfile
+import time
 import unittest
 from unittest.mock import AsyncMock, patch
 
@@ -17,6 +19,33 @@ from agent_orchestrator.config import TaskConfig
 
 
 class PaneInteractionTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("tmux"), "tmux required")
+    def test_wheel_history_exits_only_when_scrolled_back_to_latest(self):
+        # An isolated socket keeps the user's tmux server and bindings intact.
+        with tempfile.TemporaryDirectory(prefix="siling-scroll-", dir="/tmp") as temp:
+            base = ["tmux", "-S", str(Path(temp) / "tmux.sock")]
+            def tmux(*args):
+                return subprocess.run(base + list(args), capture_output=True,
+                                      text=True, check=True, timeout=5).stdout.strip()
+            try:
+                tmux("-f", "/dev/null", "new-session", "-d", "-s", "check",
+                     "-x", "80", "-y", "20",
+                     "i=0; while [ $i -lt 80 ]; do echo line-$i; i=$((i+1)); done; exec cat")
+                for _ in range(100):
+                    if int(tmux("display-message", "-p", "-t", "check", "#{history_size}")) > 0:
+                        break
+                    time.sleep(0.01)
+                self.assertGreater(int(tmux("display-message", "-p", "-t", "check", "#{history_size}")), 0)
+                tmux("copy-mode", "-e", "-t", "check", ";",
+                     "send-keys", "-t", "check", "-X", "-N", "5", "scroll-up")
+                self.assertEqual(tmux("display-message", "-p", "-t", "check", "#{pane_in_mode}"), "1")
+                tmux("send-keys", "-t", "check", "-X", "-N", "2", "scroll-down")
+                self.assertEqual(tmux("display-message", "-p", "-t", "check", "#{pane_in_mode}"), "1")
+                tmux("send-keys", "-t", "check", "-X", "-N", "3", "scroll-down")
+                self.assertEqual(tmux("display-message", "-p", "-t", "check", "#{pane_in_mode}"), "0")
+            finally:
+                subprocess.run(base + ["kill-server"], capture_output=True, timeout=5)
+
     @unittest.skipUnless(shutil.which("node"), "Node.js required")
     def test_wrapped_links_highlight_and_open_the_complete_target(self):
         script = terminal_theme._TTYD_INTERACTION_SCRIPT.split(">", 1)[1].rsplit("</script>", 1)[0]
