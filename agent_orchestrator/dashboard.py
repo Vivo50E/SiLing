@@ -66,6 +66,7 @@ from .dashboard_network import build_access_url, list_local_ipv4, pick_best_ip
 from .json_store import edit_json, write_json
 from .local_settings import dashboard_token, require_dashboard_auth
 from .native_activity import NativeActivityService
+from .pane_groups import PaneGroups
 from .remote_nodes import (
     RemoteNodeReconnectManager,
     RemoteNodeRegistry,
@@ -8338,6 +8339,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
     )
     native_activity = NativeActivityService()
     self_updates = SelfUpdateManager(PROJECT_DIR)
+    pane_groups = PaneGroups(outputs_dir)
 
     def scan_session_snapshot() -> list[dict[str, Any]]:
         # Reaping shares the same low-frequency worker as discovery. HTTP
@@ -9451,6 +9453,34 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
 
+    @app.post("/api/pane-groups")
+    def change_pane_groups(body: dict):
+        rows = []
+        if body.get("action") == "assign":
+            ids = body.get("run_ids")
+            if (not isinstance(ids, list) or not 1 <= len(ids) <= 500
+                    or any(not isinstance(x, str) or not x for x in ids)):
+                raise HTTPException(400, "run_ids must contain 1–500 session IDs")
+            remote_rows = {r["run_id"]: r for r in remote_nodes.sessions()}
+            for run_id in dict.fromkeys(ids):
+                row = (remote_rows.get(run_id) if parse_qualified_run_id(run_id)
+                       else _lookup_run_light(outputs_dir, run_id))
+                if not row:
+                    raise HTTPException(404, "Session not found; no assignments changed")
+                rows.append(row)
+        try:
+            # Validate existing storage before accepting edits; never reset corrupt data.
+            pane_groups.read()
+        except (OSError, ValueError, TypeError) as exc:
+            raise HTTPException(503, "Project-group storage unavailable") from exc
+        try:
+            pane_groups.change(body, rows)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(503, "Unable to save project groups") from exc
+        return {"ok": True}
+
     @app.get("/api/sessions")
     def list_sessions():
         snapshot = session_snapshots.snapshot()
@@ -9463,8 +9493,14 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             *native_activity.apply(snapshot["sessions"]),
             *remote_nodes.sessions(),
         ]
+        try:
+            group_view = pane_groups.view(sessions)
+        except (OSError, ValueError, TypeError):
+            # Broken optional metadata must not take down terminal discovery.
+            group_view = {"error": "Project-group storage unavailable"}
         return {
             "sessions": sessions,
+            "pane_groups": group_view,
             "instance_id": dashboard_instance_id,
             "backend_id": _runtime_backend_id(),
             # A remote node can be temporarily absent while its SSH tunnel is

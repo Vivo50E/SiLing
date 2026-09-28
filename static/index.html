@@ -2745,6 +2745,8 @@
 </style>
 <link rel="stylesheet" href="/static/ui-foundation.css?v=5" />
 <script src="/static/ui-foundation.js?v=6"></script>
+<link rel="stylesheet" href="/static/pane-groups.css?v=1" />
+<script src="/static/pane-groups.js?v=1"></script>
 </head>
 <body>
 
@@ -3271,6 +3273,7 @@
       </div>
     </dialog>
 
+    <div id="pane-group-bar"></div>
     <div class="grid" id="grid">
       <div class="empty-state" id="empty-state">
         Click a session on the left,<br>or drag one into a slot.
@@ -4171,6 +4174,15 @@
   const paneCtrls = new Map();  // run_id -> { eventSource, cardEl, paneEl, inputEl, ... }
   const paneActivity = new Map();  // run_id -> activity timestamps/state
   const paneLocateTimers = new Map();  // run_id -> timeout id for locate pulse cleanup
+  const paneGroups = window.SiLingPaneGroups({
+    api, ui, sessions: () => sessions, language: () => document.documentElement.lang,
+    changed: () => { renderList(); paneGroups.applyVisibility(); },
+    refresh: async () => {
+      if (refreshListInFlight) await refreshListInFlight;
+      return await refreshList();
+    },
+    beforeFilter: () => { if (paneZoomState) closePaneZoom(); },
+  });
 
   const SLOT_MARKS = [
     "①", "②", "③", "④", "⑤",
@@ -4183,6 +4195,7 @@
   function saveTty() { localStorage.setItem("orch_tty", ttyMode ? "1" : "0"); }
 
   function highlightPaneForSession(runId, { scroll = true } = {}) {
+    paneGroups.reveal(runId);
     const ctrl = paneCtrls.get(runId);
     const card = ctrl && ctrl.cardEl;
     if (!card || card.classList.contains("cached-pane")) return false;
@@ -6024,6 +6037,7 @@
         const firstSnapshot = !sessionSnapshotReady;
         sessionSnapshotReady = true;
         sessions = mergePendingPanelStates(data.sessions || []);
+        paneGroups.receive(data.pane_groups);
         const remoteNodeStates = Array.isArray(data.remote_nodes)
           ? data.remote_nodes : [];
         updateMissionControlButton();
@@ -6089,6 +6103,7 @@
         }
         if (changed) saveSlots();
         if (changed || recoveredPaneAppeared || firstSnapshot) renderGrid();
+        paneGroups.applyVisibility();
         for (const [runId, draft] of recoveredDrafts) {
           const input = paneCtrls.get(runId)?.inputEl;
           if (input && !input.value) input.value = draft;
@@ -6099,7 +6114,7 @@
             if (ctrl?.cardEl) openPaneZoom(ctrl.cardEl);
           });
         }
-        return;  // success
+        return true;  // success
       } catch (e) {
         lastErr = e;
         // Back off briefly before retrying. Keeps the boot race (fetch
@@ -6109,6 +6124,7 @@
       }
     }
     $("conn-status").textContent = "⚠ " + (lastErr ? lastErr.message : "refresh failed");
+    return false;
   }
 
   let refreshListInFlight = null;
@@ -6390,6 +6406,7 @@
       restartSession.disabled = restartingSessions.has(s.run_id) || !!(s.remote && s.node_online === false);
     }
     updatePanelStateSelect(ctrl, s.panel_state || "");
+    paneGroups.decorate(card, s);
     applyPaneTerminalTheme(ctrl, s);
 
     const disable = !s.alive || (s.remote && s.node_online === false);
@@ -6455,7 +6472,7 @@
       el.innerHTML = '<div style="padding: 24px 14px; color: var(--text-dim); font-size: 12px;">No sessions in outputs/.</div>';
       return;
     }
-    const base = sessions.filter(s => s.alive);
+    const base = sessions.filter(s => s.alive && paneGroups.matches(s));
     renderSidebarPriorityFilter(base);
     const activityFiltered = sidebarWorkingOnly
       ? base.filter(sessionAgentWorking) : base;
@@ -7143,6 +7160,7 @@
     }
 
     renderNavRail();
+    paneGroups.applyVisibility();
   }
 
   function setPaneNodeSlot(card, slotIdx) {
@@ -7499,6 +7517,7 @@
     `;
     grid.appendChild(card);
     ui.translate(card);
+    paneGroups.decorate(card, s);
     const paneMenu = card.querySelector(".pane-menu");
     const moveSelect = card.querySelector(".pane-move-select");
     card.querySelector(".pane-ssh-host").addEventListener("change", ev => {

@@ -42,6 +42,9 @@ The following are additions and improvements maintained in
   adjustable panel opacity, density and text size, reduced motion, consistent
   icons, and distinct agent identity badges. New workbench controls support
   English and Chinese; this is not yet a full interface translation.
+- **Project groups for panes:** named, color-coded groups, individual or bulk
+  assignment, and filtering without restarting terminals. Group metadata is
+  shared by devices connected to the same Dashboard.
 - **Installable app and controlled updates:** PWA installation, the `siling` CLI,
   and updates that test a specific candidate commit in isolation before explicit
   approval to apply it. Publishing to this fork's `main` does not deploy it.
@@ -142,6 +145,29 @@ live terminal before sending the input. Scrolling and text selection stay in
 history; escape-prefixed navigation keys keep their history behavior.
 Wheel-created history mode also exits automatically when you scroll down to
 the latest screen (custom tmux wheel bindings are preserved).
+
+## Group panes by project
+
+Use **Manage groups** below the toolbar to create, rename, recolor, or delete a
+group. Select several live sessions there to assign them together, or use a
+pane's **More → Project group** selector. Each session belongs to at most one
+group; group names and colored markers are separate from priority flags.
+
+Choose **All**, **Ungrouped**, or a group to filter the current open panes and
+live session list. Filtering does not change saved slot positions or grid size,
+restart agents, reload terminal frames, or discard input drafts. A group can
+contain sessions not currently pinned; open them from the filtered session list.
+Explicitly locating a session outside the filter returns to All. New sessions
+start ungrouped; directories do not automatically determine membership.
+
+Groups are stored in `outputs/.pane-groups.json`, with locked, atomic writes.
+Other devices using this Dashboard receive changes on the normal session poll
+(about five seconds); the selected filter and pane layout remain browser-local.
+Membership follows native conversation identity on the same node when resuming
+or restarting an agent. Plain Terminal sessions use their run ID. Deleting a
+group only ungroups its sessions; it never stops or deletes them. Back up this
+metadata file with `outputs/`; it is separate from the active-session snapshot.
+Groups do not synchronize between independently hosted Dashboards.
 
 ## Priority and state you can read at a glance
 

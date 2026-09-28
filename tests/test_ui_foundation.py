@@ -122,6 +122,8 @@ class UIFoundationTests(unittest.TestCase):
         source = (ROOT / "static/index.html").read_text()
         script = source[source.rindex("<script>") + 8:source.rindex("</script>")]
         self.run_js("new Function(" + json.dumps(script) + ");")
+        groups = (ROOT / "static/pane-groups.js").read_text()
+        self.run_js("new Function(" + json.dumps(groups) + ");")
         markup = source[:source.rindex("<script>")]
         ids = re.findall(r'\bid="([^"]+)"', markup)
         self.assertEqual(len(ids), len(set(ids)))

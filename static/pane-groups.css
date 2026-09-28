@@ -1,0 +1,18 @@
+.main { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto minmax(0, 1fr); }
+.main > .grid { grid-row: 4; }
+#pane-group-bar { grid-row: 3; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 0 8px 6px; min-width: 0; }
+#pane-group-tabs { display: flex; gap: 5px; flex: 1; min-width: 100px; overflow-x: auto; padding: 3px; }
+#pane-group-tabs button { flex-shrink: 0; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-bottom: 3px solid var(--group-color); }
+#pane-group-tabs button[aria-pressed="true"] { outline: 1px solid var(--accent); background: var(--bg-elev); }
+#pane-group-tabs button span { color: var(--text-dim); }
+#pane-group-status { font-size: 12px; color: var(--text-dim); }
+.pane-group-badge { border-left: 3px solid var(--group-color); padding-left: 5px; font-size: 11px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1; }
+.pane-group-badge[hidden] { display: none; }
+.pane-card.group-hidden { position: fixed !important; left: -10000px !important; top: 0 !important; width: var(--group-width, 800px) !important; height: var(--group-height, 600px) !important; visibility: hidden; pointer-events: none; }
+#group-session-list { max-height: 220px; overflow-y: auto; }
+#group-session-list label { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+#group-session-list input { flex: 0 0 auto; width: auto; }
+#group-session-list span { min-width: 0; overflow-wrap: anywhere; }
+#group-session-list small { display: block; color: var(--text-dim); }
+#pane-groups-dialog input, #pane-groups-dialog select { min-width: 0; max-width: 100%; }
+.pane-group-control small { white-space: normal; overflow-wrap: anywhere; }

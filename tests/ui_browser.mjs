@@ -26,6 +26,8 @@ const requests = [];
 let frameLoads = 0;
 let pendingCreation;
 let pendingRestart;
+const groupFixture = {groups: [], members: {}};
+let failGroupSave = false;
 const linkedFixtures = new Map();
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -64,12 +66,29 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname.startsWith('/api/')) {
     res.setHeader('Content-Type', 'application/json');
+    if (url.pathname === '/api/pane-groups') {
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', () => {
+        if (failGroupSave) { res.writeHead(503); res.end(JSON.stringify({detail:'Fixture save failed'})); return; }
+        const edit = JSON.parse(body);
+        if (edit.action === 'create') groupFixture.groups.push({id:'project-fixture', name:edit.name, color:edit.color});
+        if (edit.action === 'update') Object.assign(groupFixture.groups.find(g => g.id === edit.group_id), {name:edit.name, color:edit.color});
+        if (edit.action === 'assign') for (const id of edit.run_ids) groupFixture.members[id] = edit.group_id;
+        if (edit.action === 'delete') {
+          groupFixture.groups = groupFixture.groups.filter(g => g.id !== edit.group_id);
+          for (const id of Object.keys(groupFixture.members)) if (groupFixture.members[id] === edit.group_id) groupFixture.members[id] = '';
+        }
+        res.end(JSON.stringify({ok:true}));
+      });
+      return;
+    }
     if (url.pathname === '/api/create') { pendingCreation = res; return; }
     if (url.pathname.endsWith('/restart')) { pendingRestart = res; return; }
     let value = { ok: true };
     if (url.pathname === '/api/config') value = { projects_browser_url: '', remote_nodes: [] };
     if (url.pathname === '/api/health') value = { ttyd: true };
-    if (url.pathname === '/api/sessions') value = { sessions, snapshot: { ready: true } };
+    if (url.pathname === '/api/sessions') value = { sessions, snapshot: { ready: true }, pane_groups: groupFixture };
     if (url.pathname === '/api/host') value = { best_url: 'https://dashboard.example/?token=fixture-secret' };
     if (url.pathname.endsWith('/tty')) value = { ok: true, selection_copy: url.pathname.includes('/fixture-1/') ? undefined : true, url: '/fixture-tty/' + url.pathname.split('/')[3] };
     return res.end(JSON.stringify(value));
@@ -140,6 +159,53 @@ try {
   }
   assert.equal(await evaluate(`document.querySelectorAll('.pane iframe').length`), 4, JSON.stringify(errors));
   console.log('Dashboard booted with four isolated terminal frames');
+  if (!baseline) {
+    const groupFrames = frameLoads;
+    const oldSlots = await evaluate(`localStorage.getItem('orch_slots')`);
+    const waitFor = async expression => {
+      for (let i=0; i<100; i++) { if (await evaluate(expression)) return; await pause(100); }
+      assert.fail('Timed out: ' + expression);
+    };
+    await evaluate(`document.querySelector('[data-run-id="fixture-0"] .pane-input textarea').value='group draft';document.querySelector('#btn-pane-groups').click();document.querySelector('#group-name').value='Project <A>';document.querySelector('#group-save').click()`);
+    await waitFor(`document.querySelector('[data-group-filter="project-fixture"]') !== null`);
+    await evaluate(`document.querySelector('#group-session-list input[value="fixture-0"]').checked=true;document.querySelector('#group-session-list input[value="fixture-1"]').checked=true;document.querySelector('#group-target').value='project-fixture';document.querySelector('#group-assign').click()`);
+    await waitFor(`document.querySelector('[data-run-id="fixture-0"] .pane-group-badge').textContent==='Project <A>'`);
+    await evaluate(`document.querySelector('#pane-groups-dialog').close();document.querySelector('[data-group-filter="project-fixture"]').click()`);
+    assert.equal(await evaluate(`document.querySelectorAll('#grid .pane-card.group-hidden').length`), 2);
+    assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-2"]').inert`), true);
+    assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-0"] .pane-input textarea').value`), 'group draft');
+    assert.equal(await evaluate(`localStorage.getItem('orch_slots')`), oldSlots);
+    assert.equal(frameLoads, groupFrames, 'Filtering never reloads a terminal iframe');
+    assert.ok(await evaluate(`(()=>{const bar=document.querySelector('#pane-group-bar').getBoundingClientRect();const main=document.querySelector('.main').getBoundingClientRect();return bar.right<=main.right+1&&bar.left>=main.left&&bar.top>=document.querySelector('.topbar-global').getBoundingClientRect().bottom-1})()`), 'Group bar occupies its own row within the workbench');
+    await screenshot('project-group-filter');
+    await evaluate(`document.querySelector('[data-group-filter="ungrouped"]').click();document.querySelector('[data-group-filter="all"]').click()`);
+    assert.equal(await evaluate(`document.querySelectorAll('#grid .pane-card.group-hidden').length`), 0);
+    await evaluate(`document.querySelector('[data-run-id="fixture-2"] .btn-pane-more').click();const gs=document.querySelector('[data-run-id="fixture-2"] .pane-group-select');gs.value='project-fixture';gs.dispatchEvent(new Event('change'))`);
+    await waitFor(`document.querySelector('[data-run-id="fixture-2"] .pane-group-badge').textContent==='Project <A>'`);
+    await evaluate(`document.querySelector('[data-run-id="fixture-2"] .pane-menu').close();document.querySelector('#btn-pane-groups').click();document.querySelector('#group-edit').value='project-fixture';document.querySelector('#group-edit').dispatchEvent(new Event('change'));document.querySelector('#group-name').value='Renamed'`);
+    failGroupSave = true;
+    await evaluate(`document.querySelector('#group-save').click()`);
+    await waitFor(`document.querySelector('#group-result').textContent.includes('not confirmed')`);
+    assert.equal(groupFixture.groups[0].name, 'Project <A>');
+    failGroupSave = false;
+    await evaluate(`document.querySelector('#group-save').click()`);
+    await waitFor(`document.querySelector('[data-run-id="fixture-0"] .pane-group-badge').textContent==='Renamed'`);
+    await viewport(390, 844);
+    assert.ok(await evaluate(`document.documentElement.scrollWidth <= innerWidth`), 'Groups dialog fits mobile width');
+    await screenshot('project-groups-mobile');
+    await viewport(1280, 800);
+    await evaluate(`document.querySelector('#pane-groups-dialog').close()`);
+    // Simulate another browser changing metadata; normal session polling must reconcile it.
+    groupFixture.groups[0].name = 'From another device';
+    await waitFor(`document.querySelector('[data-run-id="fixture-0"] .pane-group-badge').textContent==='From another device'`);
+    await evaluate(`document.querySelector('[data-group-filter="project-fixture"]').click();document.querySelector('#btn-pane-groups').click();document.querySelector('#group-edit').value='project-fixture';document.querySelector('#group-edit').dispatchEvent(new Event('change'));window.confirm=()=>true;document.querySelector('#group-delete').click()`);
+    await waitFor(`document.querySelector('[data-group-filter="project-fixture"]') === null`);
+    assert.equal(await evaluate(`document.querySelector('[data-group-filter="all"]').getAttribute('aria-pressed')`), 'true');
+    assert.equal(await evaluate(`document.querySelectorAll('#grid .pane-card.group-hidden').length`), 0);
+    assert.equal(frameLoads, groupFrames, 'Assignment, rename, delete and filtering preserve terminal frames');
+    assert.equal(requests.some(r => /\/(stop|terminate|restart)$/.test(r.path)), false);
+    await evaluate(`document.querySelector('#pane-groups-dialog').close();document.querySelector('[data-run-id="fixture-0"] .pane-input textarea').value=''`);
+  }
   if (!baseline) {
     assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-2"] iframe').dataset.inlineSelection`), 'true', 'Shell uses inline selection when supported');
     assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-1"] iframe').dataset.inlineSelection`), 'false', 'Older nodes retain native selection');
@@ -338,7 +404,8 @@ try {
   }
   await evaluate(`document.querySelector('.btn-pane-more').click();document.querySelector('.pane-menu[open] .btn-unpin').click()`);
   assert.ok(await evaluate(`!JSON.parse(localStorage.getItem('orch_slots')).includes('fixture-0')`), 'Close pane only unpins');
-  assert.deepEqual(requests.filter(r => r.method !== 'GET'), [{ method: 'POST', path: '/api/self-update/fetch' }, {method:'POST',path:'/api/sessions/fixture-2/folders'}, {method:'POST',path:'/api/sessions/fixture-2/ssh-file'}], 'Only boot-time fetch and the explicitly clicked file may mutate state');
+  assert.equal(requests.filter(r => r.path === '/api/pane-groups' && r.method === 'POST').length, 6, 'Only explicit group edits write group metadata');
+  assert.deepEqual(requests.filter(r => r.method !== 'GET' && r.path !== '/api/pane-groups'), [{ method: 'POST', path: '/api/self-update/fetch' }, {method:'POST',path:'/api/sessions/fixture-2/folders'}, {method:'POST',path:'/api/sessions/fixture-2/ssh-file'}], 'Only boot-time fetch and explicitly clicked files may mutate other state');
   // Hold a real UI request open, fill its intended slot, then return the result.
   await viewport(1280, 800);
   await evaluate(`document.querySelector('[data-run-id="fixture-1"] .btn-pane-more').click();document.querySelector('[data-run-id="fixture-1"] .btn-unpin').click();`);
