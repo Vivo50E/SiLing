@@ -561,9 +561,11 @@ class DashboardNewSessionContractTests(unittest.TestCase):
         cls.source = (dashboard.STATIC_DIR / "index.html").read_text()
 
     def test_working_directory_uses_independent_dashboard_config(self):
-        self.assertIn("new_session_working_dir: \"~\"", self.source)
         self.assertIn(
-            "config.new_session_working_dir || PROJECTS_ROOT || \"~\"",
+            'new_session_working_dir: "~/Workflows"', self.source
+        )
+        self.assertIn(
+            'config.new_session_working_dir || "~/Workflows"',
             self.source,
         )
         self.assertIn(
@@ -596,6 +598,19 @@ class DashboardNewSessionContractTests(unittest.TestCase):
             '@app.post("/api/delegate")', create_start,
         )
         self.assertIn('"codex", "terminal")', backend_source[create_start:create_end])
+
+    def test_empty_pane_opens_new_session_in_that_slot(self):
+        self.assertIn(
+            'el.setAttribute("aria-label", `Start a new session in pane ${idx + 1}`);',
+            self.source,
+        )
+        self.assertIn(
+            'el.addEventListener("click", () => openNewSessionModal(idx));',
+            self.source,
+        )
+        self.assertIn("let newSessionTargetSlot = null;", self.source)
+        self.assertIn("slots[requestedSlot] = newRunId;", self.source)
+        self.assertIn("pendingRecoveredSessions.set(newRunId, {", self.source)
 
 
 class DashboardPaneInputContractTests(unittest.TestCase):
@@ -1839,6 +1854,24 @@ class DashboardAuthenticationTests(unittest.TestCase):
         self.assertEqual(
             config["new_session_working_dir"], str(workflows)
         )
+
+    def test_new_session_working_directory_defaults_to_home_workflows(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            projects = root / "projects"
+            workflows = root / "Workflows"
+            projects.mkdir()
+            workflows.mkdir()
+            missing_config = root / "missing-dashboard.local.json"
+
+            with patch.dict(os.environ, {
+                "ORCH_DASHBOARD_CONFIG": str(missing_config),
+                "ORCH_PROJECTS_ROOT": str(projects),
+            }), patch.object(dashboard.Path, "home", return_value=root):
+                os.environ.pop("ORCH_NEW_SESSION_WORKING_DIR", None)
+                config = dashboard._dashboard_client_config()
+
+        self.assertEqual(config["new_session_working_dir"], str(workflows))
 
     def test_create_uses_configured_working_directory_when_omitted(self):
         with tempfile.TemporaryDirectory() as temp_dir:

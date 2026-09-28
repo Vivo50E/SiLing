@@ -202,7 +202,9 @@ label and priority, then choose **Start in Background**.
 
 To give New Session a default Working dir without changing the project-browser
 root, set `new_session_working_dir` in the ignored `dashboard.local.json`, or
-set `ORCH_NEW_SESSION_WORKING_DIR`. If omitted, it follows `projects_root`.
+set `ORCH_NEW_SESSION_WORKING_DIR`. If omitted, SiLing uses `~/Workflows` when
+that directory exists, then falls back to `projects_root`. Click any empty pane
+to open New Session and place the created session directly in that pane.
 
 ### Install as a macOS app
 

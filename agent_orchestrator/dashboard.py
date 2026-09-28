@@ -1561,10 +1561,11 @@ def _dashboard_client_config() -> dict[str, str]:
     ).expanduser()
     if not projects_root.is_dir():
         result["projects_root"] = str(Path.home())
+    default_working_dir = str(Path.home() / "Workflows")
     raw_working_dir = (
         os.environ["ORCH_NEW_SESSION_WORKING_DIR"]
         if "ORCH_NEW_SESSION_WORKING_DIR" in os.environ
-        else data.get("new_session_working_dir", result["projects_root"])
+        else data.get("new_session_working_dir", default_working_dir)
     )
     working_dir = Path(
         os.path.expandvars(str(raw_working_dir or result["projects_root"]))

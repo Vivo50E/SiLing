@@ -717,6 +717,13 @@
     grid-template-rows: 1fr;
     border-style: dashed;
     color: var(--text-dim);
+    cursor: pointer;
+  }
+  .pane-card.empty-slot:hover,
+  .pane-card.empty-slot:focus-visible {
+    border-color: var(--accent);
+    background: rgba(88,166,255,0.06);
+    outline: none;
   }
   .pane-card.empty-slot .empty-slot-inner {
     display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -2788,7 +2795,7 @@
   <div class="modal-scrim" id="new-modal" hidden>
     <div class="modal">
       <div class="modal-head">
-        <div class="modal-title">New session</div>
+        <div class="modal-title" id="new-modal-title">New session</div>
         <button class="modal-close" id="new-close" title="Close">×</button>
       </div>
       <div class="modal-body">
@@ -2860,7 +2867,7 @@
         </label>
         <label class="fld" id="new-cwd-field">
           <span>Working dir</span>
-          <input id="new-cwd" type="text" value="~"
+          <input id="new-cwd" type="text" value="~/Workflows"
                  placeholder="~/project" autocomplete="off" />
         </label>
         <div class="modal-hint">
@@ -3234,7 +3241,7 @@
     projects_browser_url: "http://127.0.0.1:8080/",
     git_status_url: "http://127.0.0.1:8501/",
     projects_root: "~",
-    new_session_working_dir: "~",
+    new_session_working_dir: "~/Workflows",
     remote_nodes: [],
   };
   let NOTES_URL = DEFAULT_DASHBOARD_CONFIG.notes_url;
@@ -3314,7 +3321,7 @@
     GIT_STATUS_URL = String(config.git_status_url || "").trim();
     PROJECTS_ROOT = String(config.projects_root || "").trim();
     NEW_SESSION_WORKING_DIR = String(
-      config.new_session_working_dir || PROJECTS_ROOT || "~"
+      config.new_session_working_dir || "~/Workflows"
     ).trim();
     REMOTE_NODES = Array.isArray(config.remote_nodes)
       ? config.remote_nodes.map(node => Object.assign({}, node)) : [];
@@ -3896,8 +3903,8 @@
   // as if it was cleared when the user switches panes quickly.
   const pendingPanelStates = new Map();
   let panelStateMutationSequence = 0;
-  // A resumed remote session can take a few polling intervals to appear in
-  // the federated inventory. Keep its requested pane slot during that gap and
+  // A newly created or resumed session can take a few polling intervals to
+  // appear in the inventory. Keep its requested pane slot during that gap and
   // rebuild the grid once the new run becomes visible.
   const pendingRecoveredSessions = new Map();
 
@@ -7051,13 +7058,22 @@
     el.className = "pane-card empty-slot";
     el.dataset.slot = String(idx);
     el.style.order = String(idx);
+    el.tabIndex = 0;
+    el.setAttribute("role", "button");
+    el.setAttribute("aria-label", `Start a new session in pane ${idx + 1}`);
     el.innerHTML = `
       <div class="empty-slot-inner">
         <div class="slot-label">${SLOT_MARKS[idx] || (idx+1)}</div>
-        <div>Drop a session here</div>
-        <small>or click one in the sidebar</small>
+        <div>Click to start a new session</div>
+        <small>or drop a session here</small>
       </div>
     `;
+    el.addEventListener("click", () => openNewSessionModal(idx));
+    el.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      openNewSessionModal(idx);
+    });
     installDropTarget(el, idx);
     return el;
   }
@@ -12027,6 +12043,7 @@
 
   // ---------- New-session modal ----------
   const modal = $("new-modal");
+  let newSessionTargetSlot = null;
   let resumableSessions = [];
   let resumeLoadSeq = 0;
   let resumeSearchTimer = null;
@@ -12076,19 +12093,29 @@
     const node = selectedRemoteNode();
     if (resetCwd) {
       $("new-cwd").value = node?.new_session_working_dir
-        || node?.projects_root || NEW_SESSION_WORKING_DIR || "~";
+        || node?.projects_root || NEW_SESSION_WORKING_DIR || "~/Workflows";
     }
     updateNewSessionMode();
   }
 
-  const openModal = () => {
+  function openNewSessionModal(slotIdx = null) {
+    const parsedSlot = Number(slotIdx);
+    newSessionTargetSlot = slotIdx !== null && Number.isInteger(parsedSlot)
+      && parsedSlot >= 0 && parsedSlot < slots.length
+      ? parsedSlot : null;
+    $("new-modal-title").textContent = newSessionTargetSlot === null
+      ? "New session"
+      : `New session · pane ${SLOT_MARKS[newSessionTargetSlot] || newSessionTargetSlot + 1}`;
     modal.hidden = false;
     void refreshNodePicker();
     updateNewSessionMode();
     setTimeout(() => $("new-label").focus(), 50);
+  }
+  const closeModal = () => {
+    modal.hidden = true;
+    newSessionTargetSlot = null;
   };
-  const closeModal = () => { modal.hidden = true; };
-  $("btn-new").addEventListener("click", openModal);
+  $("btn-new").addEventListener("click", () => openNewSessionModal());
 
   // Top-bar "Organize" action — fire-and-forget trigger that spawns a
   // tmux session running `siling organize`. That session shows up in the
@@ -12333,6 +12360,7 @@
     const btnIterm = $("new-submit");
     const btnBg = $("new-submit-bg");
     const both = [btnIterm, btnBg];
+    const requestedSlot = newSessionTargetSlot;
     both.forEach(b => b.disabled = true);
     const active = (mode === "background") ? btnBg : btnIterm;
     active.textContent = "Starting…";
@@ -12379,14 +12407,27 @@
             terminal_theme: currentGlobalTerminalTheme(),
           };
       if (isResume && !body.run_id) throw new Error("Choose a session to resume.");
-      await api(isResume ? "/api/resume" : "/api/create", { method: "POST", body });
+      const result = await api(
+        isResume ? "/api/resume" : "/api/create",
+        { method: "POST", body },
+      );
+      const newRunId = String(result?.run_id || "");
+      if (requestedSlot !== null && newRunId) {
+        pendingRecoveredSessions.set(newRunId, {
+          expiresAt: Date.now() + 30000,
+          zoom: false,
+        });
+        slots[requestedSlot] = newRunId;
+        saveSlots();
+        renderGrid();
+      }
       closeModal();
       $("new-label").value = "";
       $("new-model").value = "";
       $("new-effort").value = "";
       const node = selectedRemoteNode();
       $("new-cwd").value = node?.new_session_working_dir
-        || node?.projects_root || NEW_SESSION_WORKING_DIR || "~";
+        || node?.projects_root || NEW_SESSION_WORKING_DIR || "~/Workflows";
       $("new-kind").value = "new";
       updateNewSessionMode();
       setTimeout(refreshList, 1200);

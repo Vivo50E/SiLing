@@ -182,7 +182,9 @@ siling dashboard
 
 如果希望单独设置 New Session 的默认 Working dir，而不改变项目浏览根目录，可在
 被忽略的 `dashboard.local.json` 中设置 `new_session_working_dir`，或使用
-`ORCH_NEW_SESSION_WORKING_DIR`。未设置时会沿用 `projects_root`。
+`ORCH_NEW_SESSION_WORKING_DIR`。未设置时会优先使用已有的 `~/Workflows`，否则
+沿用 `projects_root`。点击任意空 pane 即可打开 New Session，并把新建 session
+直接放入该 pane。
 
 ### 在 macOS 上安装为独立应用
 
