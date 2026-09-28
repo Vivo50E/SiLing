@@ -68,6 +68,16 @@ AGENT_TYPE="${POSITIONAL[0]:-cursor}"
 TASK_NAME="${POSITIONAL[1]:-interactive}"
 CWD="${POSITIONAL[2]:-$(pwd)}"
 
+# Resolve before creating metadata/tmux. A launchd PATH often omits the
+# user-local native CLI install; use the same lookup as restart preflight.
+case "$AGENT_TYPE" in
+    claude|codex|cursor|agent)
+        AGENT_BIN=$(python3 "$REPO_DIR/agent_orchestrator/agent_cli.py" "$AGENT_TYPE") || exit $?
+        AGENT_BIN_Q=$(printf '%q' "$AGENT_BIN")
+        export PATH="$PATH:$(dirname "$AGENT_BIN")"
+        ;;
+esac
+
 # Claude records transient API-error placeholder messages with
 # model="<synthetic>". It is not a CLI model name; passing it to an
 # unquoted shell command turns `<synthetic>` into input redirection.
@@ -106,10 +116,10 @@ SESSION_JSON="$RUN_DIR/session.json"
 
 case "$AGENT_TYPE" in
     claude)
-        AGENT_CMD="claude"
+        AGENT_CMD="$AGENT_BIN_Q"
         ;;
     cursor|agent)
-        AGENT_CMD="agent"
+        AGENT_CMD="$AGENT_BIN_Q"
         ;;
     codex)
         # YOLO mode: skip approval prompts + sandbox so the watcher doesn't
@@ -123,7 +133,7 @@ case "$AGENT_TYPE" in
         # Codex prompt exists.  Keep this invocation-local so ordinary Codex
         # launches still use the user's normal update preference.
         # Inline rendering preserves tmux scrollback for Dashboard wheel input.
-        AGENT_CMD="codex --no-alt-screen --dangerously-bypass-approvals-and-sandbox -c check_for_update_on_startup=false"
+        AGENT_CMD="$AGENT_BIN_Q --no-alt-screen --dangerously-bypass-approvals-and-sandbox -c check_for_update_on_startup=false"
         ;;
     terminal)
         TERMINAL_SHELL="${SHELL:-}"
@@ -193,7 +203,7 @@ if [ -n "$RESUME_ID" ]; then
         codex)
             # `codex resume` is a subcommand; keep any model/sandbox flags
             # before the session id.
-            AGENT_CMD="codex resume --no-alt-screen --dangerously-bypass-approvals-and-sandbox -c check_for_update_on_startup=false"
+            AGENT_CMD="$AGENT_BIN_Q resume --no-alt-screen --dangerously-bypass-approvals-and-sandbox -c check_for_update_on_startup=false"
             if [ -n "$MODEL" ]; then
                 MODEL_Q=$(printf '%q' "$MODEL")
                 AGENT_CMD="$AGENT_CMD -m $MODEL_Q"
@@ -278,6 +288,7 @@ RUN_ID_Q=$(printf "%q" "$RUN_ID")
 TASK_NAME_Q=$(printf "%q" "$TASK_NAME")
 AGENT_TYPE_Q=$(printf "%q" "$AGENT_TYPE")
 DASHBOARD_URL_Q=$(printf "%q" "${ORCH_DASHBOARD_URL:-}")
+PATH_Q=$(printf '%q' "$PATH")
 
 # Create the initial metadata before the agent can issue concurrent `siling`
 # updates. Every later writer uses the shared JSON lock protocol.
@@ -306,10 +317,10 @@ EOF
 
 if [ "$AGENT_TYPE" = "terminal" ]; then
     tmux new-session -d -s "$SESSION" -x "$COLS" -y "$ROWS" \
-        "cd $CWD_Q && exec env ORCH_RUN_ID=$RUN_ID_Q ORCH_RUN_DIR=$RUN_DIR_Q ORCH_TMUX_SESSION=$SESSION_Q ORCH_SESSION_JSON=$SESSION_JSON_Q ORCH_TASK_NAME=$TASK_NAME_Q ORCH_AGENT_TYPE=$AGENT_TYPE_Q ORCH_DASHBOARD_URL=$DASHBOARD_URL_Q $AGENT_CMD"
+        "cd $CWD_Q && exec env ORCH_RUN_ID=$RUN_ID_Q ORCH_RUN_DIR=$RUN_DIR_Q ORCH_TMUX_SESSION=$SESSION_Q ORCH_SESSION_JSON=$SESSION_JSON_Q ORCH_TASK_NAME=$TASK_NAME_Q ORCH_AGENT_TYPE=$AGENT_TYPE_Q ORCH_DASHBOARD_URL=$DASHBOARD_URL_Q PATH=$PATH_Q $AGENT_CMD"
 else
     tmux new-session -d -s "$SESSION" -x "$COLS" -y "$ROWS" \
-        "cd $CWD_Q && ORCH_RUN_ID=$RUN_ID_Q ORCH_RUN_DIR=$RUN_DIR_Q ORCH_TMUX_SESSION=$SESSION_Q ORCH_SESSION_JSON=$SESSION_JSON_Q ORCH_TASK_NAME=$TASK_NAME_Q ORCH_AGENT_TYPE=$AGENT_TYPE_Q ORCH_DASHBOARD_URL=$DASHBOARD_URL_Q $AGENT_CMD; echo '--- Agent exited ---'; read"
+        "cd $CWD_Q && ORCH_RUN_ID=$RUN_ID_Q ORCH_RUN_DIR=$RUN_DIR_Q ORCH_TMUX_SESSION=$SESSION_Q ORCH_SESSION_JSON=$SESSION_JSON_Q ORCH_TASK_NAME=$TASK_NAME_Q ORCH_AGENT_TYPE=$AGENT_TYPE_Q ORCH_DASHBOARD_URL=$DASHBOARD_URL_Q PATH=$PATH_Q $AGENT_CMD; echo '--- Agent exited ---'; read"
 fi
 
 # Kill any pre-existing watcher for this RUN_DIR (re-run after crash,

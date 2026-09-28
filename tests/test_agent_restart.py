@@ -36,6 +36,7 @@ class AgentRestartTests(unittest.TestCase):
                     "display_name": "Keep my name", "panel_state": "p1",
                     "terminal_theme": "light", "run_dir": str(self.root / "old")}
         self.alive = True
+        self.resolve_cli = self.stack.enter_context(patch.object(dashboard, "resolve_agent_cli", return_value="/fixture/claude"))
         self.lookup = self.stack.enter_context(patch.object(dashboard, "_lookup_run", side_effect=lambda *_: dict(self.src)))
         self.stack.enter_context(patch.object(dashboard, "tmux_alive", side_effect=lambda _: self.alive))
         self.stop = self.stack.enter_context(patch.object(dashboard, "_graceful_stop_agent", return_value={"ok": True}))
@@ -72,6 +73,7 @@ class AgentRestartTests(unittest.TestCase):
                 self.assertEqual(result.status_code, 200, result.text)
                 data = result.json()
                 self.assertTrue(data["ok"])
+                self.resolve_cli.assert_called_with(agent)
                 self.assertEqual(data["resume_id"], "conversation-123")
                 self.assertEqual(data["restarted_from"], "source")
                 args = self.spawn.call_args.args[0]
@@ -104,6 +106,16 @@ class AgentRestartTests(unittest.TestCase):
         self.lookup.return_value = None
         self.assertEqual(self.restart().status_code, 404)
         self.stop.assert_not_called()
+
+    def test_missing_cli_never_stops_or_kills_the_source(self):
+        self.resolve_cli.side_effect = FileNotFoundError("claude executable not found")
+        result = self.restart()
+        self.assertEqual(result.status_code, 409, result.text)
+        self.assertIn("agent was not stopped", result.json()["detail"])
+        self.stop.assert_not_called()
+        self.kill.assert_not_called()
+        self.persist.assert_not_called()
+        self.spawn.assert_not_called()
 
     def test_failed_persistence_never_stops_agent(self):
         self.persist.return_value = False

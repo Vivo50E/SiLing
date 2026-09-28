@@ -60,6 +60,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Optional
 from urllib.parse import quote, urlparse
 
+from .agent_cli import resolve_agent_cli
 from .conversation_metrics import TranscriptMetricsCache
 from .dashboard_network import build_access_url, list_local_ipv4, pick_best_ip
 from .json_store import edit_json, write_json
@@ -11581,6 +11582,10 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                 raise HTTPException(409, "no saved working directory; agent was not stopped")
             cwd = _resolve_session_cwd(src.get("cwd") or "")
             src = {**src, "cwd": cwd}
+            try:
+                resolve_agent_cli(agent)
+            except (OSError, ValueError) as exc:
+                raise HTTPException(409, f"{exc}; agent was not stopped") from exc
             # Validate/persist the exact identity before interrupting anything.
             saved = src.get("resume") or {}
             meta = _build_resume_meta(agent, src["resume_id"],

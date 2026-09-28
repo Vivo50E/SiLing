@@ -217,8 +217,10 @@ More contains reconnect, terminal palette, move/swap, close pane, and terminate.
 **More → Restart agent** interrupts the selected Claude/Codex/Cursor process and
 launches a background session with the same saved native conversation ID. Use it
 to reload MCP configuration; independent MCP servers are not updated or restarted.
-Confirmation is required. A missing resume ID or invalid workspace prevents the
-stop; an exit timeout never triggers a force kill. The new SiLing run replaces
+Confirmation is required. A missing resume ID, invalid workspace, or missing CLI
+prevents the stop; an exit timeout never triggers a force kill. CLI lookup uses
+the service PATH first, then `~/.local/bin`; background launches use the resolved
+absolute executable path. The new SiLing run replaces
 only that pane, carrying its name, palette, flag, linked files, and composer draft.
 Unsaved terminal input and in-flight work may be lost; prefer restarting between
 turns. If launching fails after exit, the saved source remains available via
