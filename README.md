@@ -327,6 +327,10 @@ verified fast-forward and restarts the Dashboard. Changing either commit
 invalidates the approval token. The workflow never applies uncommitted code,
 force-merges, or rebases user work.
 
+Verification uses the Dashboard's Python runtime for both the suite and nested
+Python CLI commands, even when the temporary checkout has no `.venv`. It does
+not install packages into system Python or change the running service's PATH.
+
 ## Keep it running on macOS
 
 The managed installer creates an isolated runtime, installs dependencies,

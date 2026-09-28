@@ -334,6 +334,16 @@ class SelfUpdateManager:
             "candidates": candidates,
         }
 
+    def _verification_environment(self) -> dict[str, str]:
+        env = dict(os.environ)
+        python = shutil.which(self.python) or self.python
+        # Do not resolve symlinks: .venv/bin/python may point to a system
+        # binary, but its directory selects the runtime's dependencies for
+        # nested `python3` and `#!/usr/bin/env python3` invocations.
+        runtime_bin = str(Path(python).absolute().parent)
+        env["PATH"] = runtime_bin + os.pathsep + env.get("PATH", os.defpath)
+        return env
+
     def verify(self, branch: str, *, timeout: float = 300) -> dict[str, Any]:
         candidate = self._candidate(branch)
         if not candidate["eligible"]:
@@ -357,7 +367,7 @@ class SelfUpdateManager:
                 test_dir = temporary_worktree
             result = subprocess.run(
                 command, cwd=str(test_dir), capture_output=True,
-                text=True, timeout=timeout,
+                text=True, timeout=timeout, env=self._verification_environment(),
             )
             output = "\n".join(
                 part.strip() for part in (result.stdout, result.stderr) if part.strip()

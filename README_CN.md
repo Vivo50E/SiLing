@@ -290,6 +290,10 @@ upstream 代码会在临时 detached worktree 中测试，不会提前改变本�
 重启 Dashboard。任一 commit 变化都会使批准令牌失效。该流程不会应用未提交代码、
 force merge 或 rebase 用户工作。
 
+验证测试及其 Python CLI 子进程统一使用 Dashboard 的 Python 运行环境，即使临时
+checkout 中没有 `.venv` 也不例外。验证不会向系统 Python 安装依赖，也不会修改运行中
+服务的 PATH。
+
 ## 在 macOS 后台常驻
 
 受管安装器会创建隔离运行环境、安装依赖、生成私有 token，并注册用户级

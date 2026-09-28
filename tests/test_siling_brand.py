@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import subprocess
+import sys
 import unittest
 
 
@@ -13,12 +14,21 @@ class SiLingBrandContractTests(unittest.TestCase):
         self.assertTrue(launcher.is_file())
         self.assertTrue(os.access(launcher, os.X_OK))
 
+        # A detached update checkout has no .venv. Keep this executable/
+        # shebang smoke test in the test runner's dependency environment,
+        # including when bootstrapped by an older update verifier.
+        env = dict(os.environ)
+        env["PATH"] = (
+            str(Path(sys.executable).absolute().parent)
+            + os.pathsep + env.get("PATH", os.defpath)
+        )
         result = subprocess.run(
             [str(launcher), "--help"],
             cwd=PROJECT_DIR,
             capture_output=True,
             text=True,
             timeout=20,
+            env=env,
         )
 
         self.assertEqual(result.returncode, 0, result.stderr)
