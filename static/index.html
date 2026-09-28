@@ -7381,7 +7381,7 @@
   paneZoomBackdrop.addEventListener("click", closePaneZoom);
   window.addEventListener("resize", applyPaneZoomLayout);
   window.addEventListener("keydown", (ev) => {
-    if (!paneZoomState || ev.key !== "Escape") return;
+    if (!paneZoomState || ev.key !== "Escape" || document.querySelector("dialog[open]")) return;
     ev.preventDefault();
     ev.stopPropagation();
     if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
@@ -7437,6 +7437,7 @@
             ${panelStateOptionsHtml(s.panel_state)}
           </select>
           <button class="btn-folders" title="Linked task files and folders" aria-label="Linked task files and folders">files</button>
+          <button class="btn-copy-history" data-i18n="copyHistory">Copy history</button>
           <button class="btn-zoom" title="Open a larger pane view" aria-label="Zoom pane">${ui.icon("zoom")}</button>
           <button class="btn-pane-more" data-i18n-label="more">${ui.icon("more")}</button>
         </div>
@@ -7473,6 +7474,46 @@
     `;
     grid.appendChild(card);
     ui.translate(card);
+    const copyHistory = document.createElement("dialog");
+    copyHistory.className = "ui-dialog copy-history-dialog";
+    copyHistory.id = `copy-history-${paneMenuSerial}`;
+    copyHistory.setAttribute("aria-label", ui.t("copyHistory"));
+    copyHistory.innerHTML = `
+      <div class="modal-head"><h2 data-i18n="copyHistory"></h2><button data-dialog-close aria-label="Close">×</button></div>
+      <p class="copy-history-status" role="status"></p>
+      <textarea class="copy-history-text" readonly spellcheck="false" aria-label="${escapeHtml(ui.t("copyHistory"))}"></textarea>
+      <div class="modal-foot"><button class="copy-history-select" data-i18n="selectAll"></button><button data-dialog-close data-i18n="backToTerminal"></button></div>
+    `;
+    card.appendChild(copyHistory);
+    ui.translate(copyHistory);
+    const historyText = copyHistory.querySelector("textarea");
+    const historyStatus = copyHistory.querySelector("[role=status]");
+    const historySelect = copyHistory.querySelector(".copy-history-select");
+    let historyRequest = null;
+    ui.wireDialog(copyHistory, card.querySelector(".btn-copy-history"), () => {
+      historyRequest?.abort();
+      const request = historyRequest = new AbortController();
+      historyText.value = "";
+      historySelect.disabled = true;
+      historyStatus.textContent = ui.t("historyLoading");
+      // A fixed snapshot lets native selection span scrollback without tmux
+      // redraws moving or erasing selected text. Keep the live iframe intact.
+      api(`/api/sessions/${encodeURIComponent(runId)}/pane`, {signal: request.signal})
+        .then(text => {
+          if (request.signal.aborted || !copyHistory.isConnected) return;
+          historyText.value = String(text);
+          historyStatus.textContent = ui.t(text ? "historyHelp" : "historyEmpty");
+          historySelect.disabled = !text;
+          historyText.scrollTop = historyText.scrollHeight;
+        }).catch(error => {
+          if (!request.signal.aborted) historyStatus.textContent = `${ui.t("historyError")}: ${error.message}`;
+        });
+    });
+    copyHistory.addEventListener("close", () => historyRequest?.abort());
+    historySelect.addEventListener("click", () => {
+      historyText.focus();
+      historyText.select();
+    });
     const paneMenu = card.querySelector(".pane-menu");
     const moveSelect = card.querySelector(".pane-move-select");
     ui.wireDialog(paneMenu, card.querySelector(".btn-pane-more"), () => {
@@ -9314,6 +9355,12 @@
 
   window.addEventListener("message", (event) => {
     if (event.origin !== window.location.origin) return;
+    if (event.data?.type === "siling:open-local-path") {
+      const ctrl = Array.from(paneCtrls.values()).find(item =>
+        item.paneEl.querySelector("iframe")?.contentWindow === event.source);
+      if (ctrl) void openTerminalLocalPath(ctrl.runId, event.data.path);
+      return;
+    }
     if (event.data?.type !== "siling:open-web-url") return;
     const fromTtyPane = Array.from(document.querySelectorAll(".pane iframe"))
       .some(frame => frame.contentWindow === event.source);
@@ -11302,6 +11349,25 @@
     return String(path || "").split("/").filter(Boolean).pop() || "linked file";
   }
 
+  let terminalLocalOpenSeq = 0;
+  async function openTerminalLocalPath(runId, rawPath) {
+    if (typeof rawPath !== "string" || !rawPath.startsWith("/")
+        || rawPath.startsWith("//") || /[\x00-\x1f]/.test(rawPath)) return;
+    const path = normalizeLocalPreviewPath(rawPath);
+    const seq = ++terminalLocalOpenSeq;
+    // Resolve and authorize on the session's host using the existing Files API.
+    // Use its canonical result (not the displayed path, which may be a symlink).
+    try {
+      const result = await api(`/api/sessions/${encodeURIComponent(runId)}/folders`, {
+        method: "POST", body: {path, label: localPathLabel(path)},
+      });
+      if (seq !== terminalLocalOpenSeq) return;
+      await openFolderViewer(runId, result.folder?.path || path);
+    } catch (error) {
+      if (seq === terminalLocalOpenSeq) alert("Open local file failed:\n" + error.message);
+    }
+  }
+
   async function openLocalPathInFolderViewer(path) {
     const target = normalizeLocalPreviewPath(path);
     if (!target) return false;
@@ -11650,9 +11716,10 @@
     if (isFolderSearchOpen()) updateFolderSearchResults();
   }
 
-  async function openFolderViewer(runId) {
+  async function openFolderViewer(runId, preferredPath = "") {
     folderModalState = { runId, folders: [], idx: 0, selectedRel: null, expandedDirs: new Set(), fileCache: new Map(), previewSeq: 0, restoreSeq: 0, previewRefreshNonce: 0, history: [], historyIndex: -1 };
     const openSeq = folderModalState.restoreSeq;
+    const openState = folderModalState;
     folderModal.hidden = false;
     applyFolderLayoutState();
     requestAnimationFrame(() => folderModal.focus({ preventScroll: true }));
@@ -11662,14 +11729,19 @@
     $("folder-modal-preview").innerHTML = "";
     try {
       const r = await api(`/api/sessions/${encodeURIComponent(runId)}/folders`);
-      if (folderModal.hidden || folderModalState.runId !== runId || folderModalState.restoreSeq !== openSeq) return;
+      if (folderModal.hidden || folderModalState !== openState || folderModalState.runId !== runId || folderModalState.restoreSeq !== openSeq) return;
       folderModalState.folders = (r.folders || []).map(normalizeLinkedItem);
       folderModalState.folders.forEach(ensureFolderRuntime);
-      applySavedFolderViewerState(runId);
+      if (preferredPath) {
+        const idx = folderModalState.folders.findIndex(folder => folder.path === preferredPath);
+        if (idx >= 0) folderModalState.idx = idx;
+        folderModalState.selectedRel = chooseDefaultRel(currentFolder());
+        folderModalState.expandedDirs = defaultExpandedDirs(currentFolder(), folderModalState.selectedRel);
+      } else applySavedFolderViewerState(runId);
       resetFolderHistory();
       renderFolderModal();
       restoreFolderModalScroll(runId);
-      restoreSavedFolderViewerState(runId).catch(e => {
+      if (!preferredPath) restoreSavedFolderViewerState(runId).catch(e => {
         console.warn("Failed to restore linked folder state", e);
       });
     } catch (e) {

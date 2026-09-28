@@ -147,7 +147,19 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     );
     mouse.__orchInteractionPatch = true;
 
-    const cleanHttpUrl = (value) => {
+    const cleanLocalPath = (value) => {
+      let path = String(value || "");
+      if (/^file:/i.test(path)) {
+        try {
+          const url = new URL(path);
+          if (url.host && url.host !== "localhost") return "";
+          path = decodeURIComponent(url.pathname);
+        } catch (_) { return ""; }
+      }
+      if (!path.startsWith("/") || path.startsWith("//") || /[\x00-\x1f]/.test(path)) return "";
+      return path.replace(/(?::\d+(?::\d+)?|#L\d+(?:C\d+)?)$/, "");
+    };
+    const cleanLinkTarget = (value) => {
       let url = String(value || "");
       // Terminal linkifiers do not consistently recognize CJK punctuation
       // as a URL boundary. In prose such as `https://example.test（details）`,
@@ -171,7 +183,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
         }
       }
       url = url.replace(/[.,;:!?]+$/, "");
-      return /^https?:\/\//i.test(url) ? url : "";
+      return /^https?:\/\//i.test(url) ? url : cleanLocalPath(url);
     };
 
     const coordsForEvent = (event) => {
@@ -196,7 +208,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       const extended = cell && cell.extended;
       const urlId = Number(extended && (extended.urlId || extended._urlId || 0));
       const linkData = urlId && core._oscLinkService?.getLinkData(urlId);
-      return cleanHttpUrl(typeof linkData === "string" ? linkData
+      return cleanLinkTarget(typeof linkData === "string" ? linkData
         : String((linkData && (linkData.uri || linkData.url)) || ""));
     };
 
@@ -229,7 +241,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       try {
         const oscUrl = oscUrlForCell(line.getCell(col));
         if (oscUrl) {
-          const cleanOscUrl = cleanHttpUrl(oscUrl);
+          const cleanOscUrl = cleanLinkTarget(oscUrl);
           // tmux may redraw wrapped links as separate physical lines and
           // assign different OSC ids to each segment. Match the target URI.
           const cellsInRow = (y) => {
@@ -283,13 +295,15 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
           }
         }
       }
-      const pattern = /https?:\/\/[^\s<>"'`]+/g;
+      const pattern = /https?:\/\/[^\s<>"'`]+|file:\/\/[^\s<>"'`]+|\/[^\s<>"'`]+/g;
       for (const match of text.matchAll(pattern)) {
         const raw = match[0];
-        const url = cleanHttpUrl(raw);
+        const url = cleanLinkTarget(raw);
         const begin = match.index || 0;
-        if (offset >= begin && offset < begin + url.length) {
-          return { url, ranges: rangesForCells(cells.slice(begin, begin + url.length)) };
+        if (raw.startsWith("/") && begin > 0 && !/[\s([<="'`]/.test(text[begin - 1])) continue;
+        const length = url && /^file:/i.test(raw) ? raw.length : url.length;
+        if (offset >= begin && offset < begin + length) {
+          return { url, ranges: rangesForCells(cells.slice(begin, begin + length)) };
         }
       }
       return null;
@@ -333,7 +347,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     };
 
     screen.addEventListener("mousedown", (event) => {
-      if (event.button !== 0) return;
+      if (event.button !== 0 || event.ctrlKey) return;
       clearHover();
       startX = event.clientX;
       startY = event.clientY;
@@ -382,10 +396,20 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
         return;
       }
       // ttyd's built-in xterm handler displays a confirmation dialog for
-      // every OSC 8 link. Handle the validated http(s) URL here, before that
+      // every OSC 8 link. Handle the validated link here, before that
       // mouseup handler runs, so one click opens one tab without a prompt.
       event.preventDefault();
       event.stopImmediatePropagation();
+      if (!moved && cleanLocalPath(pendingUrl)) {
+        if (window.parent !== window) {
+          window.parent.postMessage(
+            { type: "siling:open-local-path", path: cleanLocalPath(pendingUrl) },
+            window.location.origin,
+          );
+        }
+        clearMode();
+        return;
+      }
       if (!moved) {
         let openInternally = false;
         try {

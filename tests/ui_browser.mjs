@@ -25,6 +25,8 @@ const sessions = ['claude', 'codex', 'terminal', 'cursor', 'custom-agent'].map((
 const requests = [];
 let frameLoads = 0;
 let pendingCreation;
+let historyFailure = false;
+const linkedFixtures = new Map();
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   requests.push({ method: req.method, path: url.pathname });
@@ -32,6 +34,29 @@ const server = http.createServer((req, res) => {
     frameLoads++;
     res.setHeader('Content-Type', 'text/html');
     return res.end('<!doctype html><body style="background:#151b24;color:#d9e2ef;font:14px monospace"><pre>Isolated terminal fixture\nNo live session or credentials loaded.</pre><textarea aria-label="Terminal input"></textarea></body>');
+  }
+  if (url.pathname.endsWith('/folders')) {
+    const id = url.pathname.split('/')[3];
+    res.setHeader('Content-Type','application/json');
+    if (req.method === 'POST') {
+      let body=''; req.on('data',chunk=>body+=chunk); req.on('end',()=>{
+        const value=JSON.parse(body);
+        const folder={path:value.path,label:value.label,type:'file',exists:true,allowed:true,
+          entries:[{rel:'',name:'artifact.png',type:'file',previewable:true}],loaded_dirs:['']};
+        linkedFixtures.set(id,[folder]);res.end(JSON.stringify({ok:true,folder}));
+      });
+      return;
+    }
+    return res.end(JSON.stringify({folders:linkedFixtures.get(id)||[]}));
+  }
+  if (url.pathname.endsWith('/folders/file/raw')) {
+    res.setHeader('Content-Type','image/png');
+    return res.end(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64'));
+  }
+  if (url.pathname.endsWith('/pane')) {
+    if (historyFailure) { res.writeHead(503); return res.end('fixture unavailable'); }
+    res.setHeader('Content-Type', 'text/plain');
+    return res.end(Array.from({length: 300}, (_, i) => `history-${i} <literal>`).join('\n'));
   }
   if (url.pathname.startsWith('/api/')) {
     res.setHeader('Content-Type', 'application/json');
@@ -105,6 +130,74 @@ try {
   }
   assert.equal(await evaluate(`document.querySelectorAll('.pane iframe').length`), 4, JSON.stringify(errors));
   console.log('Dashboard booted with four isolated terminal frames');
+  if (!baseline) {
+    const beforeLinks=frameLoads;
+    await evaluate(`window.postMessage({type:'siling:open-local-path',path:'/fixture/spoof.png'},location.origin)`);
+    await evaluate(`window.dispatchEvent(new MessageEvent('message',{origin:'https://untrusted.example',source:document.querySelector('.pane iframe').contentWindow,data:{type:'siling:open-local-path',path:'/fixture/spoof.png'}}))`);
+    await pause(100);
+    assert.equal(linkedFixtures.size,0,'Messages from outside terminal frames are ignored');
+    await evaluate(`document.querySelectorAll('.pane iframe')[2].contentWindow.eval("parent.postMessage({type:'siling:open-local-path',path:'/fixture/artifact.png'},location.origin)")`);
+    for(let i=0;i<80;i++) {
+      if(await evaluate(`!!document.querySelector('#folder-modal-preview img')?.naturalWidth`)) break;
+      await pause(100);
+    }
+    assert.equal(linkedFixtures.get('fixture-2')?.[0].path,'/fixture/artifact.png','Link attaches to its source terminal session');
+    assert.ok(await evaluate(`document.querySelector('#folder-modal-preview img')?.naturalWidth > 0`),'Click message opens a rendered image');
+    assert.equal(frameLoads,beforeLinks,'Opening a file preserves terminal frames');
+    await screenshot('terminal-local-link');
+    await evaluate(`document.querySelector('#folder-modal-close').click()`);
+  }
+
+  if (!baseline) {
+    const beforeCopyFrames = frameLoads;
+    await evaluate(`document.querySelector('.btn-copy-history').click()`);
+    for (let i = 0; i < 80; i++) {
+      if (await evaluate(`document.querySelector('.copy-history-text')?.value.includes('history-299')`)) break;
+      await pause(100);
+    }
+    assert.equal(await evaluate(`document.querySelector('.copy-history-dialog').open`), true);
+    assert.ok(await evaluate(`document.querySelector('.copy-history-text').value.includes('<literal>')`));
+    await evaluate(`{const t=document.querySelector('.copy-history-text');t.focus();t.setSelectionRange(0,200);t.scrollTop=0;}`);
+    const rect = await evaluate(`(()=>{const r=document.querySelector('.copy-history-text').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+    await cdp('Input.dispatchMouseEvent', {type: 'mouseWheel', ...rect, deltaX: 0, deltaY: 500});
+    await pause(200);
+    assert.ok(await evaluate(`document.querySelector('.copy-history-text').scrollTop > 0`), 'Selected history must scroll');
+    assert.equal(await evaluate(`document.querySelector('.copy-history-text').selectionEnd`), 200, 'Scrolling preserves selection');
+    await evaluate(`{const t=document.querySelector('.copy-history-text');t.setSelectionRange(0,0);t.scrollTop=0;}`);
+    const dragRect = await evaluate(`(()=>{const r=document.querySelector('.copy-history-text').getBoundingClientRect();return {x:r.x+20,top:r.y+12,bottom:r.bottom-12}})()`);
+    await cdp('Input.dispatchMouseEvent', {type:'mousePressed',x:dragRect.x,y:dragRect.top,button:'left',buttons:1,clickCount:1});
+    await cdp('Input.dispatchMouseEvent', {type:'mouseMoved',x:dragRect.x+100,y:dragRect.bottom,button:'left',buttons:1});
+    await cdp('Input.dispatchMouseEvent', {type:'mouseWheel',x:dragRect.x+100,y:dragRect.bottom,buttons:1,deltaX:0,deltaY:500});
+    await pause(250);
+    await cdp('Input.dispatchMouseEvent', {type:'mouseMoved',x:dragRect.x+110,y:dragRect.bottom-20,button:'left',buttons:1});
+    await cdp('Input.dispatchMouseEvent', {type:'mouseReleased',x:dragRect.x+110,y:dragRect.bottom-20,button:'left',buttons:0,clickCount:1});
+    assert.ok(await evaluate(`(()=>{const t=document.querySelector('.copy-history-text');return t.value.slice(t.selectionStart,t.selectionEnd).split('\\n').length > 30})()`), 'Drag and wheel extend selection across screens');
+    await evaluate(`document.querySelector('.copy-history-select').click()`);
+    assert.ok(await evaluate(`(()=>{const t=document.querySelector('.copy-history-text');return t.selectionEnd===t.value.length&&t.selectionStart===0})()`), 'Select all includes offscreen history');
+    await screenshot('copy-history');
+    await cdp('Input.dispatchKeyEvent', {type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+    await cdp('Input.dispatchKeyEvent', {type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+    assert.equal(await evaluate(`document.querySelector('.copy-history-dialog').open`), false);
+    assert.equal(frameLoads, beforeCopyFrames, 'Copying history preserves terminal frames');
+    historyFailure = true;
+    await evaluate(`document.querySelector('.btn-copy-history').click()`);
+    for (let i=0;i<80;i++) {
+      if (await evaluate(`document.querySelector('.copy-history-status').textContent.includes('503')`)) break;
+      await pause(50);
+    }
+    assert.ok(await evaluate(`document.querySelector('.copy-history-status').textContent.includes('503')`), 'Fetch failure is visible');
+    assert.equal(await evaluate(`document.querySelector('.copy-history-text').value`), '', 'Failure cannot show stale history');
+    await evaluate(`document.querySelector('.copy-history-dialog').close()`);
+    historyFailure = false;
+    await evaluate(`document.querySelector('.btn-zoom').click();document.querySelector('.btn-copy-history').click()`);
+    await cdp('Input.dispatchKeyEvent', {type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+    await cdp('Input.dispatchKeyEvent', {type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+    assert.equal(await evaluate(`document.querySelector('.copy-history-dialog').open`), false);
+    assert.equal(await evaluate(`document.querySelectorAll('.zoomed-pane').length`), 1, 'Escape closes history before zoom');
+    await evaluate(`document.querySelector('.btn-zoom').click()`);
+
+  }
+
   await screenshot('desktop-before-interaction');
   if (baseline) {
     await evaluate(`document.querySelector('#btn-settings').click()`);
@@ -166,7 +259,7 @@ try {
   }
   await evaluate(`document.querySelector('.btn-pane-more').click();document.querySelector('.pane-menu[open] .btn-unpin').click()`);
   assert.ok(await evaluate(`!JSON.parse(localStorage.getItem('orch_slots')).includes('fixture-0')`), 'Close pane only unpins');
-  assert.deepEqual(requests.filter(r => r.method !== 'GET'), [{ method: 'POST', path: '/api/self-update/fetch' }], 'Only the existing boot-time update fetch is allowed; presentation must not mutate sessions');
+  assert.deepEqual(requests.filter(r => r.method !== 'GET'), [{ method: 'POST', path: '/api/self-update/fetch' }, {method:'POST',path:'/api/sessions/fixture-2/folders'}], 'Only boot-time fetch and the explicitly clicked file may mutate state');
   // Hold a real UI request open, fill its intended slot, then return the result.
   await viewport(1280, 800);
   await evaluate(`document.querySelector('[data-run-id="fixture-1"] .btn-pane-more').click();document.querySelector('[data-run-id="fixture-1"] .btn-unpin').click();`);

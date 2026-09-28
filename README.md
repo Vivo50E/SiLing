@@ -78,6 +78,16 @@ intervene.
 The browser is only the control surface. Background tmux sessions continue
 running when the tab is closed.
 
+Click an absolute local path or a `file://` link in a terminal to open it in SiLing’s
+Files preview. The clicked item is linked to that session automatically; agents do
+not need to run `link-file` first. Paths must exist on the session’s host and be
+inside the configured allowed roots (`ORCH_LINKED_FOLDER_ROOTS` for extra roots).
+
+Use **Copy history** in the pane header for cross-screen copying. It opens a stable
+snapshot of retained history: scroll, select text (or **Select all**), then press
+⌘C / Ctrl+C. **Back to terminal** returns to the same live session. Reopen the
+view to include newer output.
+
 In Terminal and Codex panes, drag to select text and use the browser's copy shortcut.
 Ctrl-drag passes mouse input to terminal applications; other agent panes retain
 their mouse behavior (Option-drag on macOS selects text). Newly started or

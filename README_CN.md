@@ -138,6 +138,14 @@ SiLing 会保留多层恢复信息：
 由于不同 agent CLI 暴露的 metadata 不完全一致，恢复能力是 best-effort；但
 Dashboard 会明确展示这些状态，而不是让它们消失在 terminal scrollback 里。
 
+点击终端里的本地绝对路径或 `file://` 链接，即可在 SiLing Files 中预览，并自动关联
+到该终端所属会话，无需 agent 先执行 `link-file`。文件须存在于会话所在主机且位于
+允许目录内；额外目录通过 `ORCH_LINKED_FOLDER_ROOTS` 配置。
+
+跨屏复制时，点击 pane 顶部的 **复制历史 / Copy history**：在已保留历史的静态快照中
+滚动、拖选或全选，然后按 ⌘C / Ctrl+C 复制。点击 **返回终端** 回到原来的实时会话；
+重新打开可读取最新输出。
+
 Terminal 和 Codex pane 支持普通拖选文本后使用浏览器复制快捷键；Ctrl+拖选可向终端程序
 传递鼠标操作。其他 Agent pane 保留原有鼠标行为，macOS 可用 Option+拖选选择文本。
 新建或恢复的 Codex session 使用 inline 模式保留终端滚动历史；已有 alternate-screen

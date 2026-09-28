@@ -51,8 +51,8 @@ function hover(x, y) {
   listeners.mousemove({coords: [x, y], buttons: 0});
   return screen.children.find(el => el.className === 'siling-link-highlight').children;
 }
-function click(x, y, moved = false, altKey = false) {
-  const event = {coords: [x, y], button: 0, clientX: x * 10, clientY: y * 20, altKey,
+function click(x, y, moved = false, altKey = false, ctrlKey = false) {
+  const event = {coords: [x, y], button: 0, clientX: x * 10, clientY: y * 20, altKey, ctrlKey,
     preventDefault() {}, stopImmediatePropagation() {}};
   listeners.mousedown(event);
   mouse.triggerMouseEvent({});
@@ -112,3 +112,41 @@ assert.equal(spans[0].style.width, '160px');
 assert.equal(spans[1].style.width, `${(url.length - 16) * 10}px`);
 click(2, 1);
 assert.equal(opened.at(-1), url);
+
+// Local artifacts use the parent viewer, including OSC labels and wrapped paths.
+const messages = [];
+window.location = {origin: 'http://localhost'};
+window.parent = {postMessage: (message, origin) => messages.push({message, origin})};
+const local = '/tmp/sample/image.png';
+rows = [row(local.slice(0,20)), row(local.slice(20), true)];
+click(2,0);
+assert.deepEqual(messages.at(-1), {message:{type:'siling:open-local-path',path:local},origin:'http://localhost'});
+const localCount = messages.length;
+click(2,0,true);
+click(2,0,false,true);
+click(2,0,false,false,true);
+assert.equal(messages.length,localCount,'drag and Option-drag must not open files');
+term._core._oscLinkService.getLinkData = () => ({uri:'file:///tmp/My%20Report.png:12'});
+rows=[row('report screenshot',false,1)];
+click(2,0);
+assert.equal(messages.at(-1).message.path,'/tmp/My Report.png');
+term._core._oscLinkService.getLinkData = () => ({uri:'file://other-host/tmp/private.png'});
+rows=[row('remote file',false,1)];
+click(2,0);
+assert.equal(messages.length,localCount+1,'remote file authorities are not local paths');
+term._core._oscLinkService.getLinkData = () => ({uri:'javascript:alert(1)'});
+click(2,0);
+assert.equal(messages.length,localCount+1,'unsupported schemes are ignored');
+
+rows = [row('/tmp/a.py:12:3')];
+click(2,0);
+assert.equal(messages.at(-1).message.path,'/tmp/a.py');
+const beforeRelative = messages.length;
+rows = [row('src/main.py')];
+click(5,0);
+assert.equal(messages.length,beforeRelative,'relative paths without a known cwd are not misread as absolute');
+
+const fileUri='file:///tmp/a%20b.png';
+rows=[row(fileUri.slice(0,20)),row(fileUri.slice(20),true)];
+click(18,0);
+assert.equal(messages.at(-1).message.path,'/tmp/a b.png','Click the end of an encoded file URI');
