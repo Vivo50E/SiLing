@@ -3495,12 +3495,13 @@
   function renderSelfUpdateStatus() {
     const candidates = selfUpdateStatus.candidates || [];
     const eligible = candidates.filter(item => item.eligible);
+    const pending = candidates.filter(item => Number(item.ahead || 0) > 0);
     const button = $("btn-self-update");
     if (selfUpdateVerification && !verificationStillMatches()) {
       selfUpdateVerification = null;
       if (selfUpdatePhase === "verified") selfUpdatePhase = "idle";
     }
-    button.classList.toggle("available", eligible.length > 0 && selfUpdatePhase === "idle");
+    button.classList.toggle("available", pending.length > 0 && selfUpdatePhase === "idle");
     button.classList.toggle("verified", selfUpdatePhase === "verified");
     button.classList.toggle("failed", selfUpdatePhase === "failed");
     button.disabled = selfUpdatePhase === "verifying" || selfUpdatePhase === "applying";
@@ -3508,7 +3509,8 @@
     else if (selfUpdatePhase === "verified") button.textContent = "approve update";
     else if (selfUpdatePhase === "applying") button.textContent = "applying…";
     else if (selfUpdatePhase === "failed") button.textContent = "update failed";
-    else button.textContent = eligible.length ? `update: ${eligible.length}` : "apply update";
+    else if (eligible.length) button.textContent = `update: ${eligible.length}`;
+    else button.textContent = pending.length ? "update blocked" : "apply update";
 
     const candidate = eligible[0];
     const candidateLabel = candidate?.kind === "upstream"

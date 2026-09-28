@@ -523,6 +523,60 @@ def _tmux_send_keys(argv: list, *, retries: int = 2,
     return False, last_err
 
 
+def _tmux_target_pane(session: str) -> tuple[str, str]:
+    """Resolve a session to an explicit live pane target.
+
+    A bare session target makes tmux infer the current window and pane.  That
+    inference can fail with ``no current client`` for detached sessions even
+    though the session and its panes are alive.  Dashboard sessions are
+    intentionally detached, so resolve the active pane ourselves and pass its
+    stable ``%N`` id to send-keys.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "tmux", "list-panes", "-s", "-t", session, "-F",
+                "#{pane_id}\t#{window_active}\t#{pane_active}\t#{pane_dead}"
+                "\t#{pane_in_mode}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return "", "timed out resolving target pane"
+    except (subprocess.SubprocessError, FileNotFoundError) as exc:
+        return "", f"cannot resolve target pane: {type(exc).__name__}: {exc}"
+    if result.returncode != 0:
+        error = (result.stderr or "").strip() or f"exit={result.returncode}"
+        return "", f"cannot resolve target pane: {error}"
+
+    live: list[tuple[str, bool, bool]] = []
+    for raw_line in result.stdout.splitlines():
+        fields = raw_line.split("\t")
+        if len(fields) != 5 or fields[3] == "1" or not fields[0].startswith("%"):
+            continue
+        live.append((
+            fields[0],
+            fields[1] == "1" and fields[2] == "1",
+            fields[4] == "1",
+        ))
+    if not live:
+        return "", "session has no live pane"
+    pane, _selected, in_mode = next(
+        (item for item in live if item[1]), live[0]
+    )
+    if in_mode:
+        ok, error = _tmux_send_keys(
+            ["tmux", "send-keys", "-t", pane, "-X", "cancel"],
+            timeout=5,
+        )
+        if not ok:
+            return "", f"cannot leave pane copy-mode: {error}"
+    return pane, ""
+
+
 # Delay between literal paste and the trailing Enter.
 #
 # Why this exists: cursor-agent's TUI uses bracketed paste mode. When we
@@ -563,7 +617,10 @@ def tmux_send(session: str, text: str, literal: bool = True, enter: bool = False
     "draft text stuck in cursor-agent's input box" race — see the
     PASTE_ENTER_DELAY_S comment for the gory details.
     """
-    base = ["tmux", "send-keys", "-t", session]
+    pane, err = _tmux_target_pane(session)
+    if not pane:
+        return False, err
+    base = ["tmux", "send-keys", "-t", pane]
     CHUNK = 8 * 1024
     if text:
         if literal and len(text) > CHUNK:
@@ -613,7 +670,10 @@ def tmux_kill(session: str) -> bool:
 
 def tmux_send_key(session: str, key: str) -> tuple[bool, str]:
     """Send one tmux key name (for example C-c)."""
-    return _tmux_send_keys(["tmux", "send-keys", "-t", session, key],
+    pane, err = _tmux_target_pane(session)
+    if not pane:
+        return False, err
+    return _tmux_send_keys(["tmux", "send-keys", "-t", pane, key],
                            timeout=5)
 
 

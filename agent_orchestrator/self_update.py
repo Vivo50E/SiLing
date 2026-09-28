@@ -300,11 +300,31 @@ class SelfUpdateManager:
             candidates.append(self._upstream_candidate())
         except SelfUpdateError:
             pass
+        # An ancestor (or identical ref) contains no code that can be applied.
+        # Do not present it as a blocked update merely because the local branch
+        # has moved ahead after a successful rebase or local fix.
+        candidates = [
+            candidate for candidate in candidates
+            if candidate.get("ahead") != 0 or not candidate.get("head")
+        ]
         candidates.sort(key=lambda item: (
             not item.get("eligible"),
-            item.get("kind") == "upstream",
+            item.get("kind") != "upstream",
             item["branch"],
         ))
+        unique_candidates = []
+        seen_heads: set[tuple[str, str]] = set()
+        for candidate in candidates:
+            identity = (
+                str(candidate.get("target_head") or target_head),
+                str(candidate.get("head") or ""),
+            )
+            if identity[1] and identity in seen_heads:
+                continue
+            if identity[1]:
+                seen_heads.add(identity)
+            unique_candidates.append(candidate)
+        candidates = unique_candidates
         return {
             "available": True,
             "target_branch": target_branch,

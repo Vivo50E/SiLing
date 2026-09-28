@@ -153,6 +153,33 @@ class SelfUpdateManagerTests(unittest.TestCase):
         self.assertEqual(_git(self.repo, "rev-parse", "HEAD"), upstream_head)
         self.assertEqual((self.repo / "upstream.txt").read_text(), "new upstream code\n")
 
+    def test_same_agent_and_upstream_commit_is_counted_once_as_upstream(self):
+        upstream_head = self._publish_upstream_commit()
+        self.manager.fetch_upstream()
+        _git(self.candidate, "reset", "--hard", upstream_head)
+
+        matching = [
+            item for item in self.manager.status()["candidates"]
+            if item.get("head") == upstream_head
+        ]
+
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(matching[0]["kind"], "upstream")
+
+    def test_status_ignores_ancestor_refs_after_local_branch_moves_ahead(self):
+        bare = self.root / "remote.git"
+        _git(self.root, "init", "--bare", "-b", "main", str(bare))
+        _git(self.repo, "remote", "add", "origin", str(bare))
+        _git(self.repo, "push", "-u", "origin", "main")
+        _git(self.candidate, "reset", "--hard", "main")
+        (self.repo / "local.txt").write_text("local fix\n")
+        _git(self.repo, "add", "local.txt")
+        _git(self.repo, "commit", "-m", "local fix after upstream")
+
+        status = self.manager.status()
+
+        self.assertEqual(status["candidates"], [])
+
 
 class SelfUpdateDashboardContractTests(unittest.TestCase):
     @classmethod
@@ -168,6 +195,7 @@ class SelfUpdateDashboardContractTests(unittest.TestCase):
         self.assertNotIn('id="self-update-modal"', self.index)
         self.assertNotIn('typed !== "APPROVE"', self.index)
         self.assertIn('button.textContent = "approve update"', self.index)
+        self.assertIn('button.textContent = pending.length ? "update blocked"', self.index)
         self.assertIn('confirmation: "APPROVE"', self.index)
 
     def test_apply_requires_verification_token_and_requests_restart(self):
