@@ -74,6 +74,10 @@ from .remote_nodes import (
     qualify_run_id,
     remote_api_path,
 )
+from .ssh_files import (
+    fetch_preview as fetch_ssh_preview,
+    validate_target as validate_ssh_target,
+)
 from .self_update import SelfUpdateError, SelfUpdateManager
 from .sync_status import SyncStatusService, load_settings as load_sync_settings
 from .sync_transfer import TransferCancelled
@@ -9828,6 +9832,33 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             "omitted": omitted_any,
             "scanned": scanned_total,
         }
+
+    @app.post("/api/sessions/{run_id}/ssh-file")
+    def post_session_ssh_file(run_id: str, body: dict):
+        r = _lookup_run_light(outputs_dir, run_id)
+        if not r:
+            raise HTTPException(404, "run not found")
+        if not r.get("run_dir"):
+            raise HTTPException(400, "session has no run directory")
+        host, remote_path = body.get("host"), body.get("path")
+        try:
+            validate_ssh_target(host, remote_path)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+        cache_root = (Path(r["run_dir"]) / "ssh-previews").resolve()
+        if not _is_allowed_linked_folder(cache_root):
+            raise HTTPException(400, "preview directory outside allowed roots")
+        try:
+            cached = fetch_ssh_preview(host, remote_path, cache_root)
+        except (ValueError, OSError) as exc:
+            raise HTTPException(400, str(exc))
+        cached = _resolve_linked_path(str(cached))
+        label = f"{host}:{remote_path} (snapshot)"
+        _persist_linked_path(r, cached, label, "file")
+        return {"ok": True, "folder": _linked_folder_summary({
+            "path": str(cached), "label": label, "type": "file",
+            "created_at": _iso_now(),
+        })}
 
     @app.post("/api/sessions/{run_id}/folders")
     async def post_session_folder(run_id: str, request: Request):

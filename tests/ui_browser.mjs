@@ -35,12 +35,13 @@ const server = http.createServer((req, res) => {
     res.setHeader('Content-Type', 'text/html');
     return res.end('<!doctype html><body style="background:#151b24;color:#d9e2ef;font:14px monospace"><pre>Isolated terminal fixture\nNo live session or credentials loaded.</pre><textarea aria-label="Terminal input"></textarea></body>');
   }
-  if (url.pathname.endsWith('/folders')) {
+  if (url.pathname.endsWith('/folders') || url.pathname.endsWith('/ssh-file')) {
     const id = url.pathname.split('/')[3];
     res.setHeader('Content-Type','application/json');
     if (req.method === 'POST') {
       let body=''; req.on('data',chunk=>body+=chunk); req.on('end',()=>{
         const value=JSON.parse(body);
+        if (url.pathname.endsWith("/ssh-file")) { assert.equal(value.host,"fixture-ssh"); assert.equal(value.path,"/remote/artifact.png"); value.path="/fixture/ssh-preview.png"; }
         const folder={path:value.path,label:value.label,type:'file',exists:true,allowed:true,
           entries:[{rel:'',name:'artifact.png',type:'file',previewable:true}],loaded_dirs:['']};
         linkedFixtures.set(id,[folder]);res.end(JSON.stringify({ok:true,folder}));
@@ -160,6 +161,18 @@ try {
     assert.equal(frameLoads,beforeLinks,'Opening a file preserves terminal frames');
     await screenshot('terminal-local-link');
     await evaluate(`document.querySelector('#folder-modal-close').click()`);
+    await evaluate(`{const input=document.querySelector('[data-run-id="fixture-2"] .pane-ssh-host');input.value='fixture-ssh';input.dispatchEvent(new Event('change'));}`);
+    await evaluate(`document.querySelectorAll('.pane iframe')[2].contentWindow.eval("parent.postMessage({type:'siling:open-local-path',path:'/remote/artifact.png'},location.origin)")`);
+    for(let i=0;i<80;i++) {
+      if(linkedFixtures.get('fixture-2')?.[0].path === '/fixture/ssh-preview.png' && await evaluate(`!!document.querySelector('#folder-modal-preview img')?.naturalWidth`)) break;
+      await pause(100);
+    }
+    assert.equal(linkedFixtures.get('fixture-2')?.[0].path,'/fixture/ssh-preview.png','SSH pane previews returned snapshot');
+    assert.equal(frameLoads,beforeLinks,'SSH file preview preserves terminal frames');
+    await screenshot('terminal-ssh-link');
+    await evaluate(`document.querySelector('#folder-modal-close').click();{const input=document.querySelector('[data-run-id="fixture-2"] .pane-ssh-host');input.value='';input.dispatchEvent(new Event('change'));}`);
+    assert.equal(await evaluate(`localStorage.getItem('siling_ssh_host:fixture-2')`),null);
+
   }
 
   if (!baseline) {
@@ -325,7 +338,7 @@ try {
   }
   await evaluate(`document.querySelector('.btn-pane-more').click();document.querySelector('.pane-menu[open] .btn-unpin').click()`);
   assert.ok(await evaluate(`!JSON.parse(localStorage.getItem('orch_slots')).includes('fixture-0')`), 'Close pane only unpins');
-  assert.deepEqual(requests.filter(r => r.method !== 'GET'), [{ method: 'POST', path: '/api/self-update/fetch' }, {method:'POST',path:'/api/sessions/fixture-2/folders'}], 'Only boot-time fetch and the explicitly clicked file may mutate state');
+  assert.deepEqual(requests.filter(r => r.method !== 'GET'), [{ method: 'POST', path: '/api/self-update/fetch' }, {method:'POST',path:'/api/sessions/fixture-2/folders'}, {method:'POST',path:'/api/sessions/fixture-2/ssh-file'}], 'Only boot-time fetch and the explicitly clicked file may mutate state');
   // Hold a real UI request open, fill its intended slot, then return the result.
   await viewport(1280, 800);
   await evaluate(`document.querySelector('[data-run-id="fixture-1"] .btn-pane-more').click();document.querySelector('[data-run-id="fixture-1"] .btn-unpin').click();`);

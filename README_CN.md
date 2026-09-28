@@ -180,6 +180,20 @@ CLI 主动换行的裸 HTTP(S) 链接，在缩进一致且接近 pane 行尾时�
 Dashboard 不会复制一份新的项目。它记住真正的 workspace，让每个 task 都有一个
 稳定的入口，方便你持续 track 它的工作和产出。
 
+### SSH 终端里的文件链接
+
+本机 Terminal pane 内执行 `ssh` 时，在该 pane 的 **More** 菜单填写
+**SSH 文件主机**，使用已有 SSH 别名（如 `dev-server`）或 `user@hostname`。
+设置按会话保存在当前浏览器；退出 SSH 回到本机 shell 后请清空。
+点击终端输出的绝对文件路径，会通过 SSH 拉取文件并在 Files 预览，无需重启
+终端或 Claude Code。网页链接仍正常打开。
+
+Dashboard 所在机器需要已有免交互 SSH 访问权限和已验证的主机密钥；自定义端口、
+跳板机、密钥文件放在 `~/.ssh/config`。远程机需要 `python3`，无需安装 SiLing。
+每次点击会刷新会话目录 `ssh-previews/` 中的只读预览副本（最大 16 MiB），
+Files 标签显示来源主机与路径。副本可离线查看，不是实时远程挂载，暂不支持目录。
+Remote Nodes pane 继续使用节点原有的文件访问方式。
+
 ### 工作台外观与操作入口
 
 顶栏保留新建、搜索、布局等常用入口；布局选择器保留十种布局并显示网格缩略图。

@@ -207,6 +207,23 @@ preserves the full query string; blank lines and following prose are not joined.
 The Dashboard does not create a second copy of your project. It remembers the
 real workspace and gives each task a stable place from which to track its work.
 
+### File links inside an SSH terminal
+
+For a local Terminal pane running `ssh`, open its **More** menu and set
+**SSH file host** to an existing SSH alias (for example `dev-server`) or
+`user@hostname`. This setting belongs to that session in the current browser;
+clear it after returning to a local shell. Absolute file links printed in the
+terminal are fetched through SSH and opened in Files without restarting the
+terminal or its agent. HTTP links keep their normal behavior.
+
+The Dashboard host must already have noninteractive SSH access and a verified
+host key; use `~/.ssh/config` for custom ports, jump hosts and identity files.
+The remote host needs `python3`, but does not need SiLing. Each click refreshes a
+read-only local snapshot (up to 16 MiB) under the session's `ssh-previews/`
+directory, labeled with its source host and path. Files retains that snapshot
+for offline viewing; it is not a live remote mount. Directories are not supported.
+Remote Nodes panes continue to use their node's existing file access.
+
 ### Workbench appearance and controls
 
 Use **New**, **Search**, and **Layout** in the toolbar. Layout retains all ten

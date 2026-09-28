@@ -2744,7 +2744,7 @@
   }
 </style>
 <link rel="stylesheet" href="/static/ui-foundation.css?v=5" />
-<script src="/static/ui-foundation.js?v=5"></script>
+<script src="/static/ui-foundation.js?v=6"></script>
 </head>
 <body>
 
@@ -7475,6 +7475,10 @@
         <div class="modal-body">
           <div class="ui-menu-group">
             <label><span data-i18n="terminalTheme">Terminal theme</span><select class="pane-theme-select" data-theme="${escapeHtml(terminalThemeValue(s.terminal_theme))}">${terminalThemeOptionsHtml(s.terminal_theme)}</select></label>
+            <label ${s.remote ? "hidden" : ""}><span data-i18n="sshFileHost">SSH file host</span>
+              <input class="pane-ssh-host" placeholder="dev-server or user@host" value="${escapeHtml(terminalSshHost(runId))}" aria-label="SSH file host">
+            </label>
+            <p class="ui-secondary" ${s.remote ? "hidden" : ""} data-i18n="sshFileHelp">File links use this SSH host. Saved in this browser; clear to use local files.</p>
             <button class="btn-reload" data-dialog-close>${ui.icon("refresh")}<span data-i18n="reconnect">Reconnect display</span></button>
             <label><span data-i18n="move">Move / swap with pane</span><select class="pane-move-select"></select></label>
           </div>
@@ -7497,6 +7501,19 @@
     ui.translate(card);
     const paneMenu = card.querySelector(".pane-menu");
     const moveSelect = card.querySelector(".pane-move-select");
+    card.querySelector(".pane-ssh-host").addEventListener("change", ev => {
+      const host = ev.target.value.trim();
+      if (host && !/^[A-Za-z0-9_][A-Za-z0-9_.@-]{0,254}$/.test(host)) {
+        alert("Enter an SSH alias or user@host, without ssh options.");
+        ev.target.value = terminalSshHost(runId);
+        return;
+      }
+      try {
+        if (host) localStorage.setItem("siling_ssh_host:" + runId, host);
+        else localStorage.removeItem("siling_ssh_host:" + runId);
+      } catch (_) { alert("Unable to save SSH host in this browser."); }
+    });
+
     ui.wireDialog(paneMenu, card.querySelector(".btn-pane-more"), () => {
       moveSelect.innerHTML = slots.map((id, index) =>
         `<option value="${index}">${escapeHtml(SLOT_MARKS[index] || index + 1)}${id === runId ? " · current" : id ? " · swap" : " · empty"}</option>`
@@ -11391,6 +11408,11 @@
     return String(path || "").split("/").filter(Boolean).pop() || "linked file";
   }
 
+  function terminalSshHost(runId) {
+    try { return localStorage.getItem("siling_ssh_host:" + runId) || ""; }
+    catch (_) { return ""; }
+  }
+
   let terminalLocalOpenSeq = 0;
   async function openTerminalLocalPath(runId, rawPath) {
     if (typeof rawPath !== "string" || !rawPath.startsWith("/")
@@ -11400,13 +11422,14 @@
     // Resolve and authorize on the session's host using the existing Files API.
     // Use its canonical result (not the displayed path, which may be a symlink).
     try {
-      const result = await api(`/api/sessions/${encodeURIComponent(runId)}/folders`, {
-        method: "POST", body: {path, label: localPathLabel(path)},
+      const host = terminalSshHost(runId);
+      const result = await api(`/api/sessions/${encodeURIComponent(runId)}/${host ? "ssh-file" : "folders"}`, {
+        method: "POST", body: host ? {host, path} : {path, label: localPathLabel(path)},
       });
       if (seq !== terminalLocalOpenSeq) return;
       await openFolderViewer(runId, result.folder?.path || path);
     } catch (error) {
-      if (seq === terminalLocalOpenSeq) alert("Open local file failed:\n" + error.message);
+      if (seq === terminalLocalOpenSeq) alert("Open file failed:\n" + error.message);
     }
   }
 
