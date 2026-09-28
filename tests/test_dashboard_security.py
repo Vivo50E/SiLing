@@ -1011,6 +1011,26 @@ class DashboardInternalLinkSettingsContractTests(unittest.TestCase):
         self.assertIn("openPreferredWebUrl(f.path);", self.source)
 
 
+class DashboardGitStatusRemovalTests(unittest.TestCase):
+    def test_toolbar_modal_and_shortcut_are_removed(self):
+        source = (dashboard.STATIC_DIR / "index.html").read_text()
+        for removed in ("btn-open-git-status", "git-status-modal", "GIT_STATUS_URL",
+                        "openGitStatusModal", 'ev.code === "KeyG"', "127.0.0.1:8501"):
+            self.assertNotIn(removed, source)
+        for retained in ('id="btn-open-notes"', 'id="btn-open-projects-browser"',
+                         'id="btn-settings"', 'ev.code === "KeyD"'):
+            self.assertIn(retained, source)
+
+    def test_old_git_status_configuration_is_ignored(self):
+        with patch.object(dashboard, "_safe_read_json", return_value={
+            "git_status_url": "http://127.0.0.1:8501/",
+        }), patch.dict(os.environ, {"ORCH_GIT_STATUS_URL": "https://example.test/git"}):
+            config = dashboard._dashboard_client_config()
+        self.assertNotIn("git_status_url", config)
+        self.assertIn("projects_browser_url", config)
+        self.assertIn("notes_url", config)
+
+
 class DashboardPanelOpacitySettingsContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

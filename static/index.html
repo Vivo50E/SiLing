@@ -3204,7 +3204,6 @@
         <button id="btn-sync-status" title="Read-only workspace sync status" hidden>sync: …</button>
         <button id="btn-open-notes" title="Open daily report (⌘D)">daily report</button>
         <button id="btn-open-projects-browser" title="Open local Projects browser">projects</button>
-        <button id="btn-open-git-status" title="Open git status (⌘G)">git status</button>
         <button id="btn-settings" title="Dashboard settings">settings</button>
         <button id="btn-self-update" title="Check, test, and apply Agent or Git upstream updates">apply update</button>
       </div>
@@ -3241,14 +3240,12 @@
   const DEFAULT_DASHBOARD_CONFIG = {
     notes_url: "",
     projects_browser_url: "http://127.0.0.1:8080/",
-    git_status_url: "http://127.0.0.1:8501/",
     projects_root: "~",
     new_session_working_dir: "~/Workflows",
     remote_nodes: [],
   };
   let NOTES_URL = DEFAULT_DASHBOARD_CONFIG.notes_url;
   let PROJECTS_BROWSER_URL = DEFAULT_DASHBOARD_CONFIG.projects_browser_url;
-  let GIT_STATUS_URL = DEFAULT_DASHBOARD_CONFIG.git_status_url;
   let PROJECTS_ROOT = DEFAULT_DASHBOARD_CONFIG.projects_root;
   let NEW_SESSION_WORKING_DIR = DEFAULT_DASHBOARD_CONFIG.new_session_working_dir;
   let REMOTE_NODES = [];
@@ -3320,7 +3317,6 @@
     const config = Object.assign({}, DEFAULT_DASHBOARD_CONFIG, raw || {});
     NOTES_URL = String(config.notes_url || "").trim();
     PROJECTS_BROWSER_URL = String(config.projects_browser_url || "").trim();
-    GIT_STATUS_URL = String(config.git_status_url || "").trim();
     PROJECTS_ROOT = String(config.projects_root || "").trim();
     NEW_SESSION_WORKING_DIR = String(
       config.new_session_working_dir || "~/Workflows"
@@ -3344,14 +3340,6 @@
     if (projectsUrl) {
       projectsUrl.value = PROJECTS_BROWSER_URL;
       projectsUrl.title = PROJECTS_BROWSER_URL;
-    }
-
-    const gitBtn = $("btn-open-git-status");
-    const gitUrl = $("git-status-modal-url");
-    if (gitBtn) gitBtn.hidden = !GIT_STATUS_URL;
-    if (gitUrl) {
-      gitUrl.textContent = GIT_STATUS_URL;
-      gitUrl.title = GIT_STATUS_URL;
     }
 
     const cwd = $("new-cwd");
@@ -9213,77 +9201,6 @@
   document.addEventListener("keydown", handleProjectsBrowserModalKeydown);
   projectsBrowserModal.addEventListener("keydown", handleProjectsBrowserModalKeydown);
 
-  // ---------- Embedded git status ----------
-  const gitStatusModal = document.createElement("div");
-  gitStatusModal.className = "modal-scrim";
-  gitStatusModal.id = "git-status-modal";
-  gitStatusModal.hidden = true;
-  gitStatusModal.tabIndex = -1;
-  gitStatusModal.innerHTML = `
-    <div class="modal web-modal">
-      <div class="modal-head">
-        <div class="modal-title">git status</div>
-        <button class="modal-close" id="git-status-modal-close" title="Close">×</button>
-      </div>
-      <div class="web-hint">
-        This opens the local git status app. If the page is blank, confirm the app is running on localhost:8501.
-      </div>
-      <div class="web-browser-bar">
-        <span class="web-scheme">http</span>
-        <div class="web-url" id="git-status-modal-url" title="${GIT_STATUS_URL}">${GIT_STATUS_URL}</div>
-      </div>
-      <div class="web-frame-wrap">
-        <iframe
-          class="web-frame"
-          id="git-status-modal-frame"
-          title="Git status"
-          allow="clipboard-read; clipboard-write; fullscreen"
-          referrerpolicy="strict-origin-when-cross-origin"
-        ></iframe>
-      </div>
-      <div class="modal-foot">
-        <button class="btn-secondary" id="git-status-modal-reload">Reload</button>
-        <button class="btn-secondary" id="git-status-modal-open">Open in browser</button>
-        <button class="btn-secondary" id="git-status-modal-close-2">Close</button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(gitStatusModal);
-  let gitStatusLoaded = false;
-  function openGitStatusModal() {
-    if (!GIT_STATUS_URL) return;
-    gitStatusModal.hidden = false;
-    requestAnimationFrame(() => gitStatusModal.focus({ preventScroll: true }));
-    if (!gitStatusLoaded) {
-      $("git-status-modal-frame").src = GIT_STATUS_URL;
-      gitStatusLoaded = true;
-    }
-  }
-  const closeGitStatusModal = () => { gitStatusModal.hidden = true; };
-  $("btn-open-git-status").addEventListener("click", openGitStatusModal);
-  $("git-status-modal-close").addEventListener("click", closeGitStatusModal);
-  $("git-status-modal-close-2").addEventListener("click", closeGitStatusModal);
-  $("git-status-modal-reload").addEventListener("click", () => {
-    $("git-status-modal-frame").src = GIT_STATUS_URL;
-    gitStatusLoaded = true;
-  });
-  $("git-status-modal-open").addEventListener("click", () => {
-    window.open(GIT_STATUS_URL, "_blank", "noopener,noreferrer");
-  });
-  gitStatusModal.addEventListener("click", (ev) => {
-    if (ev.target === gitStatusModal) closeGitStatusModal();
-  });
-  function handleGitStatusModalKeydown(ev) {
-    if (gitStatusModal.hidden || ev.key !== "Escape") return;
-    ev.preventDefault();
-    ev.stopPropagation();
-    if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
-    closeGitStatusModal();
-  }
-  window.addEventListener("keydown", handleGitStatusModalKeydown, { capture: true });
-  document.addEventListener("keydown", handleGitStatusModalKeydown);
-  gitStatusModal.addEventListener("keydown", handleGitStatusModalKeydown);
-
   function handleGlobalDashboardShortcuts(ev) {
     if (!ev.metaKey || ev.ctrlKey || ev.altKey || ev.shiftKey) return;
     const key = (ev.key || "").toLowerCase();
@@ -9292,11 +9209,6 @@
       ev.stopPropagation();
       if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
       openNotesModal();
-    } else if (key === "g" || ev.code === "KeyG") {
-      ev.preventDefault();
-      ev.stopPropagation();
-      if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
-      openGitStatusModal();
     }
   }
   window.addEventListener("keydown", handleGlobalDashboardShortcuts, { capture: true });

@@ -1543,7 +1543,6 @@ def _dashboard_client_config() -> dict[str, str]:
         "projects_browser_url": (
             "ORCH_PROJECTS_BROWSER_URL", "http://127.0.0.1:8080/"
         ),
-        "git_status_url": ("ORCH_GIT_STATUS_URL", "http://127.0.0.1:8501/"),
         "projects_root": (
             "ORCH_PROJECTS_ROOT", str(Path.home() / "Documents" / "Projects")
         ),
