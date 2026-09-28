@@ -1,0 +1,114 @@
+// Exercise the injected script with cell-accurate buffers and a small DOM.
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const source = fs.readFileSync(0, 'utf8');
+const listeners = {}, documentListeners = {}, callbacks = {}, timers = [];
+function element() {
+  return {
+    style: {}, children: [],
+    appendChild(child) { this.children.push(child); },
+    replaceChildren() { this.children = []; },
+  };
+}
+const screen = Object.assign(element(), {
+  addEventListener: (name, fn) => { listeners[name] = fn; },
+  querySelector: () => null,
+  getBoundingClientRect: () => ({left: 0, top: 0, width: 200, height: 100}),
+});
+const empty = () => ({getChars: () => '', getWidth: () => 1, extended: {}});
+let rows = [], opened = [], reports = 0;
+const buffer = {viewportY: 0, get length() { return rows.length; }, getLine: y => rows[y]};
+const selection = {
+  shouldForceSelection: e => !!e.altKey,
+  _getMouseBufferCoords: e => e.coords,
+};
+const mouse = {triggerMouseEvent: () => { reports++; }};
+const term = {
+  cols: 20, rows: 5, buffer: {active: buffer}, options: {},
+  _core: {coreMouseService: mouse, _selectionService: selection,
+    _oscLinkService: {getLinkData: () => ({uri: 'https://example.test/wrapped'})}},
+  onScroll: fn => { callbacks.scroll = fn; },
+  onResize: fn => { callbacks.resize = fn; },
+  onWriteParsed: fn => { callbacks.write = fn; },
+};
+global.window = {term, frameElement: {dataset: {nativeSelection: 'true'}},
+  addEventListener() {}, open: url => opened.push(url)};
+window.parent = window;
+global.document = {
+  querySelector: () => screen, createElement: element,
+  addEventListener: (name, fn) => { documentListeners[name] = fn; },
+};
+global.setTimeout = fn => timers.push(fn);
+eval(source);
+
+function row(chars, wrapped = false, id = 0) {
+  const cells = [...chars].map(char => ({getChars: () => char, getWidth: () => 1,
+    extended: id ? {urlId: id} : {}}));
+  while (cells.length < term.cols) cells.push(empty());
+  return {isWrapped: wrapped, getCell: col => cells[col], cells};
+}
+function hover(x, y) {
+  listeners.mousemove({coords: [x, y], buttons: 0});
+  return screen.children.find(el => el.className === 'siling-link-highlight').children;
+}
+function click(x, y, moved = false, altKey = false) {
+  const event = {coords: [x, y], button: 0, clientX: x * 10, clientY: y * 20, altKey,
+    preventDefault() {}, stopImmediatePropagation() {}};
+  listeners.mousedown(event);
+  mouse.triggerMouseEvent({});
+  documentListeners.mouseup({...event, clientX: event.clientX + (moved ? 20 : 0)});
+  mouse.triggerMouseEvent({});
+  timers.splice(0).forEach(fn => fn());
+}
+
+const url = 'https://example.test/wrapped';
+rows = [row(url.slice(0, 20)), row(url.slice(20) + ')', true)];
+for (const [x, y] of [[2, 0], [2, 1]]) {
+  const spans = hover(x, y);
+  assert.equal(spans.length, 2, 'hovering either half underlines both');
+  assert.equal(spans[0].style.width, '200px');
+  assert.equal(spans[1].style.width, `${(url.length - 20) * 10}px`, 'Markdown closing bracket is excluded');
+  click(x, y);
+  assert.equal(opened.at(-1), url);
+}
+const count = opened.length;
+click(2, 0, true);
+assert.equal(opened.length, count, 'dragging a native link must select, not open');
+click(2, 0, false, true);
+assert.equal(opened.length, count, 'Option-click remains selection');
+
+// tmux can re-emit different OSC ids on hard-separated physical lines.
+rows = [row('first link segment', false, 1), row('second segment', false, 2), row('plain')];
+for (const y of [0, 1]) {
+  assert.equal(hover(2, y).length, 2);
+  click(2, y);
+  assert.equal(opened.at(-1), url);
+}
+hover(2, 0);
+callbacks.scroll();
+assert.equal(screen.children[0].children.length, 0);
+hover(2, 0);
+callbacks.resize();
+assert.equal(screen.children[0].children.length, 0);
+hover(2, 0);
+callbacks.write();
+assert.equal(screen.children[0].children.length, 0);
+hover(2, 0);
+listeners.mouseleave();
+assert.equal(screen.children[0].children.length, 0);
+
+// Wide and surrogate-pair characters before a literal URL must not offset it.
+const prefix = row('');
+prefix.cells[0] = {getChars: () => '中', getWidth: () => 2, extended: {}};
+prefix.cells[1] = {getChars: () => '', getWidth: () => 0, extended: {}};
+prefix.cells[2] = {getChars: () => '😀', getWidth: () => 2, extended: {}};
+prefix.cells[3] = {getChars: () => '', getWidth: () => 0, extended: {}};
+for (let x = 4; x < 20; x++) prefix.cells[x] = row(url).cells[x - 4];
+rows = [prefix, row(url.slice(16), true)];
+const spans = hover(2, 1);
+assert.equal(spans.length, 2);
+assert.equal(spans[0].style.left, '40px');
+assert.equal(spans[0].style.width, '160px');
+assert.equal(spans[1].style.width, `${(url.length - 16) * 10}px`);
+click(2, 1);
+assert.equal(opened.at(-1), url);

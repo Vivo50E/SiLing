@@ -173,6 +173,10 @@ A task is more than its terminal transcript. It usually has a project folder,
 plans, test evidence, result tables, screenshots, and a few reference pages.
 Linked Items attaches that context directly to the session.
 
+For a spec or report, run `siling link-file /absolute/path/spec.md --label "Spec"`.
+The user can then open it from the pane's **Files** panel without copying a
+terminal path. Wrapped HTTP(S) links highlight all visible segments on hover.
+
 - Link a whole project or task folder and browse its tree without leaving the
   Dashboard.
 - Link individual files or URLs when the task spans several locations.

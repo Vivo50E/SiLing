@@ -17,6 +17,15 @@ from agent_orchestrator.config import TaskConfig
 
 
 class PaneInteractionTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("node"), "Node.js required")
+    def test_wrapped_links_highlight_and_open_the_complete_target(self):
+        script = terminal_theme._TTYD_INTERACTION_SCRIPT.split(">", 1)[1].rsplit("</script>", 1)[0]
+        result = subprocess.run(
+            ["node", str(Path(__file__).with_name("terminal_links.cjs"))],
+            input=script, capture_output=True, text=True, timeout=10,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_tty_route_enables_live_input_only_for_codex(self):
         with patch.object(dashboard.TtydManager, "_sweep_orphans", return_value=0):
             app = dashboard.create_app(Path("/nonexistent/siling-input-test"),

@@ -152,6 +152,10 @@ Codex pane 在浏览 tmux 历史时，开始打字或粘贴会先返回实时终
 一个 task 不只是 terminal transcript。它通常还有项目文件夹、计划、测试证据、
 结果表格、截图和几个参考网页。Linked Items 会把这些上下文直接绑定到 session。
 
+交付 spec 或报告时，运行 `siling link-file /absolute/path/spec.md --label "Spec"`，
+用户即可从 pane 的 **Files** 面板打开，无需复制终端里的路径。
+终端 HTTP(S) 链接换行后，悬停时会高亮链接的所有可见分段。
+
 - 绑定整个项目或 task 文件夹，直接在 Dashboard 中浏览目录树。
 - 当 task 跨越多个位置时，可以单独绑定文件或 URL。
 - 预览 Markdown、源码、图片、CSV 数据和报告。

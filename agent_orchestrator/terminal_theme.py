@@ -192,34 +192,70 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       return [col, terminal.buffer.active.viewportY + row];
     };
 
-    const urlForEvent = (event) => {
+    const oscUrlForCell = (cell) => {
+      const extended = cell && cell.extended;
+      const urlId = Number(extended && (extended.urlId || extended._urlId || 0));
+      const linkData = urlId && core._oscLinkService?.getLinkData(urlId);
+      return cleanHttpUrl(typeof linkData === "string" ? linkData
+        : String((linkData && (linkData.uri || linkData.url)) || ""));
+    };
+
+    const rangesForCells = (cells) => {
+      const ranges = [];
+      for (const cell of cells) {
+        const previous = ranges[ranges.length - 1];
+        if (previous && previous.row === cell.row
+            && cell.col <= previous.col + previous.width) {
+          previous.width = Math.max(previous.width, cell.col + cell.width - previous.col);
+        } else ranges.push({ ...cell });
+      }
+      return ranges;
+    };
+
+    const linkForEvent = (event) => {
       const coords = coordsForEvent(event);
-      if (!coords) return "";
+      if (!coords) return null;
       const [col, row] = coords;
       const buffer = terminal.buffer.active;
       const line = row >= 0 && row < buffer.length
         ? buffer.getLine(row)
         : null;
-      if (!line) return "";
+      if (!line) return null;
 
       // Claude and Codex render Markdown links as OSC 8 hyperlinks: the
       // visible label may be `owner/repo#123` while the URL is stored in the
       // xterm cell metadata. Check that metadata before falling back to
       // searching for a literal https:// string on the screen.
       try {
-        const cell = line.getCell(col);
-        const extended = cell && cell.extended;
-        const urlId = Number(
-          extended && (extended.urlId || extended._urlId || 0),
-        );
-        const service = core && core._oscLinkService;
-        if (urlId && service && typeof service.getLinkData === "function") {
-          const linkData = service.getLinkData(urlId);
-          const oscUrl = typeof linkData === "string"
-            ? linkData
-            : String((linkData && (linkData.uri || linkData.url)) || "");
+        const oscUrl = oscUrlForCell(line.getCell(col));
+        if (oscUrl) {
           const cleanOscUrl = cleanHttpUrl(oscUrl);
-          if (cleanOscUrl) return cleanOscUrl;
+          // tmux may redraw wrapped links as separate physical lines and
+          // assign different OSC ids to each segment. Match the target URI.
+          const cellsInRow = (y) => {
+            const cells = [];
+            const candidate = buffer.getLine(y);
+            for (let x = 0; candidate && x < terminal.cols; x += 1) {
+              const cell = candidate.getCell(x);
+              if (cell?.getWidth() && oscUrlForCell(cell) === cleanOscUrl) {
+                cells.push({ row: y, col: x, width: cell.getWidth() });
+              }
+            }
+            return cells;
+          };
+          let cells = cellsInRow(row);
+          for (let y = row - 1; y >= buffer.viewportY; y -= 1) {
+            const more = cellsInRow(y);
+            if (!more.length) break;
+            cells = more.concat(cells);
+          }
+          const visibleEnd = Math.min(buffer.length, buffer.viewportY + terminal.rows);
+          for (let y = row + 1; y < visibleEnd; y += 1) {
+            const more = cellsInRow(y);
+            if (!more.length) break;
+            cells.push(...more);
+          }
+          return { url: cleanOscUrl, ranges: rangesForCells(cells) };
         }
       } catch (_) {}
 
@@ -230,18 +266,65 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
         last += 1;
       }
       let text = "";
+      const cells = [];
+      let offset = -1;
       for (let index = first; index <= last; index += 1) {
-        text += buffer.getLine(index)?.translateToString(false) || "";
+        const candidate = buffer.getLine(index);
+        for (let x = 0; x < terminal.cols; x += 1) {
+          const cell = candidate?.getCell(x);
+          if (!cell || !cell.getWidth()) continue;
+          if (index === row && x === col) offset = text.length;
+          const chars = cell.getChars() || " ";
+          text += chars;
+          // JS string offsets are UTF-16, not terminal columns. Keep an
+          // explicit map so CJK/emoji before a URL do not shift its range.
+          for (let i = 0; i < chars.length; i += 1) {
+            cells.push({ row: index, col: x, width: cell.getWidth() });
+          }
+        }
       }
-      const offset = (row - first) * terminal.cols + col;
       const pattern = /https?:\/\/[^\s<>"'`]+/g;
       for (const match of text.matchAll(pattern)) {
         const raw = match[0];
         const url = cleanHttpUrl(raw);
         const begin = match.index || 0;
-        if (offset >= begin && offset < begin + url.length) return url;
+        if (offset >= begin && offset < begin + url.length) {
+          return { url, ranges: rangesForCells(cells.slice(begin, begin + url.length)) };
+        }
       }
-      return "";
+      return null;
+    };
+    const urlForEvent = (event) => linkForEvent(event)?.url || "";
+
+    let hoverLayer = null;
+    const clearHover = () => {
+      hoverLayer?.replaceChildren();
+      if (screen.style) screen.style.cursor = "";
+    };
+    const showHover = (link) => {
+      clearHover();
+      if (!link) return;
+      if (!hoverLayer) {
+        hoverLayer = document.createElement("div");
+        hoverLayer.className = "siling-link-highlight";
+        hoverLayer.style.cssText = "position:absolute;inset:0;pointer-events:none;z-index:10";
+        screen.appendChild(hoverLayer);
+      }
+      screen.style.cursor = "pointer";
+      const rect = screen.getBoundingClientRect();
+      const cellWidth = rect.width / terminal.cols;
+      const cellHeight = rect.height / terminal.rows;
+      for (const range of link.ranges) {
+        const y = range.row - terminal.buffer.active.viewportY;
+        if (y < 0 || y >= terminal.rows) continue;
+        const underline = document.createElement("span");
+        Object.assign(underline.style, {
+          position: "absolute", left: `${range.col * cellWidth}px`,
+          top: `${(y + 1) * cellHeight - 1}px`, width: `${range.width * cellWidth}px`,
+          borderBottom: "1px solid", color: terminal.options?.theme?.foreground || "#d2d2d2",
+        });
+        hoverLayer.appendChild(underline);
+      }
     };
 
     const clearMode = () => {
@@ -251,9 +334,10 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
 
     screen.addEventListener("mousedown", (event) => {
       if (event.button !== 0) return;
+      clearHover();
       startX = event.clientX;
       startY = event.clientY;
-      if (event.altKey || nativeSelection(event)) {
+      if (event.altKey) {
         // Older xterm.js releases still emit a mouse-release report after an
         // Option-drag selection. tmux redraws on that report and erases the
         // selection. Keep mouse reporting muted through the matching mouseup.
@@ -261,15 +345,25 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
         return;
       }
       pendingUrl = urlForEvent(event);
+      if (nativeSelection(event)) {
+        mode = pendingUrl ? "native-link" : "selection";
+        return;
+      }
       if (!pendingUrl) return;
       mode = "link";
     }, true);
 
     screen.addEventListener("mousemove", (event) => {
       if (event.buttons) return;
+      const link = linkForEvent(event);
+      showHover(link);
       const layer = screen.querySelector(".xterm-link-layer");
-      if (layer) layer.style.cursor = urlForEvent(event) ? "pointer" : "default";
+      if (layer) layer.style.cursor = link ? "pointer" : "default";
     }, true);
+    screen.addEventListener("mouseleave", clearHover);
+    terminal.onScroll?.(clearHover);
+    terminal.onResize?.(clearHover);
+    terminal.onWriteParsed?.(clearHover);
 
     document.addEventListener("mouseup", (event) => {
       if (mode === "selection") {
@@ -278,11 +372,15 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
         setTimeout(clearMode, 0);
         return;
       }
-      if (mode !== "link") return;
+      if (mode !== "link" && mode !== "native-link") return;
       const moved = Math.hypot(
         event.clientX - startX,
         event.clientY - startY,
       ) > 6;
+      if (mode === "native-link" && moved) {
+        setTimeout(clearMode, 0);
+        return;
+      }
       // ttyd's built-in xterm handler displays a confirmation dialog for
       // every OSC 8 link. Handle the validated http(s) URL here, before that
       // mouseup handler runs, so one click opens one tab without a prompt.
@@ -306,7 +404,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       clearMode();
     }, true);
 
-    window.addEventListener("blur", clearMode);
+    window.addEventListener("blur", () => { clearMode(); clearHover(); });
     return true;
   };
 
