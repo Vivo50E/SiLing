@@ -219,7 +219,7 @@ Dashboard 不会复制一份新的项目。它记住真正的 workspace，让每
 本机 Terminal pane 内执行 `ssh` 时，在该 pane 的 **More** 菜单填写
 **SSH 文件主机**，使用已有 SSH 别名（如 `dev-server`）或 `user@hostname`。
 设置按会话保存在当前浏览器；退出 SSH 回到本机 shell 后请清空。
-点击终端输出的绝对文件路径（包括因终端宽度拆成多行的裸路径），会通过 SSH
+点击终端输出的绝对文件路径（支持紧跟中文冒号、以及因终端宽度拆成多行），会通过 SSH
 拉取文件并在 Files 预览，无需重启终端或 Claude Code。网页链接仍正常打开。
 
 Dashboard 所在机器需要已有免交互 SSH 访问权限和已验证的主机密钥；自定义端口、

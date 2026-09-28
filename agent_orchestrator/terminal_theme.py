@@ -315,15 +315,16 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       // only across near-full rows with matching indentation and whitespace-free
       // continuations. Never decode/re-encode query data or join across prose,
       // blank lines, another URI, or a short final row. OSC metadata above
-      // remains authoritative. The paragraph window bounds work per event.
+      // remains authoritative. Prose prefixes (including Chinese colons) are
+      // excluded from the clickable range. The paragraph window bounds work.
       for (let i = 0; i < physicalLines.length; i += 1) {
         const head = physicalLines[i];
-        const match = head.text.match(/^([ \t]*)(https?:\/\/[^\s<>"'`]+|\/(?!\/)[^\s<>"'`]+)$/i);
-        if (!match) continue;
-        const indent = match[1];
+        const match = head.text.match(/^(.*?)(https?:\/\/[^\s<>"'`]+|\/(?!\/)[^\s<>"'`]+)$/i);
+        if (!match || (match[1] && !/[\s([<="'`：，；（【]$/u.test(match[1]))) continue;
+        const indent = head.text.match(/^[ \t]*/)[0];
         const local = match[2].startsWith("/");
         let target = match[2];
-        let mapped = head.cells.slice(indent.length);
+        let mapped = head.cells.slice(match[1].length);
         let previous = head;
         let joined = false;
         for (let j = i + 1; j < physicalLines.length; j += 1) {
@@ -402,7 +403,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
         const raw = match[0];
         const url = cleanLinkTarget(raw);
         const begin = match.index || 0;
-        if (raw.startsWith("/") && begin > 0 && !/[\s([<="'`]/.test(text[begin - 1])) continue;
+        if (raw.startsWith("/") && begin > 0 && !/[\s([<="'`：，；（【]/u.test(text[begin - 1])) continue;
         const length = url && /^file:/i.test(raw) ? raw.length : url.length;
         if (offset >= begin && offset < begin + length) {
           return { url, ranges: rangesForCells(cells.slice(begin, begin + length)) };

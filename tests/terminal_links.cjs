@@ -151,6 +151,20 @@ rows=[row(fileUri.slice(0,20)),row(fileUri.slice(20),true)];
 click(18,0);
 assert.equal(messages.at(-1).message.path,'/tmp/a b.png','Click the end of an encoded file URI');
 
+// A report announcement can put an absolute path directly after a CJK colon.
+rows=[row('报告已更新：/tmp/a.md')];
+const announcementCount=messages.length;
+assert.ok(hover(8,0).length,'Paths directly after a Chinese colon highlight');
+click(8,0);
+assert.equal(messages.length,announcementCount+1);
+assert.equal(messages.at(-1).message.path,'/tmp/a.md');
+rows=[row('报告已更新：/localhome/d'),row('emo/report.md')];
+for(const [x,y] of [[8,0],[2,1]]) {
+  click(x,y);
+  assert.equal(messages.at(-1).message.path,'/localhome/demo/report.md','Announcement prefix does not break hard-wrapped paths');
+}
+assert.equal(hover(2,0).length,0,'Announcement prose stays unclickable');
+
 // Claude prints bare SSH paths across indented hard lines, without OSC or parentheses.
 const barePath = '/localhome/demo/work/reports/test_report.md';
 const bareChunks = barePath.match(/.{1,18}/g);
