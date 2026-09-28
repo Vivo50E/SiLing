@@ -266,19 +266,21 @@ Codex/Claude session's model or effort through `siling session` commands. See th
 [agent delegation guide](docs/agent-delegation.md) for the complete workflow,
 idempotent automation, and remote-node behavior.
 
-### Approve and apply self-improvements
+### Approve and apply updates
 
-The Dashboard's **apply update** action discovers candidate branches in
-separate Git worktrees whose names begin with `agent/self-improve-`. A candidate
-must be committed, both worktrees must be clean, and it must fast-forward the
-current branch. After **Run full tests** succeeds, the approval token is bound
-to the exact target and candidate commits; changing either commit invalidates
-the token.
+The Dashboard's **apply update** action discovers both candidate branches in
+separate Git worktrees whose names begin with `agent/self-improve-` and new
+commits on the current branch's Git upstream. If no tracking branch is set, it
+falls back to `origin/<current-branch>` and then `origin/main`. Remote refs are
+refreshed on startup, every five minutes, and whenever the button is clicked.
 
-Review the commits and changed-file list, then type `APPROVE` to perform the
-fast-forward merge. The Dashboard replaces its process while tmux agents keep
-running, and an installed macOS PWA reconnects without being reinstalled. The
-workflow never applies uncommitted agent code and never force-merges.
+Updates require a clean working tree and a fast-forward path. The first click
+runs the complete suite against the exact candidate—upstream code is tested in
+a temporary detached worktree without changing local files. After tests pass,
+the button becomes **approve update**; the second click performs the exact
+verified fast-forward and restarts the Dashboard. Changing either commit
+invalidates the approval token. The workflow never applies uncommitted code,
+force-merges, or rebases user work.
 
 ## Keep it running on macOS
 

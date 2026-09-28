@@ -3164,7 +3164,7 @@
         <button id="btn-open-projects-browser" title="Open local Projects browser">projects</button>
         <button id="btn-open-git-status" title="Open git status (⌘G)">git status</button>
         <button id="btn-settings" title="Dashboard settings">settings</button>
-        <button id="btn-self-update" title="Review, test, and apply a committed self-improvement branch">apply update</button>
+        <button id="btn-self-update" title="Check, test, and apply Agent or Git upstream updates">apply update</button>
       </div>
       <div class="layout-picker" id="layout-picker">
         <button data-layout="1" class="toggle-on">1</button>
@@ -3409,7 +3409,7 @@
 
   function authQS() { return TOKEN ? "?token=" + encodeURIComponent(TOKEN) : ""; }
 
-  // ---------- Approve and apply self-improvements ----------
+  // ---------- Approve and apply Agent or Git upstream updates ----------
   let selfUpdateStatus = { available: false, candidates: [] };
   let selfUpdateVerification = null;
   let selfUpdatePhase = "idle";
@@ -3445,21 +3445,39 @@
     else button.textContent = eligible.length ? `update: ${eligible.length}` : "apply update";
 
     const candidate = eligible[0];
+    const candidateLabel = candidate?.kind === "upstream"
+      ? `upstream ${candidate.source}` : candidate?.branch;
     if (selfUpdatePhase === "verified" && candidate) {
-      button.title = `Tests passed for ${candidate.branch} (${candidate.short_head}). Click again to approve, apply, and restart.`;
+      button.title = `Tests passed for ${candidateLabel} (${candidate.short_head}). Click again to approve, apply, and restart.`;
     } else if (candidate) {
-      button.title = `Test ${candidate.branch} (${candidate.short_head}) before approval. A second click applies and restarts.`;
+      button.title = `Test ${candidateLabel} (${candidate.short_head}) before approval. A second click applies and restarts.`;
     } else {
       const blocked = candidates[0]?.blocked_reason;
       button.title = blocked ? `Blocked: ${blocked}` : (selfUpdateStatus.error || "No candidate updates");
     }
   }
 
-  async function pollSelfUpdateStatus(silent = true) {
+  async function pollSelfUpdateStatus(silent = true, refreshUpstream = false) {
     try {
-      selfUpdateStatus = await api("/api/self-update");
+      selfUpdateStatus = refreshUpstream
+        ? await api("/api/self-update/fetch", {
+            method: "POST",
+            headers: { "X-Orch-Self-Update": "reviewed" },
+            body: {},
+          })
+        : await api("/api/self-update");
       renderSelfUpdateStatus();
     } catch (e) {
+      if (refreshUpstream) {
+        try {
+          selfUpdateStatus = await api("/api/self-update");
+          renderSelfUpdateStatus();
+          if (!silent) {
+            $("btn-self-update").title = "Upstream check failed: " + e.message;
+          }
+          return;
+        } catch (_) {}
+      }
       selfUpdateStatus = { available: false, error: e.message, candidates: [] };
       renderSelfUpdateStatus();
       if (!silent) {
@@ -3473,7 +3491,7 @@
   $("btn-self-update").addEventListener("click", async () => {
     const button = $("btn-self-update");
     if (selfUpdatePhase === "failed") selfUpdatePhase = "idle";
-    await pollSelfUpdateStatus(false);
+    await pollSelfUpdateStatus(false, selfUpdatePhase !== "verified");
     const candidate = eligibleSelfUpdateCandidate();
     if (!candidate) return;
 
@@ -12559,8 +12577,9 @@
     try { health = await api("/api/health"); } catch {}
     await pollSyncStatus(true);
     setInterval(() => pollSyncStatus(true), 30000);
-    await pollSelfUpdateStatus(true);
+    await pollSelfUpdateStatus(true, true);
     setInterval(() => pollSelfUpdateStatus(true), 30000);
+    setInterval(() => pollSelfUpdateStatus(true, true), 300000);
     refreshPhoneUrl();
     setInterval(refreshPhoneUrl, 30000);
     if (!health.ttyd) {

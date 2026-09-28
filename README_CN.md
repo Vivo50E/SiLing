@@ -241,16 +241,19 @@ siling delegate --agent codex --model gpt-5.6-sol --effort high \
 指定行数读取 TTY 开头或结尾，以及向目标 session 发送 follow-up。完整流程、幂等
 自动化与远端节点行为见 [Agent 委派指南](docs/agent-delegation.md)。
 
-### 批准并应用自改进
+### 批准并应用更新
 
-Dashboard 顶部的 **apply update** 会发现位于独立 Git worktree 中、名称以
-`agent/self-improve-` 开头的候选分支。候选必须已经提交、两个 worktree 都没有
-未提交改动，并且能够 fast-forward 当前分支。点击 **Run full tests** 后，批准令牌
-会绑定当前分支与候选分支的精确 commit；任一分支随后发生变化都会使令牌失效。
+Dashboard 顶部的 **apply update** 会同时发现两类更新：位于独立 Git worktree、
+名称以 `agent/self-improve-` 开头的 Agent 候选分支，以及当前分支 Git upstream
+上的新 commits。未配置 tracking branch 时，会依次回退到
+`origin/<current-branch>` 和 `origin/main`。Dashboard 会在启动时、每五分钟以及
+点击按钮时刷新远端引用。
 
-审核 commit 和文件列表后，输入 `APPROVE` 才能执行 fast-forward 合并。Dashboard
-随后原地重启，tmux 中的 agents 不会停止，已经安装的 macOS PWA 会自动重连，
-无需重新安装。该流程不会应用 agent 工作区里的未提交代码，也不会 force merge。
+更新要求工作区干净且能够 fast-forward。第一次点击会针对精确候选运行完整测试；
+upstream 代码会在临时 detached worktree 中测试，不会提前改变本地文件。测试通过后
+按钮变为 **approve update**，第二次点击才执行已验证 commit 的 fast-forward 并
+重启 Dashboard。任一 commit 变化都会使批准令牌失效。该流程不会应用未提交代码、
+force merge 或 rebase 用户工作。
 
 ## 在 macOS 后台常驻
 

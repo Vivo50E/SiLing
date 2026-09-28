@@ -7,8 +7,10 @@ import os
 from pathlib import Path
 import re
 import secrets
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from typing import Any, Optional
@@ -37,6 +39,7 @@ class SelfUpdateManager:
         self.python = python or sys.executable
         self._verified: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
+        self._fetch_lock = threading.Lock()
 
     def _git(
         self,
@@ -44,9 +47,12 @@ class SelfUpdateManager:
         cwd: Optional[Path] = None,
         timeout: float = 30,
         check: bool = True,
+        extra_env: Optional[dict[str, str]] = None,
     ) -> subprocess.CompletedProcess[str]:
         env = dict(os.environ)
         env.setdefault("GIT_OPTIONAL_LOCKS", "0")
+        if extra_env:
+            env.update(extra_env)
         try:
             result = subprocess.run(
                 ["git", *args], cwd=str(cwd or self.repo_dir), env=env,
@@ -82,7 +88,7 @@ class SelfUpdateManager:
                 records.append(record)
         return records
 
-    def _candidate(self, branch: str) -> dict[str, Any]:
+    def _agent_candidate(self, branch: str) -> dict[str, Any]:
         if not branch.startswith(SELF_IMPROVEMENT_BRANCH_PREFIX):
             raise SelfUpdateError("only agent/self-improve-* branches are eligible")
         target_branch, target_head, target_dirty = self._target()
@@ -132,6 +138,7 @@ class SelfUpdateManager:
         elif not ahead:
             blocked = "candidate has no unapplied commits"
         return {
+            "kind": "agent",
             "branch": branch,
             "worktree": str(worktree),
             "head": candidate_head,
@@ -147,6 +154,121 @@ class SelfUpdateManager:
             "files": files,
             "commits": commits,
             "diffstat": diffstat,
+        }
+
+    def _upstream_ref(self) -> str:
+        target_branch, _target_head, _target_dirty = self._target()
+        configured = self._git(
+            "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}",
+            check=False,
+        ).stdout.strip()
+        refs = [configured] if configured else []
+        remotes = self._git("remote", check=False).stdout.split()
+        if "origin" in remotes:
+            refs.extend((f"origin/{target_branch}", "origin/main"))
+        for remote in remotes:
+            refs.extend((f"{remote}/{target_branch}", f"{remote}/main"))
+        seen: set[str] = set()
+        for ref in refs:
+            if not ref or ref in seen:
+                continue
+            seen.add(ref)
+            exists = self._git(
+                "show-ref", "--verify", "--quiet", f"refs/remotes/{ref}",
+                check=False,
+            )
+            if exists.returncode == 0:
+                return ref
+        return ""
+
+    def _upstream_candidate(self, candidate_id: str = "") -> dict[str, Any]:
+        upstream_ref = self._upstream_ref()
+        if not upstream_ref:
+            raise SelfUpdateError("no upstream branch is configured or available")
+        key = f"upstream:{upstream_ref}"
+        if candidate_id and candidate_id != key:
+            raise SelfUpdateError("upstream candidate no longer matches configuration")
+        target_branch, target_head, target_dirty = self._target()
+        candidate_head = self._git("rev-parse", upstream_ref).stdout.strip()
+        counts = self._git(
+            "rev-list", "--left-right", "--count",
+            f"{target_head}...{candidate_head}",
+        ).stdout.split()
+        behind, ahead = (int(counts[0]), int(counts[1]))
+        files = []
+        if ahead:
+            for line in self._git(
+                "diff", "--name-status", f"{target_head}..{candidate_head}"
+            ).stdout.splitlines():
+                status, _, path = line.partition("\t")
+                files.append({"status": status, "path": path})
+        commits = []
+        if ahead:
+            for line in self._git(
+                "log", "--format=%H%x09%h%x09%s", "--max-count=20",
+                f"{target_head}..{candidate_head}",
+            ).stdout.splitlines():
+                sha, short, subject = (line.split("\t", 2) + ["", ""])[:3]
+                commits.append({"sha": sha, "short": short, "subject": subject})
+        diffstat = (
+            self._git("diff", "--stat", f"{target_head}..{candidate_head}")
+            .stdout.strip()
+        ) if ahead else ""
+        blocked = ""
+        if target_dirty:
+            blocked = "dashboard repository has uncommitted changes"
+        elif behind:
+            blocked = "current branch has commits not in upstream; cannot fast-forward"
+        elif not ahead:
+            blocked = "upstream has no unapplied commits"
+        return {
+            "kind": "upstream",
+            "branch": key,
+            "source": upstream_ref,
+            "worktree": "temporary detached worktree during verification",
+            "head": candidate_head,
+            "short_head": candidate_head[:12],
+            "target_branch": target_branch,
+            "target_head": target_head,
+            "ahead": ahead,
+            "behind": behind,
+            "dirty": False,
+            "target_dirty": target_dirty,
+            "eligible": not blocked,
+            "blocked_reason": blocked,
+            "files": files,
+            "commits": commits,
+            "diffstat": diffstat,
+        }
+
+    def _candidate(self, candidate_id: str) -> dict[str, Any]:
+        if candidate_id.startswith("upstream:"):
+            return self._upstream_candidate(candidate_id)
+        return self._agent_candidate(candidate_id)
+
+    def fetch_upstream(self) -> dict[str, Any]:
+        """Refresh remote-tracking refs without changing the working tree."""
+        target_branch, _target_head, _target_dirty = self._target()
+        configured_remote = self._git(
+            "config", "--get", f"branch.{target_branch}.remote", check=False,
+        ).stdout.strip()
+        remotes = self._git("remote", check=False).stdout.split()
+        remote = configured_remote if configured_remote in remotes else ""
+        if not remote and "origin" in remotes:
+            remote = "origin"
+        if not remote and remotes:
+            remote = remotes[0]
+        if not remote:
+            raise SelfUpdateError("repository has no Git remote")
+        with self._fetch_lock:
+            result = self._git(
+                "fetch", "--prune", remote, timeout=60,
+                extra_env={"GIT_TERMINAL_PROMPT": "0"},
+            )
+        return {
+            "ok": True,
+            "remote": remote,
+            "output": (result.stdout or result.stderr).strip(),
         }
 
     @staticmethod
@@ -167,14 +289,22 @@ class SelfUpdateManager:
             if (branch.startswith(SELF_IMPROVEMENT_BRANCH_PREFIX)
                     and Path(record["worktree"]).resolve() != self.repo_dir):
                 try:
-                    candidates.append(self._candidate(branch))
+                    candidates.append(self._agent_candidate(branch))
                 except SelfUpdateError as exc:
                     candidates.append({
                         "branch": branch, "eligible": False,
                         "blocked_reason": str(exc), "ahead": 0,
                         "behind": 0, "files": [], "commits": [],
                     })
-        candidates.sort(key=lambda item: (not item.get("eligible"), item["branch"]))
+        try:
+            candidates.append(self._upstream_candidate())
+        except SelfUpdateError:
+            pass
+        candidates.sort(key=lambda item: (
+            not item.get("eligible"),
+            item.get("kind") == "upstream",
+            item["branch"],
+        ))
         return {
             "available": True,
             "target_branch": target_branch,
@@ -193,9 +323,20 @@ class SelfUpdateManager:
             "-s", "tests", "-p", "test_*.py", "-q",
         ]
         started = time.monotonic()
+        test_dir = Path(candidate["worktree"])
+        temporary_root: Optional[Path] = None
+        temporary_worktree: Optional[Path] = None
         try:
+            if candidate.get("kind") == "upstream":
+                temporary_root = Path(tempfile.mkdtemp(prefix="siling-upstream-"))
+                temporary_worktree = temporary_root / "checkout"
+                self._git(
+                    "worktree", "add", "--detach", str(temporary_worktree),
+                    candidate["head"], timeout=60,
+                )
+                test_dir = temporary_worktree
             result = subprocess.run(
-                command, cwd=candidate["worktree"], capture_output=True,
+                command, cwd=str(test_dir), capture_output=True,
                 text=True, timeout=timeout,
             )
             output = "\n".join(
@@ -212,6 +353,17 @@ class SelfUpdateManager:
                 output += "\n" + str(exc.stdout)
             passed = False
             test_count = 0
+        except (OSError, SelfUpdateError) as exc:
+            output = f"could not prepare or run test suite: {exc}"
+            passed = False
+            test_count = 0
+        finally:
+            if temporary_worktree is not None:
+                self._git(
+                    "worktree", "remove", "--force", str(temporary_worktree),
+                    timeout=60, check=False,
+                )
+                shutil.rmtree(temporary_root, ignore_errors=True)
         duration = round(time.monotonic() - started, 3)
         response: dict[str, Any] = {
             "ok": passed,

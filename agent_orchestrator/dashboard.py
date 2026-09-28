@@ -8602,6 +8602,16 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         if "application/json" not in request.headers.get("content-type", "").lower():
             raise HTTPException(415, "self-update requests require JSON")
 
+    @app.post("/api/self-update/fetch")
+    async def self_update_fetch(request: Request):
+        """Refresh Git remote refs without modifying the checked-out branch."""
+        require_self_update_intent(request)
+        try:
+            fetch = await asyncio.to_thread(self_updates.fetch_upstream)
+        except SelfUpdateError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return {**self_updates.status(), "fetch": fetch}
+
     @app.post("/api/self-update/verify")
     async def self_update_verify(request: Request):
         require_self_update_intent(request)

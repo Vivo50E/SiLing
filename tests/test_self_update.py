@@ -46,6 +46,21 @@ class SelfUpdateManagerTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+    def _publish_upstream_commit(self) -> str:
+        bare = self.root / "remote.git"
+        publisher = self.root / "publisher"
+        _git(self.root, "init", "--bare", "-b", "main", str(bare))
+        _git(self.repo, "remote", "add", "origin", str(bare))
+        _git(self.repo, "push", "-u", "origin", "main")
+        _git(self.root, "clone", str(bare), str(publisher))
+        _git(publisher, "config", "user.name", "Upstream Publisher")
+        _git(publisher, "config", "user.email", "upstream@example.invalid")
+        (publisher / "upstream.txt").write_text("new upstream code\n")
+        _git(publisher, "add", "upstream.txt")
+        _git(publisher, "commit", "-m", "publish upstream update")
+        _git(publisher, "push", "origin", "main")
+        return _git(publisher, "rev-parse", "HEAD")
+
     def test_status_lists_only_committed_fast_forward_candidate(self):
         status = self.manager.status()
 
@@ -109,6 +124,35 @@ class SelfUpdateManagerTests(unittest.TestCase):
         with self.assertRaisesRegex(SelfUpdateError, "changed after verification"):
             self.manager.apply(candidate["branch"], token, "APPROVE")
 
+    def test_fetch_verify_and_apply_upstream_fast_forward(self):
+        upstream_head = self._publish_upstream_commit()
+
+        fetched = self.manager.fetch_upstream()
+        status = self.manager.status()
+        upstream = next(
+            item for item in status["candidates"]
+            if item.get("kind") == "upstream"
+        )
+
+        self.assertTrue(fetched["ok"])
+        self.assertEqual(fetched["remote"], "origin")
+        self.assertEqual(upstream["branch"], "upstream:origin/main")
+        self.assertEqual(upstream["head"], upstream_head)
+        self.assertEqual(upstream["ahead"], 1)
+        self.assertTrue(upstream["eligible"])
+
+        verification = self.manager.verify(upstream["branch"])
+        self.assertTrue(verification["ok"], verification["output"])
+        self.assertEqual(verification["test_count"], 1)
+
+        result = self.manager.apply(
+            upstream["branch"], verification["verification_token"], "APPROVE",
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(_git(self.repo, "rev-parse", "HEAD"), upstream_head)
+        self.assertEqual((self.repo / "upstream.txt").read_text(), "new upstream code\n")
+
 
 class SelfUpdateDashboardContractTests(unittest.TestCase):
     @classmethod
@@ -127,6 +171,9 @@ class SelfUpdateDashboardContractTests(unittest.TestCase):
         self.assertIn('confirmation: "APPROVE"', self.index)
 
     def test_apply_requires_verification_token_and_requests_restart(self):
+        self.assertIn('api("/api/self-update/fetch"', self.index)
+        self.assertIn('@app.post("/api/self-update/fetch")', self.backend)
+        self.assertIn('candidate?.kind === "upstream"', self.index)
         self.assertIn('api("/api/self-update/verify"', self.index)
         self.assertIn('"X-Orch-Self-Update": "reviewed"', self.index)
         self.assertIn('verification_token: selfUpdateVerification.verification_token', self.index)
