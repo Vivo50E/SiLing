@@ -282,12 +282,11 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
         }
       } catch (_) {}
 
-      // Codex renders local Markdown links as "label (/absolute/path)".
-      // Its own line wrapping uses indented hard line breaks, not xterm's
-      // isWrapped flag, so neither OSC metadata nor soft-wrap parsing works.
-      // Reconstruct only a bounded, explicitly parenthesized local target.
+      // Read a bounded window for CLI-authored hard wraps, retaining the
+      // character-to-cell map so indentation and padding stay unclickable.
       let paragraph = "";
       const paragraphCells = [];
+      const physicalLines = [];
       let paragraphOffset = -1;
       for (let y = Math.max(0, row - 24); y < Math.min(buffer.length, row + 25); y += 1) {
         const candidate = buffer.getLine(y);
@@ -304,10 +303,49 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
           }
         }
         const trimmed = lineText.trimEnd();
+        physicalLines.push({text: trimmed, cells: lineCells.slice(0, trimmed.length),
+          wrapped: !!candidate?.isWrapped});
         if (y === row && paragraphOffset >= paragraph.length + trimmed.length) paragraphOffset = -1;
         paragraph += trimmed + "\n";
         paragraphCells.push(...lineCells.slice(0, trimmed.length), null);
       }
+
+      // CLI-rendered bare URLs (notably authorization prompts) may use hard
+      // line breaks with indentation and a small right gutter. Recover those
+      // only across near-full rows with matching indentation and URL-only
+      // continuations. Never decode/re-encode query data or join across prose,
+      // blank lines, another URI, or a short final row. OSC metadata above
+      // remains authoritative. The paragraph window bounds work per event.
+      for (let i = 0; i < physicalLines.length; i += 1) {
+        const head = physicalLines[i];
+        const match = head.text.match(/^([ \t]*)(https?:\/\/[^\s<>"'`]+)$/i);
+        if (!match) continue;
+        const indent = match[1];
+        let target = match[2];
+        let mapped = head.cells.slice(indent.length);
+        let previous = head;
+        let joined = false;
+        for (let j = i + 1; j < physicalLines.length; j += 1) {
+          const next = physicalLines[j];
+          const part = next.text.match(/^([ \t]*)([A-Za-z0-9._~:/?#\[\]@!$&()*+,;=%-]+)$/);
+          if (!part || /^[a-z][a-z0-9+.-]*:/i.test(part[2])) break;
+          const end = previous.cells[previous.cells.length - 1];
+          if (!next.wrapped && (part[1] !== indent || !end
+              || end.col + end.width < terminal.cols - 8)) break;
+          target += part[2];
+          mapped.push(...next.cells.slice(part[1].length));
+          previous = next;
+          joined = true;
+        }
+        if (!joined) continue;
+        const url = cleanLinkTarget(target);
+        mapped = mapped.slice(0, url.length);
+        if (mapped.some(cell => cell.row === row && cell.col === col)) {
+          return {url, ranges: rangesForCells(mapped)};
+        }
+      }
+      // Codex's "label (/absolute/path)" uses indented hard breaks too.
+      // Only reconstruct explicitly parenthesized local targets here.
       for (const match of paragraph.matchAll(/\((?:\/|file:\/\/)/g)) {
         const start = match.index;
         let end = start + 1;

@@ -164,6 +164,8 @@ Codex pane 在浏览 tmux 历史时，开始打字或粘贴会先返回实时终
 交付 spec 或报告时，运行 `siling link-file /absolute/path/spec.md --label "Spec"`，
 用户即可从 pane 的 **Files** 面板打开，无需复制终端里的路径。
 终端 HTTP(S) 链接换行后，悬停时会高亮链接的所有可见分段。
+CLI 主动换行的裸 HTTP(S) 链接，在缩进一致且接近 pane 行尾时也会拼接；
+点击任一段保留完整查询参数，不跨空行或后续说明文字拼接。
 
 - 绑定整个项目或 task 文件夹，直接在 Dashboard 中浏览目录树。
 - 当 task 跨越多个位置时，可以单独绑定文件或 URL。

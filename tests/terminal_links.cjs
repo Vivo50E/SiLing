@@ -164,3 +164,62 @@ for (const [x,y] of [[1,0],[9,0],[4,2],[4,5]]) {
 const beforePadding = messages.length;
 click(18,0);
 assert.equal(messages.length,beforePadding,'Blank padding beside a hard-wrapped path is not clickable');
+
+// Sanitized OAuth-shaped URL: never store or navigate to real authorization data.
+const authorization = 'https://example.invalid/v1/authorize?response_type=code&client_id=fixture-client&code_challenge=fixture-challenge&code_challenge_method=S256&redirect_uri=http%3A%2F%2Flocalhost%3A12345%2Fcallback&state=fixture-state';
+window.parent = window;
+window.frameElement.dataset.nativeSelection = 'false'; // Claude's mouse policy.
+for (const cols of [40, 64, 90]) {
+  term.cols = cols;
+  rows = [];
+  for (let start=0; start<authorization.length; start+=cols-4) {
+    rows.push(row('  '+authorization.slice(start,start+cols-4)));
+  }
+  term.rows = rows.length;
+  for (let y=0;y<rows.length;y++) {
+    assert.equal(hover(3,y).length,rows.length,'Every hard-wrapped segment highlights the complete URL');
+    const before = opened.length;
+    click(3,y);
+    assert.equal(opened.length,before+1);
+    assert.equal(opened.at(-1),authorization,'Every segment opens the full query without decoding or dropping parameters');
+  }
+  const before = opened.length;
+  click(0,1);
+  click(cols-1,0);
+  click(3,0,true);
+  click(3,0,false,true);
+  assert.equal(opened.length,before,'Indent, padding, dragging and Option-selection do not open a URL');
+}
+
+buffer.viewportY=1;
+term.rows=rows.length-1;
+assert.equal(hover(3,1).length,rows.length-1,'Highlight only visible rows while retaining the off-screen URL prefix');
+click(3,1);
+assert.equal(opened.at(-1),authorization);
+buffer.viewportY=0;
+
+term.cols = 64;
+const firstLine = authorization.slice(0,60);
+for (const following of ['  Next step: continue in your browser', '', '  https://other.invalid/next', '    &state=different-indent']) {
+  rows = [row('  '+firstLine),row(following)];
+  term.rows=2;
+  click(3,0);
+  assert.equal(opened.at(-1),firstLine,'Do not absorb instructions, blank lines, separate URLs or a different indent');
+}
+rows=[row('  https://example.invalid/short'),row('  continuation')];
+click(3,0);
+assert.equal(opened.at(-1),'https://example.invalid/short','A short line is not a hard wrap');
+
+window.parent={localStorage:{getItem:()=> '1'},postMessage:message=>messages.push(message)};
+rows=[];
+for(let i=0;i<authorization.length;i+=60) rows.push(row('  '+authorization.slice(i,i+60)));
+term.rows=rows.length;
+click(3,1);
+assert.deepEqual(messages.at(-1),{type:'siling:open-web-url',url:authorization},'Internal opening also receives the entire target');
+window.parent=window;
+
+// Honor a complete OSC target even when the display label looks truncated.
+term._core._oscLinkService.getLinkData=()=>({uri:authorization});
+rows=[row('authorize',false,1)];
+click(3,0);
+assert.equal(opened.at(-1),authorization);

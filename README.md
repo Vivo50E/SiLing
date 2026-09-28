@@ -188,6 +188,9 @@ Linked Items attaches that context directly to the session.
 For a spec or report, run `siling link-file /absolute/path/spec.md --label "Spec"`.
 The user can then open it from the pane's **Files** panel without copying a
 terminal path. Wrapped HTTP(S) links highlight all visible segments on hover.
+Bare HTTP(S) URLs split by CLI hard line breaks are also joined when the lines
+have consistent indentation and end near the pane edge. Clicking a segment
+preserves the full query string; blank lines and following prose are not joined.
 
 - Link a whole project or task folder and browse its tree without leaving the
   Dashboard.
