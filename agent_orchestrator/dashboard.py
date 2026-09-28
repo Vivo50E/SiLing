@@ -4708,20 +4708,21 @@ def _graceful_stop_agent(session: str, agent: str,
     if not ok:
         return {"ok": False, "reason": f"failed to send C-c: {err}"}
 
-    deadline = time.time() + max(2.0, timeout_s)
+    deadline = time.monotonic() + max(2.0, timeout_s)
     second_sigint_sent = False
     last_reason = "waiting for agent exit"
-    while time.time() < deadline:
+    while time.monotonic() < deadline:
         time.sleep(0.35)
         if not tmux_alive(session):
             return {"ok": True, "reason": "tmux session exited"}
         pane = tmux_capture(session)
         if _agent_exited(session, pane):
             return {"ok": True, "reason": "agent exited"}
-        if not second_sigint_sent and time.time() > deadline - (timeout_s * 0.65):
-            # Several TUIs use first Ctrl+C as "interrupt current turn" and a
-            # second Ctrl+C as "exit". Do this while still leaving most of the
-            # timeout for the CLI to print/persist resume metadata.
+        if not second_sigint_sent:
+            # Confirm on the first poll, after checking for an early exit.
+            # TUIs can require the second Ctrl+C within a sub-second window;
+            # do not tie that interval to the total shutdown timeout. The
+            # remaining time lets the CLI flush its resume metadata.
             ok2, err2 = tmux_send_key(session, "C-c")
             second_sigint_sent = True
             if not ok2:

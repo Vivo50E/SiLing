@@ -4,8 +4,12 @@ from contextlib import ExitStack
 import os
 from pathlib import Path
 import subprocess
+import shlex
+import shutil
+import sys
 import tempfile
 import threading
+import time
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -167,6 +171,93 @@ class AgentRestartTests(unittest.TestCase):
         self.assertEqual(request.call_args.args[:2], ("POST", "https://fixture.invalid/api/sessions/source/restart"))
         self.assertEqual(request.call_args.kwargs["timeout"].read, 60)
         self.stop.assert_not_called()
+
+
+class GracefulExitTimingTests(unittest.TestCase):
+    def run_exit(self, *, timeout=12, exits_after=2, window=0.8, send_failure=0):
+        now = [0.0]
+        presses = []
+        exited = [False]
+        def send(_session, key):
+            self.assertEqual(key, "C-c")
+            presses.append(now[0])
+            if len(presses) == send_failure:
+                return False, "fixture send failure"
+            if len(presses) == exits_after:
+                exited[0] = len(presses) == 1 or presses[-1] - presses[-2] < window
+            return True, ""
+        def sleep(seconds):
+            now[0] += seconds
+        with patch.object(dashboard, "tmux_alive", return_value=True), \
+                patch.object(dashboard, "tmux_capture", side_effect=lambda _: dashboard._AGENT_EXIT_MARKER if exited[0] else "idle"), \
+                patch.object(dashboard, "tmux_send_key", side_effect=send), \
+                patch.object(dashboard.time, "monotonic", side_effect=lambda: now[0]), \
+                patch.object(dashboard.time, "time", side_effect=lambda: now[0]), \
+                patch.object(dashboard.time, "sleep", side_effect=sleep), \
+                patch.object(dashboard, "tmux_kill") as kill:
+            result = dashboard._graceful_stop_agent("synthetic", "codex", timeout_s=timeout)
+            kill.assert_not_called()
+        return result, presses, now[0]
+
+    def test_confirmation_interval_is_short_and_independent_of_exit_timeout(self):
+        for timeout in (2, 12, 60):
+            with self.subTest(timeout=timeout):
+                result, presses, _ = self.run_exit(timeout=timeout)
+                self.assertTrue(result["ok"], result)
+                self.assertEqual(len(presses), 2)
+                self.assertLess(presses[1] - presses[0], 0.8)
+
+    def test_first_press_exit_does_not_receive_a_second_key(self):
+        result, presses, _ = self.run_exit(exits_after=1)
+        self.assertTrue(result["ok"])
+        self.assertEqual(len(presses), 1)
+
+    def test_unresponsive_agent_gets_only_two_keys_and_a_bounded_wait(self):
+        result, presses, elapsed = self.run_exit(exits_after=99)
+        self.assertFalse(result["ok"])
+        self.assertEqual(len(presses), 2)
+        self.assertGreaterEqual(elapsed, 12)
+        self.assertLess(elapsed, 12.5)
+
+    def test_send_errors_are_reported_without_repeated_keys(self):
+        for failure in (1, 2):
+            with self.subTest(failure=failure):
+                result, presses, _ = self.run_exit(send_failure=failure)
+                self.assertFalse(result["ok"])
+                self.assertIn("fixture send failure", result["reason"])
+                self.assertEqual(len(presses), failure)
+
+    @unittest.skipUnless(shutil.which("tmux"), "tmux required")
+    def test_real_tty_process_confirms_and_exits_within_short_window(self):
+        fixture = Path(__file__).parent / "fixtures" / "exit_confirmation.py"
+        real_run = subprocess.run
+        with tempfile.TemporaryDirectory(prefix="siling-exit-", dir="/tmp") as temp:
+            base = ["tmux", "-S", str(Path(temp) / "tmux.sock")]
+            def tmux(*args):
+                return real_run(base + list(args), capture_output=True, text=True, check=True, timeout=5).stdout
+            def isolated_run(args, **kwargs):
+                self.assertEqual(args[0], "tmux")
+                return real_run(base + list(args[1:]), **kwargs)
+            try:
+                command = (f"{shlex.quote(sys.executable)} {shlex.quote(str(fixture))}; "
+                           "printf '\\n--- Agent exited ---\\n'; sleep 30")
+                tmux("-f", "/dev/null", "new-session", "-d", "-s", "fixture", "-x", "100", "-y", "25", command)
+                for _ in range(100):
+                    if "EXIT_FIXTURE_READY" in tmux("capture-pane", "-p", "-t", "fixture"):
+                        break
+                    time.sleep(0.02)
+                else:
+                    self.fail("terminal fixture did not start")
+                # Only redirect the tmux socket: execute real capture/send/exit
+                # logic against an actual raw-mode process, not a mocked result.
+                with patch.object(dashboard.subprocess, "run", side_effect=isolated_run):
+                    result = dashboard._graceful_stop_agent("fixture", "codex", timeout_s=12)
+                self.assertTrue(result["ok"], result)
+                output = tmux("capture-pane", "-p", "-t", "fixture")
+                self.assertIn("EXIT_FIXTURE_CONFIRMED", output)
+                self.assertIn(dashboard._AGENT_EXIT_MARKER, output)
+            finally:
+                real_run(base + ["kill-server"], capture_output=True, timeout=5)
 
 
 if __name__ == "__main__":
