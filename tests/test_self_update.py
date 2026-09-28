@@ -166,6 +166,20 @@ class SelfUpdateManagerTests(unittest.TestCase):
         self.assertEqual(len(matching), 1)
         self.assertEqual(matching[0]["kind"], "upstream")
 
+    def test_status_ignores_ancestor_refs_after_local_branch_moves_ahead(self):
+        bare = self.root / "remote.git"
+        _git(self.root, "init", "--bare", "-b", "main", str(bare))
+        _git(self.repo, "remote", "add", "origin", str(bare))
+        _git(self.repo, "push", "-u", "origin", "main")
+        _git(self.candidate, "reset", "--hard", "main")
+        (self.repo / "local.txt").write_text("local fix\n")
+        _git(self.repo, "add", "local.txt")
+        _git(self.repo, "commit", "-m", "local fix after upstream")
+
+        status = self.manager.status()
+
+        self.assertEqual(status["candidates"], [])
+
 
 class SelfUpdateDashboardContractTests(unittest.TestCase):
     @classmethod

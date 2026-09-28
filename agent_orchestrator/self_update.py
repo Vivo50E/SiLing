@@ -300,6 +300,13 @@ class SelfUpdateManager:
             candidates.append(self._upstream_candidate())
         except SelfUpdateError:
             pass
+        # An ancestor (or identical ref) contains no code that can be applied.
+        # Do not present it as a blocked update merely because the local branch
+        # has moved ahead after a successful rebase or local fix.
+        candidates = [
+            candidate for candidate in candidates
+            if candidate.get("ahead") != 0 or not candidate.get("head")
+        ]
         candidates.sort(key=lambda item: (
             not item.get("eligible"),
             item.get("kind") != "upstream",
