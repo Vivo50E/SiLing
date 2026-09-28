@@ -295,6 +295,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
           }
         }
         const trimmed = lineText.trimEnd();
+        if (y === row && paragraphOffset >= paragraph.length + trimmed.length) paragraphOffset = -1;
         paragraph += trimmed + "\n";
         paragraphCells.push(...lineCells.slice(0, trimmed.length), null);
       }

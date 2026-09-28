@@ -160,3 +160,7 @@ for (const [x,y] of [[1,0],[9,0],[4,2],[4,5]]) {
   click(x,y);
   assert.equal(messages.at(-1).message.path,hardPath,'Label and every hard-wrapped segment open the entire path');
 }
+
+const beforePadding = messages.length;
+click(18,0);
+assert.equal(messages.length,beforePadding,'Blank padding beside a hard-wrapped path is not clickable');
