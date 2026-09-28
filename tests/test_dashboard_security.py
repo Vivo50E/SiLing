@@ -25,6 +25,51 @@ from agent_orchestrator.state import StateManager
 from launchd.render_plist import render_plist
 
 
+class TmuxSendTests(unittest.TestCase):
+    def test_tmux_target_pane_prefers_active_pane_in_active_window(self):
+        listed = subprocess.CompletedProcess(
+            args=[], returncode=0,
+            stdout="%3\t0\t1\t0\n%7\t1\t1\t0\n%8\t1\t0\t0\n",
+            stderr="",
+        )
+        with patch.object(subprocess, "run", return_value=listed) as run:
+            pane, error = dashboard._tmux_target_pane("orch-detached")
+
+        self.assertEqual((pane, error), ("%7", ""))
+        self.assertEqual(
+            run.call_args.args[0][:5],
+            ["tmux", "list-panes", "-s", "-t", "orch-detached"],
+        )
+
+    def test_tmux_send_uses_explicit_pane_target(self):
+        listed = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="%42\t1\t1\t0\n", stderr="",
+        )
+        sent = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="", stderr="",
+        )
+        with patch.object(subprocess, "run", side_effect=[listed, sent]) as run:
+            ok, error = dashboard.tmux_send(
+                "orch-detached", "hello", literal=True,
+            )
+
+        self.assertEqual((ok, error), (True, ""))
+        self.assertEqual(
+            run.call_args_list[1].args[0],
+            ["tmux", "send-keys", "-t", "%42", "-l", "hello"],
+        )
+
+    def test_tmux_send_reports_session_without_live_pane(self):
+        listed = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="%42\t1\t1\t1\n", stderr="",
+        )
+        with patch.object(subprocess, "run", return_value=listed) as run:
+            ok, error = dashboard.tmux_send("orch-empty", "hello")
+
+        self.assertFalse(ok)
+        self.assertEqual(error, "session has no live pane")
+        self.assertEqual(run.call_count, 1)
+
 class LocalSettingsTests(unittest.TestCase):
     def test_explicit_token_wins(self):
         with patch.dict(
