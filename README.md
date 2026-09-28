@@ -51,10 +51,12 @@ path back into the session.
   <img src="docs/assets/new-session.webp" width="520" alt="Start a Cursor Agent, Claude Code, or OpenAI Codex CLI session from one dialog">
 </p>
 
-Start Cursor Agent, Claude Code, or OpenAI Codex CLI from the same dialog. Give
-the task a human label, choose its workspace, and launch it directly into a
-background tmux session. The Dashboard then becomes the stable place to find
-that work again instead of relying on a terminal tab title.
+Start Cursor Agent, Claude Code, OpenAI Codex CLI, or a plain login shell from
+the same dialog. Give the task a human label, choose its workspace, and launch
+it directly into a background tmux session. Terminal sessions never
+auto-approve prompts, so they are suitable for commands you want to run
+yourself. The Dashboard then becomes the stable place to find that work again
+instead of relying on a terminal tab title.
 
 The same flow can create a new task or resume a stopped one. You can open an
 iTerm window when you want it, or keep the session entirely in the background

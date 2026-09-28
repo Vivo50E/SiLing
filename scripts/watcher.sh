@@ -2,7 +2,7 @@
 # Daemonized permission-watcher + pane-logger for an siling tmux session.
 #
 # Usage:
-#   watcher.sh <tmux_session> <log_file> <run_dir>
+#   watcher.sh <tmux_session> <log_file> <run_dir> [agent_type]
 #
 # Why this exists as a standalone script:
 #   Earlier versions ran the watcher as a subshell `( ... ) &` inside
@@ -34,6 +34,13 @@ unset MallocStackLogging MallocStackLoggingNoCompact MallocScribble MallocGuardE
 SESSION="${1:?missing session}"
 LOGFILE="${2:?missing logfile}"
 RUN_DIR="${3:?missing run_dir}"
+AGENT_TYPE="${4:-}"
+PERMISSION_WATCH=1
+if [ "$AGENT_TYPE" = "terminal" ]; then
+    # A human-operated shell must never receive auto-approved keystrokes just
+    # because ordinary command output resembles an agent permission prompt.
+    PERMISSION_WATCH=0
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG_WRITER="$SCRIPT_DIR/log_writer.py"
@@ -86,7 +93,9 @@ cleanup() {
 }
 trap cleanup EXIT TERM INT
 
-start_perm_stream
+if [ "$PERMISSION_WATCH" -eq 1 ]; then
+    start_perm_stream
+fi
 
 LAST_LOG_TIME=0
 LOG_INTERVAL=5
@@ -97,7 +106,7 @@ while tmux has-session -t "$SESSION" 2>/dev/null; do
     pane_text=$(tmux capture-pane -t "$SESSION" -p -S - 2>/dev/null)
 
     NOW=$(date +%s)
-    if [ $((NOW - LAST_STREAM_CHECK)) -ge $STREAM_CHECK_INTERVAL ]; then
+    if [ "$PERMISSION_WATCH" -eq 1 ] && [ $((NOW - LAST_STREAM_CHECK)) -ge $STREAM_CHECK_INTERVAL ]; then
         ensure_perm_stream
         LAST_STREAM_CHECK=$NOW
     fi
@@ -118,10 +127,12 @@ while tmux has-session -t "$SESSION" 2>/dev/null; do
     # own logic still only treats the bottom ~15 rows as "where
     # a live arrow may appear", so we don't accept on a stale
     # historical prompt from deep in scrollback.
-    key=$(tmux capture-pane -t "$SESSION" -p -S -500 2>/dev/null | python3 "$PERM_GATE")
-    case "$key" in
-        y)     tmux send-keys -t "$SESSION" "y";     sleep 1 ;;
-        enter) tmux send-keys -t "$SESSION" Enter;   sleep 1 ;;
-    esac
+    if [ "$PERMISSION_WATCH" -eq 1 ]; then
+        key=$(tmux capture-pane -t "$SESSION" -p -S -500 2>/dev/null | python3 "$PERM_GATE")
+        case "$key" in
+            y)     tmux send-keys -t "$SESSION" "y";     sleep 1 ;;
+            enter) tmux send-keys -t "$SESSION" Enter;   sleep 1 ;;
+        esac
+    fi
     sleep 0.5
 done

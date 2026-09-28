@@ -2823,6 +2823,7 @@
             <option value="cursor">cursor (Cursor Agent)</option>
             <option value="claude">claude (Claude Code)</option>
             <option value="codex">codex (OpenAI Codex CLI)</option>
+            <option value="terminal">terminal (login shell)</option>
           </select>
         </label>
         <label class="fld" id="new-model-field">
@@ -2852,6 +2853,8 @@
           <b>Import existing</b>: index native Codex, Claude Code, or Cursor
           Agent history so it appears under Resume. Original transcripts are
           read-only and are not copied, moved, or deleted.<br/>
+          <b>Terminal</b>: start your login shell without an AI agent. Commands
+          are never auto-approved, and exiting the shell ends the session.<br/>
           <b>Open iTerm &amp; Start</b>: new iTerm window running <code>siling run</code>.
           Requires macOS Automation permission for iTerm if the dashboard is
           running under LaunchAgent.<br/>
@@ -6084,10 +6087,17 @@
     return sessionPersistentAttentionState(s) || sessionVisibleUnreadState(s);
   }
 
+  function sessionIsTerminal(s) {
+    return String(s?.agent || "").trim().toLowerCase() === "terminal";
+  }
+
   function sessionDotPresentation(s) {
     const activity = sessionActivityMode(s);
     if (activity === "foreground") {
-      return { classes: `${dotClass(s)} agent-working`, title: "Agent working" };
+      return {
+        classes: `${dotClass(s)} agent-working`,
+        title: sessionIsTerminal(s) ? "Terminal active" : "Agent working",
+      };
     }
     if (activity === "background") {
       return {
@@ -7182,6 +7192,7 @@
     }
     const s = sessions.find(x => x.run_id === runId);
     if (!s) return;
+    const terminalSession = sessionIsTerminal(s);
 
     const card = document.createElement("div");
     const terminalTheme = terminalThemeValue(s.terminal_theme);
@@ -7228,8 +7239,8 @@
       <div class="pane-input">
         <textarea rows="1" placeholder="Enter 发送 · Shift/Option+Enter 换行 · /up /down /enter /esc /clr = 发键"></textarea>
         <button class="btn-send primary">Send</button>
-        <button class="btn-progress" title="发送『现在进度如何？』">进度</button>
-        <button class="btn-monitor" title="发送 5 分钟心跳监控指令">监控</button>
+        <button class="btn-progress" ${terminalSession ? "hidden" : ""} title="发送『现在进度如何？』">进度</button>
+        <button class="btn-monitor" ${terminalSession ? "hidden" : ""} title="发送 5 分钟心跳监控指令">监控</button>
         <button class="btn-link-folder" title="Link a folder, file, or URL to this pane">Link</button>
           <button class="btn-sync-project" ${s.remote ? "hidden" : ""} title="Sync this session's project and publish a remote resume handoff when idle (Shift-click: sync safe items now)">Sync</button>
       </div>
@@ -8381,7 +8392,10 @@
     const s = sessions.find(x => x.run_id === runId);
     if (!s || !s.alive) return;
     const name = s.display_name || s.task || s.run_name || "session";
-    if (!confirm(`Terminate "${name}"?\n\nResume metadata and transcripts will be kept.`)) return;
+    const retained = sessionIsTerminal(s)
+      ? "The terminal transcript will be kept."
+      : "Resume metadata and transcripts will be kept.";
+    if (!confirm(`Terminate "${name}"?\n\n${retained}`)) return;
     const previousText = button ? button.textContent : "Terminate";
     if (button) {
       button.disabled = true;
@@ -12207,12 +12221,13 @@
     const kind = $("new-kind").value;
     const isResume = kind === "resume";
     const isImport = kind === "import";
+    const isTerminal = $("new-agent").value === "terminal";
     const remoteNode = selectedRemoteNode();
     $("new-resume-field").hidden = !isResume;
     $("new-import-field").hidden = !isImport;
     $("new-label-field").hidden = isImport;
     $("new-agent-field").hidden = isResume || isImport;
-    $("new-model-field").hidden = isResume || isImport;
+    $("new-model-field").hidden = isResume || isImport || isTerminal;
     $("new-effort-field").hidden = isResume || isImport || $("new-agent").value !== "claude";
     $("new-cwd-field").hidden = isImport;
     $("new-submit").hidden = !!remoteNode || isImport;

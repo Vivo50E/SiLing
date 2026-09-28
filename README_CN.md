@@ -50,9 +50,10 @@ board。每个 agent 都有自己的名称、优先级、实时状态、workspac
   <img src="docs/assets/new-session.webp" width="520" alt="从同一个窗口启动 Cursor Agent、Claude Code 或 OpenAI Codex CLI">
 </p>
 
-从同一个窗口启动 Cursor Agent、Claude Code 或 OpenAI Codex CLI。为 task
-设置容易记住的标签、选择 workspace，然后直接放进后台 tmux session。之后
-Dashboard 就是找回这项工作的稳定入口，不再依赖 terminal tab 的标题。
+从同一个窗口启动 Cursor Agent、Claude Code、OpenAI Codex CLI 或纯登录 Shell。
+为 task 设置容易记住的标签、选择 workspace，然后直接放进后台 tmux session。
+Terminal Session 不会自动确认任何提示，适合手动执行命令。之后 Dashboard 就是
+找回这项工作的稳定入口，不再依赖 terminal tab 的标题。
 
 同一个流程既可以创建新 task，也可以恢复已经停止的 session。需要时打开 iTerm；
 不需要额外窗口时，则让它留在后台并通过浏览器 TTY 交互。

@@ -501,6 +501,31 @@ class DashboardNewSessionContractTests(unittest.TestCase):
             self.source,
         )
 
+    def test_plain_terminal_is_available_without_model_controls(self):
+        self.assertIn(
+            '<option value="terminal">terminal (login shell)</option>',
+            self.source,
+        )
+        self.assertIn(
+            'const isTerminal = $("new-agent").value === "terminal";',
+            self.source,
+        )
+        self.assertIn(
+            '$("new-model-field").hidden = isResume || isImport || isTerminal;',
+            self.source,
+        )
+        self.assertIn("function sessionIsTerminal(s)", self.source)
+        self.assertIn(
+            '<button class="btn-progress" ${terminalSession ? "hidden" : ""}',
+            self.source,
+        )
+        backend_source = Path(dashboard.__file__).read_text()
+        create_start = backend_source.index('@app.post("/api/create")')
+        create_end = backend_source.index(
+            '@app.post("/api/delegate")', create_start,
+        )
+        self.assertIn('"codex", "terminal")', backend_source[create_start:create_end])
+
 
 class DashboardPaneInputContractTests(unittest.TestCase):
     @classmethod
@@ -615,6 +640,17 @@ class DashboardAgentExitDetectionTests(unittest.TestCase):
 
         self.assertTrue(activity["agent_exited"])
         self.assertFalse(activity["busy"])
+
+    def test_terminal_stop_skips_agent_exit_handshake(self):
+        with patch.object(dashboard, "tmux_alive", return_value=True), \
+                patch.object(dashboard, "tmux_send_key") as send_key:
+            result = dashboard._graceful_stop_agent(
+                "orch-terminal", "terminal", timeout_s=2,
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["reason"], "terminal session ready to stop")
+        send_key.assert_not_called()
 
     def test_marker_mentioned_in_prose_does_not_mark_agent_exited(self):
         with patch.object(
@@ -3005,6 +3041,20 @@ fi
 
 
 class DeploymentScriptTests(unittest.TestCase):
+    def test_terminal_launcher_uses_login_shell_without_permission_automation(self):
+        launcher = Path("scripts/run.sh").read_text()
+        watcher = Path("scripts/watcher.sh").read_text()
+
+        self.assertIn("    terminal)\n", launcher)
+        self.assertIn('TERMINAL_SHELL="${SHELL:-}"', launcher)
+        self.assertIn("if [ -x /bin/zsh ]; then", launcher)
+        self.assertIn('cd $CWD_Q && exec env ORCH_RUN_ID=', launcher)
+        self.assertIn(
+            '"$SESSION" "$LOGFILE" "$RUN_DIR" "$AGENT_TYPE"', launcher,
+        )
+        self.assertIn('if [ "$AGENT_TYPE" = "terminal" ]; then', watcher)
+        self.assertIn("PERMISSION_WATCH=0", watcher)
+
     def test_live_sync_preserves_local_and_runtime_data(self):
         script = Path("launchd/deploy.sh").read_text()
         for path in (

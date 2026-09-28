@@ -4606,6 +4606,12 @@ def _graceful_stop_agent(session: str, agent: str,
         return {"ok": False, "reason": "no tmux session"}
     if not tmux_alive(session):
         return {"ok": True, "reason": "tmux session already gone"}
+    if _norm_agent(agent) == "terminal":
+        # A terminal has no agent-specific shutdown handshake or resume
+        # metadata to preserve. Let the endpoint remove its tmux session
+        # immediately instead of sending Ctrl+C twice and waiting for an
+        # Agent-exited marker that a login shell will never print.
+        return {"ok": True, "reason": "terminal session ready to stop"}
 
     initial_pane = tmux_capture(session)
     if _agent_exited(session, initial_pane):
@@ -10260,6 +10266,13 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             parts.append(f"ORCH_PROJECTS_ROOT={shlex.quote(projects_root)}")
         parts.append(shlex.quote(orch_bin))
         agent_kind = _norm_agent(agent)
+        if agent_kind == "terminal":
+            # Hidden form fields can retain values after the user switches
+            # from an AI agent to Terminal. Never forward those values to a
+            # login shell as CLI arguments or metadata.
+            model = ""
+            effort = ""
+            effort_mode = ""
         safe_name = (
             re.sub(r"[^a-zA-Z0-9_-]+", "-", label).strip("-") or "session"
             if label else "interactive"
@@ -10582,7 +10595,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         """Spawn a new `orch run` session.
 
         Body:
-          agent: "cursor" | "claude" | "codex" (default cursor)
+          agent: "cursor" | "claude" | "codex" | "terminal" (default cursor)
           model: optional model shortcut
           effort: optional Claude Code effort (low|medium|high|xhigh|max)
           terminal_theme: optional terminal palette
@@ -10616,9 +10629,9 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         cwd = _resolve_session_cwd(body.get("cwd") or "")
         mode = (body.get("mode") or "iterm").strip()
 
-        if agent not in ("cursor", "claude", "agent", "codex"):
+        if agent not in ("cursor", "claude", "agent", "codex", "terminal"):
             raise HTTPException(400,
-                "agent must be 'cursor', 'claude', or 'codex'")
+                "agent must be 'cursor', 'claude', 'codex', or 'terminal'")
         if mode not in ("iterm", "background"):
             raise HTTPException(400, "mode must be 'iterm' or 'background'")
 
@@ -11273,7 +11286,11 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         with_log = bool(body.get("with_log", False))
         mode = (body.get("mode") or "background").strip()
 
-        agent = src.get("agent") or "cursor"
+        agent = _norm_agent(src.get("agent") or "cursor")
+        if agent == "terminal" and with_log:
+            raise HTTPException(
+                409, "Terminal sessions support plain Clone only"
+            )
         model = src.get("model") or ""
         if model == "default":
             model = ""

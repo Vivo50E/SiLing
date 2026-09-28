@@ -75,9 +75,16 @@ if [[ "$MODEL" == \<*\> ]]; then
     MODEL=""
 fi
 
+# Terminal sessions never accept model or effort arguments. Hidden Dashboard
+# inputs may still contain a previous agent's values when the type changes.
+if [ "$AGENT_TYPE" = "terminal" ]; then
+    MODEL=""
+    EFFORT=""
+fi
+
 # If no model is specified, cursor/agent uses claude-opus-4-7-high.
 # Claude and Codex keep their own CLI defaults.
-if [ -z "$MODEL" ] && [ "$AGENT_TYPE" != "claude" ] && [ "$AGENT_TYPE" != "codex" ]; then
+if [ -z "$MODEL" ] && { [ "$AGENT_TYPE" = "cursor" ] || [ "$AGENT_TYPE" = "agent" ]; }; then
     MODEL="claude-opus-4-7-high"
 fi
 
@@ -116,6 +123,19 @@ case "$AGENT_TYPE" in
         # Codex prompt exists.  Keep this invocation-local so ordinary Codex
         # launches still use the user's normal update preference.
         AGENT_CMD="codex --dangerously-bypass-approvals-and-sandbox -c check_for_update_on_startup=false"
+        ;;
+    terminal)
+        TERMINAL_SHELL="${SHELL:-}"
+        if [ ! -x "$TERMINAL_SHELL" ]; then
+            if [ -x /bin/zsh ]; then
+                TERMINAL_SHELL="/bin/zsh"
+            elif [ -x /bin/bash ]; then
+                TERMINAL_SHELL="/bin/bash"
+            else
+                TERMINAL_SHELL="/bin/sh"
+            fi
+        fi
+        AGENT_CMD="$(printf '%q' "$TERMINAL_SHELL") -l"
         ;;
     *)
         AGENT_CMD="$AGENT_TYPE"
@@ -219,6 +239,12 @@ if [ -n "$METADATA_RESUME_ID" ]; then
             ;;
     esac
 fi
+METADATA_RESUME_AGENT="$AGENT_TYPE"
+MODEL_METADATA="${MODEL:-default}"
+if [ "$AGENT_TYPE" = "terminal" ]; then
+    METADATA_RESUME_AGENT=""
+    MODEL_METADATA=""
+fi
 
 # Permission-prompt detection (`perm_gate.py`) and the pane-tailing
 # log/autoreply loop (`watcher.sh`) are factored out as separate
@@ -227,7 +253,11 @@ fi
 WATCHER_SH="$SCRIPT_DIR/watcher.sh"
 
 echo "Agent:   $AGENT_TYPE"
-echo "Model:   ${MODEL:-default}"
+if [ "$AGENT_TYPE" = "terminal" ]; then
+    echo "Shell:   $TERMINAL_SHELL"
+else
+    echo "Model:   ${MODEL:-default}"
+fi
 if [ -n "$EFFORT" ]; then
     echo "Effort:  $EFFORT"
 fi
@@ -256,13 +286,13 @@ cat > "$SESSION_JSON" <<EOF
   "run_id": "$RUN_ID",
   "name": "$TASK_NAME",
   "agent": "$AGENT_TYPE",
-  "model": "${MODEL:-default}",
+  "model": "$MODEL_METADATA",
   "effort": "$EFFORT",
   "cwd": "$CWD",
   "tmux_session": "$SESSION",
   "log_file": "logs/${TASK_NAME}.log",
   "started_at": "$(date +%Y-%m-%dT%H:%M:%S)",
-  "resume_agent": "$AGENT_TYPE",
+  "resume_agent": "$METADATA_RESUME_AGENT",
   "resume_id": "$METADATA_RESUME_ID",
   "resume_cmd": "$METADATA_RESUME_CMD",
   "resume_source": "$METADATA_RESUME_SOURCE",
@@ -273,8 +303,13 @@ cat > "$SESSION_JSON" <<EOF
 }
 EOF
 
-tmux new-session -d -s "$SESSION" -x "$COLS" -y "$ROWS" \
-    "cd $CWD_Q && ORCH_RUN_ID=$RUN_ID_Q ORCH_RUN_DIR=$RUN_DIR_Q ORCH_TMUX_SESSION=$SESSION_Q ORCH_SESSION_JSON=$SESSION_JSON_Q ORCH_TASK_NAME=$TASK_NAME_Q ORCH_AGENT_TYPE=$AGENT_TYPE_Q ORCH_DASHBOARD_URL=$DASHBOARD_URL_Q $AGENT_CMD; echo '--- Agent exited ---'; read"
+if [ "$AGENT_TYPE" = "terminal" ]; then
+    tmux new-session -d -s "$SESSION" -x "$COLS" -y "$ROWS" \
+        "cd $CWD_Q && exec env ORCH_RUN_ID=$RUN_ID_Q ORCH_RUN_DIR=$RUN_DIR_Q ORCH_TMUX_SESSION=$SESSION_Q ORCH_SESSION_JSON=$SESSION_JSON_Q ORCH_TASK_NAME=$TASK_NAME_Q ORCH_AGENT_TYPE=$AGENT_TYPE_Q ORCH_DASHBOARD_URL=$DASHBOARD_URL_Q $AGENT_CMD"
+else
+    tmux new-session -d -s "$SESSION" -x "$COLS" -y "$ROWS" \
+        "cd $CWD_Q && ORCH_RUN_ID=$RUN_ID_Q ORCH_RUN_DIR=$RUN_DIR_Q ORCH_TMUX_SESSION=$SESSION_Q ORCH_SESSION_JSON=$SESSION_JSON_Q ORCH_TASK_NAME=$TASK_NAME_Q ORCH_AGENT_TYPE=$AGENT_TYPE_Q ORCH_DASHBOARD_URL=$DASHBOARD_URL_Q $AGENT_CMD; echo '--- Agent exited ---'; read"
+fi
 
 # Kill any pre-existing watcher for this RUN_DIR (re-run after crash,
 # or an `siling continue` replacing a daemon). We MUST wait for the old
@@ -310,7 +345,7 @@ _kill_stale_watcher
 #   - this shell exiting after `tmux attach` returns (detach),
 #   - user logout (modulo launchd decisions).
 # The watcher naturally exits when `tmux has-session` goes false.
-nohup bash "$WATCHER_SH" "$SESSION" "$LOGFILE" "$RUN_DIR" \
+nohup bash "$WATCHER_SH" "$SESSION" "$LOGFILE" "$RUN_DIR" "$AGENT_TYPE" \
     >> "$RUN_DIR/.watcher.log" 2>&1 </dev/null &
 WATCHER_PID=$!
 disown "$WATCHER_PID" 2>/dev/null || true
