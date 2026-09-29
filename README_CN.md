@@ -197,6 +197,11 @@ Dashboard 会明确展示这些状态，而不是让它们消失在 terminal scr
 点击标签或被缩进拆成多行的路径。文件须存在于会话所在主机且位于
 允许目录内；额外目录通过 `ORCH_LINKED_FOLDER_ROOTS` 配置。
 
+在 Codex、Claude Code 和 Cursor Agent pane 内直接输入时，**Shift+Enter** 换行，
+普通 Enter 保持原有提交行为。SiLing 在 ttyd 丢失 Shift 修饰键前转换按键，不修改
+全局 tmux 设置；纯 Terminal 和未知／自定义 Agent 保留原生按键行为。
+底部输入框也支持 Shift+Enter 或 Option/Alt+Enter 换行。
+
 Terminal 和 Codex pane 可直接拖选文本，按住鼠标时滚动滚轮即可跨屏扩展选区。
 松开鼠标后按 ⌘C（macOS）或 Ctrl+Shift+C 复制完整选区；输入时回到实时末尾。
 Option+拖选保留 xterm 当前屏幕内的选择方式。复制依赖 tmux 的 `copy-pipe-no-clear -CP`

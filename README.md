@@ -124,6 +124,12 @@ intervene.
 The browser is only the control surface. Background tmux sessions continue
 running when the tab is closed.
 
+Inside Codex, Claude Code and Cursor Agent panes, **Shift+Enter** inserts a
+newline; ordinary Enter keeps its normal submit behavior. SiLing translates
+the shortcut before ttyd loses the Shift modifier, without changing global
+tmux settings. Plain Terminal and unknown/custom agents retain native keys.
+The bottom input box also supports Shift+Enter or Option/Alt+Enter for newlines.
+
 Click an absolute local path or a `file://` link in a terminal to open it in SiLing’s
 Files preview. The clicked item is linked to that session automatically; agents do
 not need to run `link-file` first. Codex’s `label (/path)` output is also clickable,

@@ -166,6 +166,29 @@ try {
       for (let i=0; i<100; i++) { if (await evaluate(expression)) return; await pause(100); }
       assert.fail('Timed out: ' + expression);
     };
+    await waitFor(`Array.from(document.querySelectorAll('.pane iframe')).every(f=>f.contentDocument?.querySelector('textarea'))`);
+    const newlineResults = await evaluate(`(()=>{
+      return ['fixture-0','fixture-1','fixture-2','fixture-3'].map(id=>{
+        const frame=document.querySelector('[data-run-id="'+id+'"] iframe');
+        const input=frame.contentDocument.querySelector('textarea');
+        input.classList.add('xterm-helper-textarea');
+        const sent=[];frame.contentWindow.term={input:(data,user)=>sent.push([data,user])};
+        const press=extra=>input.dispatchEvent(new frame.contentWindow.KeyboardEvent('keydown',
+          {key:'Enter',shiftKey:true,bubbles:true,cancelable:true,...extra}));
+        const native=press({});
+        const ordinary=press({shiftKey:false});
+        const composing=press({isComposing:true});
+        delete frame.contentWindow.term;
+        return {id,sent,native,ordinary,composing};
+      });
+    })()`);
+    assert.deepEqual(newlineResults, [
+      {id:'fixture-0',sent:[['\n',true]],native:false,ordinary:true,composing:true},
+      {id:'fixture-1',sent:[['\x1b[200~\n\x1b[201~',true]],native:false,ordinary:true,composing:true},
+      {id:'fixture-2',sent:[],native:true,ordinary:true,composing:true},
+      {id:'fixture-3',sent:[['\n',true]],native:false,ordinary:true,composing:true},
+    ], 'Dashboard installs agent-specific newline routing inside each iframe');
+    console.log('PASS: iframe Shift+Enter routing, native Enter, IME and plain Terminal behavior');
     await evaluate(`document.querySelector('[data-run-id="fixture-0"] .pane-input textarea').value='group draft';document.querySelector('#btn-pane-groups').click();document.querySelector('#group-name').value='Project <A>';document.querySelector('#group-save').click()`);
     await waitFor(`document.querySelector('[data-group-filter="project-fixture"]') !== null`);
     await evaluate(`document.querySelector('#group-session-list input[value="fixture-0"]').checked=true;document.querySelector('#group-session-list input[value="fixture-1"]').checked=true;document.querySelector('#group-target').value='project-fixture';document.querySelector('#group-assign').click()`);

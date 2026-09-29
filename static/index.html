@@ -2747,6 +2747,7 @@
 <script src="/static/ui-foundation.js?v=6"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=1" />
 <script src="/static/pane-groups.js?v=1"></script>
+<script src="/static/terminal-keys.js?v=1"></script>
 </head>
 <body>
 
@@ -8137,6 +8138,11 @@
         `/api/sessions/${encodeURIComponent(runId)}/selection`, {method: "POST"},
       );
       ttyShortcutDocuments.add(frameDocument);
+      window.SiLingTerminalKeys.install(
+        frameDocument,
+        () => sessions.find(s => s.run_id === runId) || paneCtrls.get(runId)?.session,
+        () => iframe.contentWindow?.term,
+      );
       // Pointer events inside an iframe do not bubble to the dashboard grid.
       // Treat direct terminal inspection as reading the waiting notification.
       frameDocument.addEventListener("pointerdown", () => {

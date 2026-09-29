@@ -84,6 +84,44 @@ try {
   const injection=execFileSync(python,['-c',"from agent_orchestrator.terminal_theme import _TTYD_INTERACTION_SCRIPT as s;print(s.split('>',1)[1].rsplit('</script>',1)[0])"],{cwd:root,encoding:'utf8'});
   await evaluate(`Object.defineProperty(window,'frameElement',{value:{dataset:{inlineSelection:'true',nativeSelection:'true'}}});window.localMessages=[];Object.defineProperty(window,'parent',{value:{postMessage: message=>window.localMessages.push(message)}});void 0;`);
   await evaluate(injection);
+  // The real ttyd encoder must distinguish newline from submit. Run a raw
+  // byte recorder in our private tmux server; no model or live agent is used.
+  const recorder = String.raw`import os,termios,tty
+original=termios.tcgetattr(0)
+try:
+ tty.setraw(0)
+ os.write(1,b'\x1b[?2004h\r\nKEY_RECORDER_READY\r\n')
+ while True:
+  b=os.read(0,1)
+  if b==b'\x04': break
+  os.write(1,('KEYBYTE:%02x\r\n'%b[0]).encode())
+finally:
+ os.write(1,b'\x1b[?2004l')
+ termios.tcsetattr(0,termios.TCSADRAIN,original)
+`;
+  const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
+  const recorderCommand = `import base64;exec(base64.b64decode('${Buffer.from(recorder).toString('base64')}'))`;
+  tmux('send-keys','-t','check',`${quote(python)} -c ${quote(recorderCommand)}`,'Enter');
+  for(let i=0;i<50;i++){if(tmux('capture-pane','-t','check','-p').split('\n').includes('KEY_RECORDER_READY'))break;await pause(100);}
+  assert.ok(tmux('capture-pane','-t','check','-p').split('\n').includes('KEY_RECORDER_READY'),'Raw recorder started');
+  const keysScript=fs.readFileSync(path.join(root,'static/terminal-keys.js'),'utf8');
+  await evaluate(keysScript);
+  await evaluate(`window.testSession={agent:'claude',alive:true};window.emittedKeys=[];term.onData(data=>emittedKeys.push(data));SiLingTerminalKeys.install(document,()=>testSession,()=>term);term.focus()`);
+  for(const [agent,expected] of [['claude','\n'],['cursor','\n'],['terminal','\r'],['custom','\r'],['codex','\x1b[200~\n\x1b[201~']]) {
+    await evaluate(`testSession.agent=${JSON.stringify(agent)};emittedKeys=[];term.focus()`);
+    await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',modifiers:8,windowsVirtualKeyCode:13,text:'\r'});
+    await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',modifiers:8,windowsVirtualKeyCode:13});
+    assert.deepEqual(await evaluate('emittedKeys'),[expected],agent+' emits one newline payload, not a second CR');
+  }
+  await evaluate(`term.input('\x04',true)`);
+  await pause(300);
+  const keyBytes=tmux('capture-pane','-t','check','-p','-S','-').split('\n').filter(line=>/^KEYBYTE:[0-9a-f]{2}$/.test(line)).map(line=>line.slice(-2));
+  assert.deepEqual(keyBytes,Array.from(Buffer.from('\n\n\r\r\x1b[200~\n\x1b[201~'),byte=>byte.toString(16).padStart(2,'0')),'tmux delivers the entire newline/paste payload without a submit');
+  await evaluate(`testSession.agent='terminal';emittedKeys=[];term.focus()`);
+  await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,text:'\r'});
+  await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
+  assert.deepEqual(await evaluate('emittedKeys'),['\r'],'ordinary Enter remains submit');
+  console.log('PASS: real ttyd Shift+Enter byte routing through tmux; plain Terminal and Enter unchanged');
   await evaluate("new Promise(resolve=>term.write(" + JSON.stringify("\r\n\u001b]8;;file:///tmp/siling-fixture.png\u0007CLICK-ARTIFACT\u001b]8;;\u0007") + ",resolve))");
   const cell=await evaluate(`(()=>{const b=term.buffer.active;for(let y=b.viewportY;y<b.length;y++){const line=b.getLine(y).translateToString();const x=line.indexOf('CLICK-ARTIFACT');if(x>=0){const r=document.querySelector('.xterm-screen').getBoundingClientRect();return {x:r.x+(x+2.5)*r.width/term.cols,y:r.y+(y-b.viewportY+.5)*r.height/term.rows};}}})()`);
   assert.ok(cell,'Fixture hyperlink is visible');
