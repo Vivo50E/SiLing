@@ -2744,7 +2744,7 @@
   }
 </style>
 <link rel="stylesheet" href="/static/ui-foundation.css?v=5" />
-<script src="/static/ui-foundation.js?v=6"></script>
+<script src="/static/ui-foundation.js?v=7"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=1" />
 <script src="/static/pane-groups.js?v=1"></script>
 <script src="/static/terminal-keys.js?v=1"></script>
@@ -2941,6 +2941,13 @@
             </span>
           </span>
           <input id="settings-open-links-internally" type="checkbox" />
+        </label>
+        <label class="settings-row" for="settings-system-browser">
+          <span>
+            <span class="settings-row-title" data-i18n="systemBrowser">Open external links via macOS</span>
+            <span class="settings-row-help" data-i18n="systemBrowserHelp">Use the system browser instead of the app's profile. Only available directly on this Mac; other devices open links on their own device. Edge's profile rules still apply.</span>
+          </span>
+          <input id="settings-system-browser" type="checkbox" />
         </label>
         <label class="settings-row" for="settings-panel-opacity">
           <span>
@@ -3306,6 +3313,9 @@
   let REMOTE_NODES = [];
   const PROJECTS_BROWSER_TABS_KEY = "orch_projects_browser_tabs_v1";
   const OPEN_LINKS_INTERNALLY_KEY = "siling_open_links_internally";
+  const SYSTEM_BROWSER_KEY = "siling_system_browser";
+  let systemBrowserAvailable = false;
+  let useSystemBrowser = localStorage.getItem(SYSTEM_BROWSER_KEY) !== "0";
   const PANEL_OPACITY_KEY = "siling_panel_opacity";
   const GLOBAL_TERMINAL_THEME_KEY = "orch_global_terminal_theme";
   const DEFAULT_TERMINAL_THEME = "soft-dark";
@@ -3370,6 +3380,8 @@
 
   function applyDashboardConfig(raw) {
     const config = Object.assign({}, DEFAULT_DASHBOARD_CONFIG, raw || {});
+    systemBrowserAvailable = config.system_browser_available === true;
+    syncSettingsControls();
     NOTES_URL = String(config.notes_url || "").trim();
     PROJECTS_BROWSER_URL = String(config.projects_browser_url || "").trim();
     PROJECTS_ROOT = String(config.projects_root || "").trim();
@@ -3419,6 +3431,8 @@
 
   function syncSettingsControls() {
     internalLinksSetting.checked = openLinksInternally;
+    $("settings-system-browser").disabled = !systemBrowserAvailable;
+    $("settings-system-browser").checked = systemBrowserAvailable && useSystemBrowser;
     panelOpacitySetting.value = String(panelOpacityPercent);
     panelOpacityValue.textContent = `${panelOpacityPercent}%`;
     settingsModal.querySelectorAll("[data-appearance]").forEach(control => {
@@ -9136,7 +9150,7 @@
     notesLoaded = true;
   });
   $("notes-modal-open").addEventListener("click", () => {
-    window.open(NOTES_URL, "_blank", "noopener,noreferrer");
+    openExternalWebUrl(NOTES_URL);
   });
   notesModal.addEventListener("click", (ev) => {
     if (ev.target === notesModal) closeNotesModal();
@@ -9429,13 +9443,38 @@
     return true;
   }
 
+  function openExternalWebUrl(rawUrl) {
+    const url = normalizedHttpUrl(rawUrl);
+    if (!url) return false;
+    if (systemBrowserAvailable && useSystemBrowser) {
+      void api("/api/browser/open", {
+        method: "POST", headers: {"X-SiLing-Browser-Open": "user-click"}, body: {url},
+      }).catch(error => alert(ui.t("systemBrowserFailed") + "\n" + error.message));
+      return true;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+    return true;
+  }
+
+  $("settings-system-browser").addEventListener("change", () => {
+    useSystemBrowser = $("settings-system-browser").checked;
+    persistBrowserSetting(SYSTEM_BROWSER_KEY, useSystemBrowser ? "1" : "0");
+  });
+
   function openPreferredWebUrl(rawUrl) {
     const url = normalizedHttpUrl(rawUrl);
     if (!url) return false;
     if (openLinksInternally) return openProjectsBrowserUrl(url);
-    window.open(url, "_blank", "noopener,noreferrer");
-    return true;
+    return openExternalWebUrl(url);
   }
+
+  // Preserve the click gesture for window.open on other devices. Only terminal
+  // frames, not embedded websites, may route through this same-origin callback.
+  window.silingOpenWebUrl = (rawUrl, source) => {
+    if (!Array.from(document.querySelectorAll(".pane iframe"))
+      .some(frame => frame.contentWindow === source)) return false;
+    return openPreferredWebUrl(rawUrl);
+  };
 
   window.addEventListener("message", (event) => {
     if (event.origin !== window.location.origin) return;
@@ -9453,13 +9492,13 @@
   });
 
   document.addEventListener("click", (event) => {
-    if (!openLinksInternally || !(event.target instanceof Element)) return;
+    if (!(event.target instanceof Element)) return;
     const anchor = event.target.closest("a[data-open-web-link]");
     if (!anchor) return;
     const url = normalizedHttpUrl(anchor.getAttribute("href"));
     if (!url) return;
     event.preventDefault();
-    openProjectsBrowserUrl(url);
+    openPreferredWebUrl(url);
   });
 
   const closeProjectsBrowserModal = () => { projectsBrowserModal.hidden = true; };
@@ -9485,7 +9524,7 @@
     saveProjectsBrowserTabs();
   });
   $("projects-browser-modal-open").addEventListener("click", () => {
-    window.open(readProjectsBrowserUrlInput(), "_blank", "noopener,noreferrer");
+    openExternalWebUrl(readProjectsBrowserUrlInput());
   });
   projectsBrowserModal.addEventListener("click", (ev) => {
     if (ev.target === projectsBrowserModal) closeProjectsBrowserModal();

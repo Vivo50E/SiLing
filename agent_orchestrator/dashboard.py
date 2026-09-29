@@ -61,6 +61,7 @@ from typing import Any, Callable, Optional
 from urllib.parse import quote, urlparse
 
 from .agent_cli import resolve_agent_cli
+from .browser_open import open_system_browser, system_browser_available, validate_web_url
 from .conversation_metrics import TranscriptMetricsCache
 from .dashboard_network import build_access_url, list_local_ipv4, pick_best_ip
 from .json_store import edit_json, write_json
@@ -8740,11 +8741,32 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         }
 
     @app.get("/api/config")
-    def dashboard_config():
-        return {
+    def dashboard_config(request: Request):
+        return JSONResponse({
             **_dashboard_client_config(),
             "remote_nodes": remote_nodes.browser_config(),
-        }
+            "system_browser_available": system_browser_available(request),
+        }, headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/browser/open")
+    async def browser_open(request: Request):
+        if not system_browser_available(request):
+            raise HTTPException(403, "system opening requires a direct connection from this Mac")
+        # Force cross-origin web callers to preflight; no CORS is granted.
+        if request.headers.get("x-siling-browser-open") != "user-click":
+            raise HTTPException(403, "explicit browser-open intent required")
+        if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
+            raise HTTPException(415, "browser-open requests require JSON")
+        origin = request.headers.get("origin")
+        if (origin and origin != str(request.base_url).rstrip("/")) or request.headers.get("sec-fetch-site") == "cross-site":
+            raise HTTPException(403, "same-origin browser-open request required")
+        try:
+            body = await request.json()
+        except ValueError as exc:
+            raise HTTPException(400, "invalid JSON") from exc
+        url = validate_web_url(body.get("url") if isinstance(body, dict) else None)
+        await asyncio.to_thread(open_system_browser, url)
+        return {"ok": True}
 
     @app.get("/api/self-update")
     def self_update_status():

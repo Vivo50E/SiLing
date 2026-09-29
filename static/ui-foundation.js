@@ -81,6 +81,9 @@
     zh: { settings: "设置", appearance: "外观", terminal: "终端", notifications: "通知", browsing: "浏览与文件", connections: "连接与更新", theme: "应用主题", density: "界面密度", fontSize: "界面字号", motion: "动画", language: "语言", scope: "仅保存在当前浏览器。修改即时生效，不会重启正在运行的会话。", reset: "重置外观", done: "完成", new: "新建", search: "搜索", layout: "布局", workspace: "工作区", more: "更多", files: "文件", zoom: "放大", system: "跟随系统", dark: "深色", light: "浅色", comfortable: "舒适", compact: "紧凑", reduce: "减少动画", appearanceHelp: "应用外观独立于每个终端的配色和字号。", flags: "角色、优先级与人工标记", flagsHelp: "Lead = 协调者；P0 / P1 / P2 = 优先级，从高到低。Blocked / Watching / Done 是人工标记，不代表自动检测的运行状态。目前它们共用一个存储字段，选择新标记会替换旧标记。", saveError: "浏览器存储不可用。本次修改仅在当前页面生效，无法保存。", saved: "已保存到当前浏览器。", move: "移动／交换到面板", closePane: "关闭面板", closeHelp: "会话继续运行，可从列表重新打开。", terminateHelp: "终止会停止执行，并保留已有恢复信息；程序中未保存的状态可能丢失。", reconnect: "重连显示", terminalTheme: "终端主题", sshFileHost: "SSH 文件主机", sshFileHelp: "文件链接从此 SSH 主机读取。设置保存在当前浏览器；退出 SSH 回到本机后请清空。", connectionHelp: "复制登录地址供同一网络的可信设备访问。该链接授予 Dashboard 访问权限，请勿公开分享。" },
   };
   Object.assign(strings.en, {
+    systemBrowser: "Open external links via macOS",
+    systemBrowserHelp: "Use the system browser instead of the app's profile. Only available directly on this Mac; other devices open links on their own device. Edge's profile rules still apply.",
+    systemBrowserFailed: "System open failed. Check the browser before retrying. You can turn off ‘Open external links via macOS’ in Settings.",
     restartAgent: "Restart agent", restartingAgent: "Restarting agent…",
     restartHelp: "Interrupts the current turn and resumes the saved conversation in a new process to reload MCP configuration. Not a display reconnect.",
     restartConfirm: "Restart this agent? This interrupts running work and may lose unsaved input inside the terminal. The saved conversation will be resumed in a new process. External MCP services are not restarted. Other panes are unaffected.",
@@ -88,6 +91,9 @@
     restartFailed: "Restart did not complete or its result is unknown. Check the session list before retrying. If the agent stopped, use Resume on the saved source.",
   });
   Object.assign(strings.zh, {
+    systemBrowser: "通过 macOS 打开外部链接",
+    systemBrowserHelp: "交给系统浏览器打开，不沿用 App 的 profile。仅在本机直接连接时可用；其他设备仍在各自浏览器打开。Edge 的 profile 切换规则仍然有效。",
+    systemBrowserFailed: "系统打开失败或结果未知，请先检查浏览器，不要重复点击。可在设置中关闭“通过 macOS 打开外部链接”。",
     restartAgent: "重启当前 Agent", restartingAgent: "正在重启 Agent…",
     restartHelp: "中断当前执行，用新进程恢复已保存的对话并重新加载 MCP 配置；不是重连显示。",
     restartConfirm: "重启当前 Agent？这会中断正在执行的任务，终端内未提交的输入可能丢失。将用新进程恢复已保存的对话，不会重启独立的 MCP 服务，也不影响其他面板。",

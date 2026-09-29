@@ -273,6 +273,14 @@ preserves the full query string; blank lines and following prose are not joined.
 - Preview Markdown, source files, images, CSV data, and reports.
 - Optionally open terminal, Markdown, and linked HTTP(S) URLs in an embedded
   Projects tab via **Settings → Browsing & files → Open web links inside SiLing**.
+- On the Dashboard's Mac, **Open external links via macOS** is on by default:
+  external links use the system browser rather than the PWA's opening path.
+  Edge still chooses the profile according to its settings; this does not force
+  a profile. Turn the option off to restore browser-native opening. Internal
+  browsing takes precedence. Direct remote/phone connections and unsupported
+  hosts keep opening on the viewing device. Forwarded requests are ineligible;
+  disable this option for headerless localhost tunnels, which look local to the
+  server. Existing terminal displays may need **Reconnect display** after updating.
 - Adjust popup and expanded-panel background opacity from 60% to 100% via
   **Settings → Appearance → Panel opacity**; the default is fully opaque.
 - Keep implementation notes, validation evidence, and release artifacts close

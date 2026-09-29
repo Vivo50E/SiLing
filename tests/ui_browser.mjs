@@ -28,6 +28,9 @@ let pendingCreation;
 let pendingRestart;
 const groupFixture = {groups: [], members: {}};
 let failGroupSave = false;
+let systemBrowserAvailable = false;
+let failBrowserOpen = false;
+const systemBrowserOpens = [];
 const linkedFixtures = new Map();
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -66,6 +69,15 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname.startsWith('/api/')) {
     res.setHeader('Content-Type', 'application/json');
+    if (url.pathname === '/api/browser/open') {
+      let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{
+        assert.equal(req.headers['x-siling-browser-open'],'user-click');
+        systemBrowserOpens.push(JSON.parse(body).url);
+        if(failBrowserOpen) res.writeHead(503);
+        res.end(JSON.stringify(failBrowserOpen?{detail:'Fixture system open failed'}:{ok:true}));
+      });
+      return;
+    }
     if (url.pathname === '/api/pane-groups') {
       let body = '';
       req.on('data', chunk => { body += chunk; });
@@ -86,7 +98,7 @@ const server = http.createServer((req, res) => {
     if (url.pathname === '/api/create') { pendingCreation = res; return; }
     if (url.pathname.endsWith('/restart')) { pendingRestart = res; return; }
     let value = { ok: true };
-    if (url.pathname === '/api/config') value = { projects_browser_url: '', remote_nodes: [] };
+    if (url.pathname === '/api/config') value = { projects_browser_url: '', remote_nodes: [], system_browser_available: systemBrowserAvailable };
     if (url.pathname === '/api/health') value = { ttyd: true };
     if (url.pathname === '/api/sessions') value = { sessions, snapshot: { ready: true }, pane_groups: groupFixture };
     if (url.pathname === '/api/host') value = { best_url: 'https://dashboard.example/?token=fixture-secret' };
@@ -189,6 +201,12 @@ try {
       {id:'fixture-3',sent:[['\n',true]],native:false,ordinary:true,composing:true},
     ], 'Dashboard installs agent-specific newline routing inside each iframe');
     console.log('PASS: iframe Shift+Enter routing, native Enter, IME and plain Terminal behavior');
+    const deviceUrl='https://example.invalid/device?state=unchanged&code=fixture';
+    assert.equal(await evaluate(`(()=>{const original=window.open;const opened=[];window.open=url=>opened.push(url);try {
+      silingOpenWebUrl(${JSON.stringify(deviceUrl)},document.querySelector('.pane iframe').contentWindow);
+      return opened[0];
+    }finally{window.open=original;}})()`),deviceUrl,'Remote capability opens on the viewing device');
+    assert.equal(systemBrowserOpens.length,0,'Remote/phone view never calls host opener');
     await evaluate(`document.querySelector('[data-run-id="fixture-0"] .pane-input textarea').value='group draft';document.querySelector('#btn-pane-groups').click();document.querySelector('#group-name').value='Project <A>';document.querySelector('#group-save').click()`);
     await waitFor(`document.querySelector('[data-group-filter="project-fixture"]') !== null`);
     await evaluate(`document.querySelector('#group-session-list input[value="fixture-0"]').checked=true;document.querySelector('#group-session-list input[value="fixture-1"]').checked=true;document.querySelector('#group-target').value='project-fixture';document.querySelector('#group-assign').click()`);
@@ -494,6 +512,37 @@ try {
   assert.equal(await evaluate(`JSON.parse(localStorage.getItem('orch_slots'))[2]`),'fixture-restarted','Stopped source remains available after failed restart');
   assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-restarted"] .pane-input textarea').value`),'restart draft','Failed launch preserves draft');
   assert.equal(requests.filter(r=>r.path.endsWith('/kill')).length,0,'UI never escalates restart to a force kill');
+  systemBrowserAvailable=true;
+  await evaluate(`localStorage.removeItem('siling_system_browser');localStorage.setItem('siling_open_links_internally','0')`);
+  await cdp('Page.reload');
+  for(let i=0;i<100;i++) {
+    if(await evaluate(`document.querySelector('#settings-system-browser')?.disabled===false && !!document.querySelector('.pane iframe')?.contentDocument?.querySelector('textarea')`))break;
+    await pause(100);
+  }
+  assert.equal(await evaluate(`document.querySelector('#settings-system-browser').checked`),true);
+  await evaluate(`window.webOpens=[];window.webAlerts=[];window.open=url=>webOpens.push(url);window.alert=message=>webAlerts.push(message)`);
+  const nativeUrl='https://example.invalid/native?redirect_uri=http%3A%2F%2Flocalhost%3A1234%2Fcallback&state=exact-value';
+  await evaluate(`silingOpenWebUrl(${JSON.stringify(nativeUrl)},document.querySelector('.pane iframe').contentWindow)`);
+  for(let i=0;i<50&&systemBrowserOpens.length<1;i++)await pause(50);
+  assert.deepEqual(systemBrowserOpens,[nativeUrl]);
+  assert.deepEqual(await evaluate('webOpens'),[],'Native opening does not also open a PWA tab');
+  assert.equal(await evaluate(`silingOpenWebUrl(${JSON.stringify(nativeUrl)},window)`),false,'Unrecognized source cannot use terminal bridge');
+  await evaluate(`(()=>{const a=document.createElement('a');a.dataset.openWebLink='';a.href=${JSON.stringify(nativeUrl)};document.body.append(a);a.click();a.remove();})()`);
+  for(let i=0;i<50&&systemBrowserOpens.length<2;i++)await pause(50);
+  assert.deepEqual(systemBrowserOpens,[nativeUrl,nativeUrl],'Markdown/Files anchors share native route');
+  await evaluate(`{const s=document.querySelector('#settings-system-browser');s.checked=false;s.dispatchEvent(new Event('change'));}silingOpenWebUrl(${JSON.stringify(nativeUrl)},document.querySelector('.pane iframe').contentWindow)`);
+  assert.deepEqual(await evaluate('webOpens'),[nativeUrl],'Opt-out uses browser window.open');
+  assert.equal(await evaluate(`localStorage.getItem('siling_system_browser')`),'0');
+  await evaluate(`{const s=document.querySelector('#settings-system-browser');s.checked=true;s.dispatchEvent(new Event('change'));const i=document.querySelector('#settings-open-links-internally');i.checked=true;i.dispatchEvent(new Event('change'));}silingOpenWebUrl(location.origin+'/fixture-tty/web',document.querySelector('.pane iframe').contentWindow)`);
+  assert.equal(await evaluate(`document.querySelector('#projects-browser-modal').hidden`),false,'Internal setting takes precedence');
+  assert.equal(systemBrowserOpens.length,2);
+  failBrowserOpen=true;
+  await evaluate(`{const i=document.querySelector('#settings-open-links-internally');i.checked=false;i.dispatchEvent(new Event('change'));}silingOpenWebUrl(${JSON.stringify(nativeUrl)},document.querySelector('.pane iframe').contentWindow)`);
+  for(let i=0;i<50;i++){if(await evaluate('webAlerts.length>0'))break;await pause(50);}
+  assert.equal(systemBrowserOpens.length,3,'One request, without automatic retries');
+  assert.equal(await evaluate('webAlerts.length'),1,'System failure is visible');
+  assert.deepEqual(await evaluate('webOpens'),[nativeUrl],'Failure never silently opens a duplicate in another profile');
+  console.log('PASS: system browser routing, remote-device fallback, opt-out, internal precedence and failure handling');
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));
   }

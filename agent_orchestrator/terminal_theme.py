@@ -534,6 +534,15 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
         return;
       }
       if (!moved) {
+        let routed = false;
+        try {
+          routed = window.parent !== window
+            && window.parent.silingOpenWebUrl?.(pendingUrl, window) === true;
+        } catch (_) {}
+        if (routed) {
+          clearMode();
+          return;
+        }
         let openInternally = false;
         try {
           openInternally = window.parent !== window

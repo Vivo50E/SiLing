@@ -249,6 +249,13 @@ for(let i=0;i<authorization.length;i+=60) rows.push(row('  '+authorization.slice
 term.rows=rows.length;
 click(3,1);
 assert.deepEqual(messages.at(-1),{type:'siling:open-web-url',url:authorization},'Internal opening also receives the entire target');
+const routed=[];
+window.parent.silingOpenWebUrl=(url,source)=>{routed.push({url,source});return true;};
+const opensBeforeRouting=opened.length;
+click(3,1);
+assert.equal(routed.at(-1).url,authorization,'Parent native-browser route receives the complete URL');
+assert.equal(routed.at(-1).source,window,'Parent can verify terminal frame identity');
+assert.equal(opened.length,opensBeforeRouting,'Handled native route does not also open a PWA tab');
 window.parent=window;
 
 // Honor a complete OSC target even when the display label looks truncated.
