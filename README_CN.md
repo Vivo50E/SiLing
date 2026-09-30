@@ -226,6 +226,9 @@ Terminal、Codex 和 Cursor pane 在浏览 tmux 历史时，开始打字或粘�
 一个 task 不只是 terminal transcript。它通常还有项目文件夹、计划、测试证据、
 结果表格、截图和几个参考网页。Linked Items 会把这些上下文直接绑定到 session。
 
+**Link** 按钮会请当前 Agent 将相关项目、已有产物和网页关联到本会话的 Files，
+先确认会话和已有关联，不要求整理或搬动文件，也不自动委派给 subagent。
+
 交付 spec 或报告时，运行 `siling link-file /absolute/path/spec.md --label "Spec"`，
 用户即可从 pane 的 **Files** 面板打开，无需复制终端里的路径。
 终端 HTTP(S) 链接换行后，悬停时会高亮链接的所有可见分段。
