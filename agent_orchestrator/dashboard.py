@@ -2082,7 +2082,7 @@ def _read_text_preview(path: Path, max_chars: int = 12000) -> str:
 _PREVIEW_TEXT_EXTS = {
     ".bash", ".cfg", ".conf", ".css", ".csv", ".env", ".gitignore", ".html",
     ".ini", ".js", ".json", ".jsonl", ".log", ".md", ".markdown", ".py",
-    ".rs", ".sh", ".toml", ".ts", ".txt", ".xml", ".yaml", ".yml",
+    ".rs", ".sh", ".sql", ".toml", ".ts", ".txt", ".xml", ".yaml", ".yml",
 }
 
 _SKIP_FOLDER_DIRS = {".git", ".orch", "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache"}

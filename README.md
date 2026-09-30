@@ -287,7 +287,7 @@ preserves the full query string; blank lines and following prose are not joined.
 - Link a whole project or task folder and browse its tree without leaving the
   Dashboard.
 - Link individual files or URLs when the task spans several locations.
-- Preview Markdown, source files, images, CSV data, and reports.
+- Preview Markdown, source files (including SQL), images, CSV data, and reports.
 - Optionally open terminal, Markdown, and linked HTTP(S) URLs in an embedded
   Projects tab via **Settings → Browsing & files → Open web links inside SiLing**.
 - On the Dashboard's Mac, **Open external links via macOS** is on by default:
