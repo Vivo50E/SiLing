@@ -264,6 +264,26 @@ finally:
     await screenshot('scrollbar-'+name);
   }
   console.log('PASS: native scrollback remains scrollable with themed scrollbar');
+  // Losing focus while dragging out of an iframe must stop xterm's repeat timer.
+  await cdp('Input.dispatchMouseEvent',{type:'mousePressed',x:100,y:200,button:'left',buttons:1,modifiers:1,clickCount:1});
+  await evaluate(`document.dispatchEvent(new MouseEvent('mousemove',{clientX:100,clientY:-30,buttons:1,bubbles:true,altKey:true}))`);
+  assert.ok(await evaluate('term._core._selectionService._dragScrollIntervalTimer!==undefined'),'Native drag owns an auto-scroll timer');
+  assert.ok(await evaluate('term._core._selectionService._dragScrollAmount!==0'),'Dragging past viewport requests scrolling');
+  await evaluate(`window.dispatchEvent(new Event('blur'))`);
+  assert.equal(await evaluate('term._core._selectionService._dragScrollIntervalTimer'),undefined,'Blur stops native drag auto-scroll');
+  const stoppedAt=await evaluate('term.buffer.active.viewportY');await pause(250);
+  assert.equal(await evaluate('term.buffer.active.viewportY'),stoppedAt,'No runaway scrolling after leaving iframe');
+  await cdp('Input.dispatchMouseEvent',{type:'mouseReleased',x:100,y:200,button:'left',buttons:0,clickCount:1});
+  await cdp('Input.dispatchMouseEvent',{type:'mousePressed',x:100,y:200,button:'left',buttons:1,modifiers:1,clickCount:1});
+  await evaluate(`document.dispatchEvent(new MouseEvent('mousemove',{clientX:200,clientY:250,buttons:1,bubbles:true,altKey:true}))`);
+  const selectedBeforeZoom=await evaluate('term.getSelection()');
+  assert.ok(selectedBeforeZoom.length>0,'Second drag still selects text after interruption');
+  await evaluate('window.silingCancelTerminalDrag()');
+  assert.equal(await evaluate('term._core._selectionService._dragScrollIntervalTimer'),undefined,'Zoom cancellation stops drag timer');
+  assert.equal(await evaluate('term.getSelection()'),selectedBeforeZoom,'Canceling drag preserves text for copying');
+  await cdp('Input.dispatchMouseEvent',{type:'mouseReleased',x:200,y:250,button:'left',buttons:0,clickCount:1});
+  console.log('PASS: leaving the iframe stops drag auto-scroll');
+
 }finally{
   ws?.close();browser?.kill('SIGKILL');ttyd.kill();selectionServer.close();
   try{tmux('kill-server');}catch{}

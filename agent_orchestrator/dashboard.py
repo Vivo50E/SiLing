@@ -7918,7 +7918,7 @@ def _live_input_sessions_from_snapshot(outputs_dir: Path) -> set[str]:
         str(entry["tmux_session"])
         for entry in entries
         if isinstance(entry, dict) and entry.get("tmux_session")
-        and str(entry.get("agent") or "").strip().lower() in {"codex", "terminal"}
+        and str(entry.get("agent") or "").strip().lower() in {"codex", "terminal", "cursor"}
     }
 
 
@@ -9140,7 +9140,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         session = r.get("tmux_session", "")
         if not session or not tmux_alive(session):
             return {"ok": False, "reason": "tmux session not alive"}
-        if str(r.get("agent") or "").strip().lower() in {"codex", "terminal"}:
+        if str(r.get("agent") or "").strip().lower() in {"codex", "terminal", "cursor"}:
             live_input_sessions.add(session)
         else:
             live_input_sessions.discard(session)

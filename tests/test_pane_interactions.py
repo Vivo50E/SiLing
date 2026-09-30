@@ -121,7 +121,7 @@ class PaneInteractionTests(unittest.TestCase):
                 patch.object(dashboard, "_lookup_run_light") as lookup, \
                 patch.object(dashboard.websockets, "connect", return_value=upstream_context), \
                 patch.object(dashboard, "_forward_tty_input", forward):
-            for agent, expected in (("codex", True), ("terminal", True), ("claude", False)):
+            for agent, expected in (("codex", True), ("terminal", True), ("cursor", True), ("claude", False)):
                 lookup.return_value = {"agent": agent, "tmux_session": "test-session"}
                 tty_response = client.get("/api/sessions/test/tty").json()
                 self.assertTrue(tty_response["ok"])
@@ -180,9 +180,10 @@ class PaneInteractionTests(unittest.TestCase):
         entries = [None, {}, {"agent": "codex"},
                    {"agent": "codex", "tmux_session": "codex-test"},
                    {"agent": "claude", "tmux_session": "claude-test"},
+                   {"agent": "cursor", "tmux_session": "cursor-test"},
                    {"agent": "terminal", "tmux_session": "shell-test"}]
         with patch.object(dashboard, "_safe_read_json", return_value={"sessions": entries}):
-            self.assertEqual(dashboard._live_input_sessions_from_snapshot(Path("/unused")), {"codex-test", "shell-test"})
+            self.assertEqual(dashboard._live_input_sessions_from_snapshot(Path("/unused")), {"codex-test", "shell-test", "cursor-test"})
 
     def test_narrow_header_keeps_priority_in_accessible_action_row(self):
         source = (Path(__file__).resolve().parents[1] / "static" / "index.html").read_text()
@@ -208,17 +209,17 @@ class PaneInteractionTests(unittest.TestCase):
             self.assertNotIn("--no-alt-screen", module._resume_cmd_for("claude", "id"))
 
     @unittest.skipUnless(shutil.which("node"), "Node.js required")
-    def test_shell_and_codex_selection_preserves_other_agent_mouse(self):
+    def test_shell_codex_cursor_selection_preserves_other_agent_mouse(self):
         script = terminal_theme._TTYD_INTERACTION_SCRIPT.split(">", 1)[1].rsplit("</script>", 1)[0]
         source = (Path(__file__).resolve().parents[1] / "static" / "index.html").read_text()
         policy = re.search(r"  function sessionPrefersNativeSelection\(s\) \{.*?\n  \}", source, re.S).group(0)
         harness = r"""
 const assert = require('node:assert/strict');
 eval(POLICY);
-for (const agent of ['terminal', 'codex', ' Codex ']) {
+for (const agent of ['terminal', 'codex', ' Codex ', 'cursor', ' Cursor ']) {
   assert.equal(sessionPrefersNativeSelection({agent}), true);
 }
-for (const agent of ['claude', 'cursor', '', undefined]) {
+for (const agent of ['claude', '', undefined]) {
   assert.equal(sessionPrefersNativeSelection({agent}), false);
 }
 assert.equal(sessionPrefersNativeSelection(null), false);

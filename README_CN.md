@@ -208,14 +208,14 @@ Dashboard 会明确展示这些状态，而不是让它们消失在 terminal scr
 全局 tmux 设置；纯 Terminal 和未知／自定义 Agent 保留原生按键行为。
 底部输入框也支持 Shift+Enter 或 Option/Alt+Enter 换行。
 
-Terminal 和 Codex pane 可直接拖选文本，按住鼠标时滚动滚轮即可跨屏扩展选区。
+Terminal、Codex 和 Cursor pane 可直接拖选文本，按住鼠标时滚动滚轮即可跨屏扩展选区。
 松开鼠标后按 ⌘C（macOS）或 Ctrl+Shift+C 复制完整选区；输入时回到实时末尾。
 Option+拖选保留 xterm 当前屏幕内的选择方式。复制依赖 tmux 的 `copy-pipe-no-clear -CP`
 支持。Ctrl+拖选可向终端程序
 传递鼠标操作。其他 Agent pane 保留原有鼠标行为，macOS 可用 Option+拖选选择文本。
 新建或恢复的 Codex session 使用 inline 模式保留终端滚动历史；已有 alternate-screen
 session 需要恢复后才使用新启动参数，未存入终端缓冲区的内容无法通过滚动补回。
-Codex pane 在浏览 tmux 历史时，开始打字或粘贴会先返回实时终端，再传递输入；
+Terminal、Codex 和 Cursor pane 在浏览 tmux 历史时，开始打字或粘贴会先返回实时终端，再传递输入；
 滚动和文本选择仍保留历史视图，方向键等 Escape 序列仍用于历史导航。
 通过滚轮进入历史后，向下滚回最新一屏也会自动退出历史模式；自定义 tmux 滚轮绑定保持不变。
 

@@ -33,7 +33,7 @@ The following are additions and improvements maintained in
   separate from reconnecting the display and can reload updated MCP configuration.
 - **Better terminal interaction:** reliable multiline input, improved Codex
   scrollback and return to live input, and cross-screen text selection/copying in
-  Terminal and Codex panes.
+  Terminal, Codex and Cursor panes.
 - **Links and file previews:** optional in-Dashboard web browsing, local terminal
   paths that open in Files, read-only remote file snapshots from SSH terminals
   with a configured file host, more reliable wrapped links (including long URL
@@ -136,7 +136,7 @@ not need to run `link-file` first. Codex’s `label (/path)` output is also clic
 including indented hard-wrapped paths. Paths must exist on the session’s host and be
 inside the configured allowed roots (`ORCH_LINKED_FOLDER_ROOTS` for extra roots).
 
-In Terminal and Codex panes, drag to select text and keep holding the mouse while
+In Terminal, Codex and Cursor panes, drag to select text and keep holding the mouse while
 scrolling the wheel to extend the selection across screens, directly in the pane.
 Release the mouse, then press ⌘C (macOS) or Ctrl+Shift+C to copy the complete
 selection. Typing returns to live input. Option-drag retains xterm's screen-local
@@ -146,7 +146,7 @@ their mouse behavior (Option-drag on macOS selects text). Newly started or
 resumed Codex sessions use inline rendering to preserve terminal scrollback.
 Existing alternate-screen sessions must be resumed to use this launch setting;
 history never stored in the terminal buffer cannot be recovered by scrolling.
-In Codex panes, typing or pasting while browsing tmux history returns to the
+In Terminal, Codex and Cursor panes, typing or pasting while browsing tmux history returns to the
 live terminal before sending the input. Scrolling and text selection stay in
 history; escape-prefixed navigation keys keep their history behavior.
 Wheel-created history mode also exits automatically when you scroll down to

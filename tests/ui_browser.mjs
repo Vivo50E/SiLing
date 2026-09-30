@@ -296,6 +296,7 @@ try {
     await evaluate(`document.querySelector('#pane-groups-dialog').close();document.querySelector('[data-run-id="fixture-0"] .pane-input textarea').value=''`);
   }
   if (!baseline) {
+    assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-3"] iframe').dataset.inlineSelection`), 'true', 'Cursor uses cross-screen tmux selection');
     assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-2"] iframe').dataset.inlineSelection`), 'true', 'Shell uses inline selection when supported');
     assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-1"] iframe').dataset.inlineSelection`), 'false', 'Older nodes retain native selection');
   }
@@ -472,9 +473,11 @@ try {
   await evaluate(`const move=document.querySelector('.pane-move-select');move.value='1';move.dispatchEvent(new Event('change'));`);
   assert.deepEqual(await evaluate(`JSON.parse(localStorage.getItem('orch_slots')).slice(0,2)`), ['fixture-1', 'fixture-0']);
   assert.equal(frameLoads, frames, 'Moving a pane must preserve terminal frames');
-  await evaluate(`document.querySelector('.btn-zoom').click()`);
+  await evaluate(`window.zoomDragStops=0;document.querySelector('.pane-card iframe').contentWindow.silingCancelTerminalDrag=()=>window.zoomDragStops++;document.querySelector('.btn-zoom').click()`);
+  assert.equal(await evaluate('window.zoomDragStops'),1,'Opening zoom ends an existing drag');
   assert.equal(frameLoads, frames, 'Zoom must preserve terminal frames');
   await evaluate(`document.querySelector('.btn-zoom').click();document.querySelector('#btn-layout-menu').click()`);
+  assert.equal(await evaluate('window.zoomDragStops'),2,'Closing zoom ends drag before resizing the terminal');
   assert.equal(await evaluate(`document.querySelectorAll('#layout-picker button').length`), 10);
   await screenshot('layout-chooser');
   await evaluate(`document.querySelector('#layout-menu').close()`);
