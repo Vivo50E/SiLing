@@ -23,6 +23,7 @@ const sessions = ['claude', 'codex', 'terminal', 'cursor', 'custom-agent'].map((
   remote: i === 4, node_id: i === 4 ? 'fixture-remote' : '', node_online: i !== 4,
 }));
 const requests = [];
+const sentPrompts = [];
 const fileDiscoveries = [];
 let frameLoads = 0;
 let pendingCreation;
@@ -115,6 +116,11 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ok:true}));
       });
       return;
+    }
+    if (url.pathname.endsWith('/send')) {
+      let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{
+        sentPrompts.push({path:url.pathname,...JSON.parse(body)});res.end(JSON.stringify({ok:true}));
+      });return;
     }
     if (url.pathname === '/api/create') { pendingCreation = res; return; }
     if (url.pathname.endsWith('/restart')) { pendingRestart = res; return; }
@@ -674,6 +680,9 @@ try {
   assert.equal(await evaluate('webAlerts.length'),1,'System failure is visible');
   assert.deepEqual(await evaluate('webOpens'),[nativeUrl],'Failure never silently opens a duplicate in another profile');
   console.log('PASS: system browser routing, remote-device fallback, opt-out, internal precedence and failure handling');
+  // The embedded web fixture also increments frameLoads. Finish its async
+  // navigation before measuring whether the next dialog reloads a terminal.
+  await waitFor(`Array.from(document.querySelectorAll('.pane iframe, #projects-browser-modal iframe')).every(f=>f.contentDocument?.querySelector('textarea'))`);
   const beforeFileContextFrames=frameLoads;
   await evaluate(`document.querySelector('[data-run-id="fixture-2"] .btn-pane-more').click();document.querySelector('[data-run-id="fixture-2"] .btn-terminal-files').click()`);
   for(let i=0;i<50;i++){if(await evaluate(`!!document.querySelector('dialog[open] [data-text]')`))break;await pause(50);}
@@ -715,6 +724,17 @@ try {
   assert.ok(await evaluate(`document.querySelector('dialog[open] [data-status]').textContent.includes('16000')`),'Truncation is explicit');
   await evaluate(`document.querySelector('dialog[open] [data-close]').click()`);
   console.log('PASS: ordinary Terminal file context, selected relative file discovery, persistence UI and frame preservation');
+  for(const [language,opening] of [['zh','请将当前会话'],['en','Please link resources']]) {
+    await evaluate(`{const c=document.querySelector('[data-appearance="language"]');c.value=${JSON.stringify(language)};c.dispatchEvent(new Event('change'));document.querySelector('[data-run-id="fixture-2"] .btn-link-folder').click();}`);
+    for(let i=0;i<50 && sentPrompts.length===0;i++)await pause(50);
+    const sent=sentPrompts.shift();
+    assert.equal(sent?.path,'/api/sessions/fixture-2/send','Link sends only to its own pane');
+    assert.ok(sent.text.startsWith(opening),'Link prompt follows the selected language');
+    assert.equal(sent.enter,true);assert.equal(sent.literal,true);
+    assert.ok(sent.text.includes('--run-dir'),'Ambiguous target requires explicit session verification');
+    assert.ok(!sent.text.includes('projects-dir-layout'),'Link no longer asks for directory reorganization');
+  }
+  console.log('PASS: Link prompt language, session routing and submission');
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));
   }

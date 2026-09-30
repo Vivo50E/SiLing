@@ -270,6 +270,11 @@ A task is more than its terminal transcript. It usually has a project folder,
 plans, test evidence, result tables, screenshots, and a few reference pages.
 Linked Items attaches that context directly to the session.
 
+The **Link** button asks the current agent to attach relevant projects, existing
+outputs, and web pages to this session’s Files, checking the target session and
+existing links first. It does not request file reorganization or automatically
+delegate to a subagent.
+
 For a spec or report, run `siling link-file /absolute/path/spec.md --label "Spec"`.
 The user can then open it from the pane's **Files** panel without copying a
 terminal path. Wrapped HTTP(S) links highlight all visible segments on hover.

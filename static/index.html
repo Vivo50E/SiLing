@@ -2743,9 +2743,9 @@
     border-color: var(--warn);
   }
 </style>
-<link rel="stylesheet" href="/static/ui-foundation.css?v=5" />
-<script src="/static/ui-messages.js?v=1"></script>
-<script src="/static/ui-foundation.js?v=8"></script>
+<link rel="stylesheet" href="/static/ui-foundation.css?v=6" />
+<script src="/static/ui-messages.js?v=3"></script>
+<script src="/static/ui-foundation.js?v=9"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=2" />
 <script src="/static/pane-groups.js?v=3"></script>
 <script src="/static/terminal-files.js?v=2"></script>
@@ -7852,8 +7852,7 @@
     btnProgress.addEventListener("click", () => sendText(runId, ui.message("How is the task progressing?"), true));
     btnMonitor.addEventListener("click", () => sendText(runId, ui.message("Monitor with a five-minute heartbeat: each wait must return a status within five minutes, or earlier when a result arrives. On each return, recheck and re-arm monitoring so a stuck task is noticed within five minutes."), true));
     btnLinkFolder.addEventListener("click", () => {
-      const root = PROJECTS_ROOT.replace(/\/+$/, "") || "<projects-root>";
-      sendText(runId, ui.message("Link the current task, related project, or web page to Dashboard Files.\nUse `siling link-folder {root}/<project>` for project folders; keep task outputs under `{root}/current/...` following projects-dir-layout.\nUse `siling link-folder <absolute-folder-path>`, `siling link-file <absolute-file-path>`, or `siling link-url <https-url>`. Report the absolute path or URL when done.", {root}), true);
+      sendText(runId, ui.message("Please link resources relevant to the current session to this session’s Dashboard Files.\n\nPrioritize the current project root, this task’s reports/results, and related web pages.\nOnly link resources directly related to this task whose existence you have verified. Do not move, copy, or create files for this purpose, or link credentials or other sensitive files.\n\nUse:\n- Folders: `siling link-folder <absolute-folder-path>`\n- Files: `siling link-file <absolute-file-path>`\n- Web pages: `siling link-url <https-url>`\n\nConfirm the current session first. If the target is ambiguous, explicitly specify a verified `--run-dir` to avoid linking to another session.\nCheck existing Files to avoid duplicates. When done, briefly list newly linked resources. Explain any failures without claiming success."), true);
     });
     btnSyncProject.addEventListener("click", event => {
       if (btnSyncProject.dataset.action === "cancel") {
