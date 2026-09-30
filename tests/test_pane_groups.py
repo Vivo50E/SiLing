@@ -1,6 +1,7 @@
 """Project groups persist independently from priorities, slots and agent processes."""
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
+import json
 import os
 from pathlib import Path
 import tempfile
@@ -9,7 +10,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from agent_orchestrator import dashboard
-from agent_orchestrator.pane_groups import PaneGroups
+from agent_orchestrator.pane_groups import COLORS, PaneGroups
 
 
 class PaneGroupTests(unittest.TestCase):
@@ -39,6 +40,46 @@ class PaneGroupTests(unittest.TestCase):
         self.assertEqual(reopened.view([self.row]), {"groups": [], "members": {"run::task": ""}})
         self.assertEqual(self.row["panel_state"], "p0")
         self.assertTrue(self.row["alive"])
+
+    def test_custom_color_round_trip_keeps_legacy_fallback_and_membership(self):
+        gid = self.create()
+        self.assign(gid)
+        self.store.change({"action": "update", "group_id": gid, "name": "Project A", "color": "#12AbEf"})
+        raw = json.loads(self.store.path.read_text())
+        self.assertEqual(raw["version"], 1)
+        self.assertIn(raw["groups"][gid]["color"], COLORS)
+        self.assertEqual(raw["groups"][gid]["custom_color"], "#12abef")
+        reopened = PaneGroups(self.root).view([self.row])
+        self.assertEqual(reopened["groups"][0]["color"], "#12abef")
+        self.assertEqual(reopened["members"][self.row["run_id"]], gid)
+        self.store.change({"action": "update", "group_id": gid, "name": "Project A", "color": "pink"})
+        self.assertNotIn("custom_color", self.store.read()["groups"][gid])
+        self.assertEqual(self.store.view([])["groups"][0]["color"], "pink")
+
+    def test_legacy_colors_are_read_without_rewriting_metadata(self):
+        for color in COLORS:
+            self.store.change({"action": "create", "name": color, "color": color})
+        before = self.store.path.read_bytes()
+        self.assertEqual([g["color"] for g in self.store.view([])["groups"]], list(COLORS))
+        self.assertEqual(self.store.path.read_bytes(), before)
+
+    def test_custom_color_rejects_css_and_malformed_values_without_writing(self):
+        self.create()
+        before = self.store.path.read_bytes()
+        for color in [None, [], {}, "#fff", "#ffffffff", "#12345g", "#123456;display:none", "url(evil)", "#123456\n"]:
+            with self.subTest(color=color), self.assertRaises(ValueError):
+                self.store.change({"action": "create", "name": "Custom", "color": color})
+            self.assertEqual(self.store.path.read_bytes(), before)
+
+    def test_invalid_stored_custom_color_is_not_silently_overwritten(self):
+        gid = self.create()
+        data = self.store.read()
+        data["groups"][gid]["custom_color"] = "red;background:url(evil)"
+        self.store.path.write_text(json.dumps(data))
+        before = self.store.path.read_bytes()
+        with self.assertRaises(ValueError):
+            self.store.change({"action": "update", "group_id": gid, "name": "Project A", "color": "blue"})
+        self.assertEqual(self.store.path.read_bytes(), before)
 
     def test_resume_restart_and_nodes_use_conversation_identity(self):
         gid = self.create()
@@ -126,7 +167,7 @@ class PaneGroupTests(unittest.TestCase):
         self.stack.enter_context(patch.object(app.state.session_snapshots, "snapshot", return_value=snapshot))
         self.stack.enter_context(patch.object(app.state.session_snapshots, "request_refresh"))
         self.stack.enter_context(patch.object(dashboard, "_lookup_run_light", side_effect=lambda _, rid: self.row if rid == self.row["run_id"] else None))
-        create = {"action":"create", "name":"A", "color":"blue"}
+        create = {"action":"create", "name":"A", "color":"#123abc"}
         self.assertEqual(client.post("/api/pane-groups", json=create).status_code, 401)
         self.assertEqual(client.post("/api/pane-groups", json=create, headers=headers).status_code, 200)
         gid = client.get("/api/sessions", headers=headers).json()["pane_groups"]["groups"][0]["id"]
@@ -138,6 +179,7 @@ class PaneGroupTests(unittest.TestCase):
         second = TestClient(app)  # No context manager: do not start background services.
         self.addCleanup(second.close)
         data = second.get("/api/sessions", headers=headers).json()
+        self.assertEqual(data["pane_groups"]["groups"][0]["color"], "#123abc")
         self.assertEqual(data["pane_groups"]["members"]["run::task"], gid)
         self.assertEqual(data["sessions"][0]["panel_state"], "p0")
         for ids in [None, [], [False], ["run::task"] * 501]:
