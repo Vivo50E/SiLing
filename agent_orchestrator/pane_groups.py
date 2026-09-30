@@ -5,12 +5,29 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+import re
 import uuid
 
 from .json_store import edit_json
 
 
 COLORS = ("blue", "teal", "purple", "orange", "pink", "gray")
+COLOR_HEX = dict(zip(COLORS, ("#589bf1", "#39b5a4", "#ad87e5", "#dc9744", "#d47ead", "#8b96a4")))
+
+
+def _is_hex_color(value: object) -> bool:
+    return isinstance(value, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", value) is not None
+
+
+def _stored_color(value: str) -> dict:
+    if value in COLORS:
+        return {"color": value}
+    # Keep a legacy color so older servers can still read the entire group file.
+    def rgb(hex_color: str) -> tuple[int, ...]:
+        return tuple(int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
+    target = rgb(value)
+    nearest = min(COLORS, key=lambda name: sum((a - b) ** 2 for a, b in zip(target, rgb(COLOR_HEX[name]))))
+    return {"color": nearest, "custom_color": value.lower()}
 
 
 def _keys(row: dict) -> tuple[str, str]:
@@ -39,7 +56,8 @@ def _validate(data: dict) -> dict:
     for group_id, group in data["groups"].items():
         if (not isinstance(group, dict) or group.get("id") != group_id
                 or not isinstance(group.get("name"), str)
-                or group.get("color") not in COLORS):
+                or group.get("color") not in COLORS
+                or ("custom_color" in group and not _is_hex_color(group["custom_color"]))):
             raise ValueError("Invalid project-group storage")
     if any(not isinstance(v, str) for v in data["members"].values()):
         raise ValueError("Invalid project-group membership storage")
@@ -77,7 +95,9 @@ class PaneGroups:
             run, native = _keys(row)
             group_id = data["members"].get(native, data["members"].get(run, ""))
             members[row["run_id"]] = group_id if group_id in data["groups"] else ""
-        return {"groups": list(data["groups"].values()), "members": members}
+        groups = [dict(group, color=group.get("custom_color", group["color"]))
+                  for group in data["groups"].values()]
+        return {"groups": groups, "members": members}
 
     def change(self, body: dict, rows: list[dict] | None = None) -> None:
         action = body.get("action")
@@ -93,7 +113,7 @@ class PaneGroups:
             if (not isinstance(name, str) or not 1 <= len(name.strip()) <= 64
                     or any(ord(c) < 32 for c in name)):
                 raise ValueError("Group name must contain 1–64 characters without control characters")
-            if color not in COLORS:
+            if color not in COLORS and not _is_hex_color(color):
                 raise ValueError("Unsupported group color")
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with edit_json(self.path, create=True) as raw:
@@ -110,7 +130,7 @@ class PaneGroups:
                     if len(groups) >= 100:
                         raise ValueError("At most 100 project groups are supported")
                     group_id = uuid.uuid4().hex
-                groups[group_id] = {"id": group_id, "name": name.strip(), "color": color}
+                groups[group_id] = {"id": group_id, "name": name.strip(), **_stored_color(color)}
             elif action == "delete":
                 del groups[group_id]
                 data["members"] = {k: "" if v == group_id else v for k, v in members.items()}

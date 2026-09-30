@@ -159,6 +159,15 @@ group. Select several live sessions there to assign them together, or use a
 pane's **More → Project group** selector. Each session belongs to at most one
 group; group names and colored markers are separate from priority flags.
 
+The group manager shows a color-coded group list beside the editor (stacked on
+phones). Choose from 12 visible swatches, use the system color picker, or enter
+any six-digit HEX color such as `#12abef`. The name and color preview update
+immediately; **Save changes** applies them. Expand **Assign sessions** for bulk
+selection, including Select all/Clear and a selected-session count.
+Existing named colors remain supported. Custom colors retain a nearest legacy
+color in storage, so older servers can read the groups; editing a group with an
+older server resets its custom color. Refresh older Dashboard tabs after updating.
+
 Choose **All**, **Ungrouped**, or a group to filter the current open panes and
 live session list. Filtering does not change saved slot positions or grid size,
 restart agents, reload terminal frames, or discard input drafts. A group can
