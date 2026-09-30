@@ -74,7 +74,7 @@
     const blocked = enabled && permission === "denied";
     button.innerHTML = icon(blocked ? "bellBlocked" : enabled ? "bell" : "bellOff");
     button.setAttribute("aria-pressed", String(enabled));
-    button.setAttribute("aria-label", `Agent notifications: ${enabled ? "on" : "off"}${blocked ? " — blocked by browser" : ""}`);
+    button.setAttribute("aria-label", message(enabled ? "Agent notifications: on" : "Agent notifications: off") + (blocked ? message(" — blocked by browser") : ""));
   }
   const strings = {
     en: { settings: "Settings", appearance: "Appearance", terminal: "Terminal", notifications: "Notifications", browsing: "Browsing & files", connections: "Connections & updates", theme: "App theme", density: "Density", fontSize: "Interface text size", motion: "Motion", language: "Language", scope: "Saved in this browser only. Changes apply immediately; running sessions are not restarted.", reset: "Reset appearance", done: "Done", new: "New", search: "Search", layout: "Layout", workspace: "Workspace", more: "More", files: "Files", zoom: "Zoom", system: "System", dark: "Dark", light: "Light", comfortable: "Comfortable", compact: "Compact", reduce: "Reduce motion", appearanceHelp: "App appearance is separate from each terminal's palette and font.", flags: "Role, priority & manual flags", flagsHelp: "Lead = coordinator; P0 / P1 / P2 = priority, highest first. Blocked / Watching / Done are manual flags, not detected execution states. These currently share one saved flag; selecting one replaces the previous flag.", saveError: "Browser storage is unavailable. This change works for this page, but cannot be saved.", saved: "Saved in this browser.", move: "Move / swap with pane", closePane: "Close pane", closeHelp: "The session keeps running; reopen it from the list.", terminateHelp: "Terminate stops execution. Available resume metadata is kept; unsaved program state may be lost.", reconnect: "Reconnect display", terminalTheme: "Terminal theme", terminalFiles: "Terminal files", sshFileHost: "SSH file host", sshFileHelp: "File links use this SSH host. Saved in this browser; clear after returning to a local shell.", connectionHelp: "Copy the login address for a trusted device on the same network. It grants access to this Dashboard; do not share it publicly." },
@@ -101,13 +101,59 @@
     restartFailed: "重启未完成，或结果尚不确定。请先检查会话列表，不要重复重启。若 Agent 已停止，可从已保存的原会话执行恢复。",
   });
   let language = "en";
+  Object.assign(strings.zh, {
+    flagsHelp: "协调者负责统筹；P0 / P1 / P2 为优先级，从高到低。受阻、关注中和完成是人工标记，不代表自动检测的运行状态。这些选项共用一个存储字段，选择新标记会替换旧标记。",
+    systemBrowserHelp: "交给系统浏览器打开，不沿用应用的浏览器配置。仅在本机直接连接时可用；其他设备仍在各自浏览器打开。Edge 的配置切换规则仍然有效。",
+  });
+  const messages = typeof module !== "undefined" ? require("./ui-messages.js") : window.SiLingMessages;
+  // Use message() for transient strings; setMessage() binds an existing text
+  // control for later language switches. HTML markers contain URI-encoded keys.
+  function message(source, values = {}) {
+    source = String(source ?? "");
+    if (!values || typeof values !== "object") values = {};
+    const text = language === "zh" && Object.hasOwn(messages.zh, source) ? messages.zh[source] : source;
+    return text.replace(/\{(\w+)\}/g, (token, key) => Object.hasOwn(values, key) ? String(values[key]) : token);
+  }
+  function setMessage(el, source, values = {}) {
+    el.setAttribute("data-ui-message", encodeURIComponent(source));
+    el.setAttribute("data-ui-values", JSON.stringify(values));
+    el.textContent = message(source, values);
+  }
   function t(name) { return strings[language][name] || strings.en[name] || name; }
   function translate(root = document) {
-    root.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t(el.dataset.i18n); });
+    root.querySelectorAll("[data-i18n]").forEach(el => { if (!el.closest?.("[data-user-content]")) el.textContent = t(el.dataset.i18n); });
     root.querySelectorAll("[data-i18n-label]").forEach(el => {
+      if (el.closest?.("[data-user-content]")) return;
       el.setAttribute("aria-label", t(el.dataset.i18nLabel));
       el.title = t(el.dataset.i18nLabel);
     });
+    for (const [attribute, target] of [["data-ui-message", "textContent"], ["data-ui-title", "title"], ["data-ui-placeholder", "placeholder"], ["data-ui-label", "aria-label"]]) {
+      const elements = [...root.querySelectorAll(`[${attribute}]`)];
+      if (root.matches?.(`[${attribute}]`)) elements.unshift(root);
+      for (const el of elements) {
+        if (el.closest?.("[data-user-content]")) continue;
+        let source;
+        try { source = decodeURIComponent(el.getAttribute(attribute)); } catch (_) { continue; }
+        if (!Object.hasOwn(messages.zh, source)) continue;
+        let values = {};
+        try { values = JSON.parse(el.getAttribute("data-ui-values") || "{}"); } catch (_) {}
+        const value = message(source, values);
+        if (target === "textContent") { if (el.textContent !== value) el.textContent = value; }
+        else if (el.getAttribute(target) !== value) el.setAttribute(target, value);
+      }
+    }
+  }
+  // Only explicitly marked, authored copy is observed. User names, transcripts,
+  // Markdown previews and iframe contents are never searched or translated.
+  function observeTranslations(root = document.body) {
+    const observer = new MutationObserver(records => {
+      for (const record of records) for (const node of record.addedNodes) {
+        if (node.nodeType === 1) translate(node);
+      }
+    });
+    observer.observe(root, {childList: true, subtree: true});
+    translate(root);
+    return observer;
   }
   function apply(value, root = document.documentElement) {
     const prefs = normalize(value);
@@ -152,7 +198,7 @@
       if (event.target === dialog || event.target.closest("[data-dialog-close]")) dialog.close();
     });
   }
-  const api = { defaults, key, normalize, read, write, agentIdentity, agentBadge, createdSessionSlot, icon, buttonContent, notificationButton, t, translate, apply, wireDialog, containDialogFocus };
+  const api = { defaults, key, normalize, read, write, agentIdentity, agentBadge, createdSessionSlot, icon, buttonContent, notificationButton, t, message, setMessage, translate, observeTranslations, apply, wireDialog, containDialogFocus };
   if (typeof module !== "undefined") module.exports = api;
   else window.SiLingUI = api;
 })();

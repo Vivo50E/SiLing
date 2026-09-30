@@ -103,7 +103,7 @@ class NativeSessionImportContractTests(unittest.TestCase):
         ).read_text()
 
     def test_new_session_modal_offers_import_mode(self):
-        self.assertIn('<option value="import">Import existing</option>', self.index)
+        self.assertIn('<option value="import" data-ui-message=Import%20existing>Import existing</option>', self.index)
         self.assertIn('id="new-import-list"', self.index)
         self.assertIn('api("/api/native-sessions/import"', self.index)
 

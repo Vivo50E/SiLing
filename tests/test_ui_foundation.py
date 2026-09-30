@@ -21,6 +21,39 @@ class UIFoundationTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_message_catalog_preserves_parameters_and_system_language(self):
+        self.run_js('''
+          const root={dataset:{},style:{setProperty(){}}};
+          global.document={documentElement:root,querySelectorAll:()=>[]};
+          Object.defineProperty(global,'navigator',{value:{language:'zh-CN'},configurable:true});
+          ui.apply({language:'system'});
+          assert.equal(root.lang,'zh');
+          assert.equal(ui.message('Working dir'),'工作目录');
+          assert.equal(ui.message('New session · pane {pane}',{pane:'<User name>'}),'新建会话 · 面板 <User name>');
+          assert.equal(ui.message('Unknown user content'),'Unknown user content');
+          ui.apply({language:'en'});
+          assert.equal(ui.message('Working dir'),'Working dir');
+          navigator.language='fr-FR';ui.apply({language:'system'});
+          assert.equal(root.lang,'en');
+          const {zh}=require('./static/ui-messages.js');
+          for(const [en,value] of Object.entries(zh)) {
+            assert.ok(value.trim(),en);
+            const params=s=>[...s.matchAll(/\\{(\\w+)\\}/g)].map(m=>m[1]).sort();
+            assert.deepEqual(params(en),params(value),en+' retains all placeholders');
+          }
+        ''')
+
+    def test_message_annotations_use_reviewed_keys(self):
+        self.run_js('''
+          const fs=require('node:fs'),{zh}=require('./static/ui-messages.js');
+          const source=fs.readFileSync('./static/index.html','utf8');
+          for(const match of source.matchAll(/data-ui-(?:message|title|label|placeholder)=(?:"([^"$]+)"|([^\\s>]+))/g)) {
+            const value=match[1]||match[2];
+            if(value.includes('${'))continue;
+            assert.ok(Object.hasOwn(zh,decodeURIComponent(value)),value);
+          }
+        ''')
+
     def test_invalid_preferences_fall_back_per_field(self):
         self.run_js('''
           for (const raw of [null, [], "bad", 4]) assert.deepEqual(ui.normalize(raw), ui.defaults);

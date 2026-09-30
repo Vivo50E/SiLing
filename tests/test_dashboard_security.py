@@ -576,7 +576,7 @@ class DashboardNewSessionContractTests(unittest.TestCase):
 
     def test_plain_terminal_is_available_without_model_controls(self):
         self.assertIn(
-            '<option value="terminal">terminal (login shell)</option>',
+            '<option value="terminal" data-ui-message=terminal%20(login%20shell)>terminal (login shell)</option>',
             self.source,
         )
         self.assertIn(
@@ -632,7 +632,8 @@ class DashboardPaneInputContractTests(unittest.TestCase):
             'inputEl.setRangeText("\\n", start, end, "end");',
             self.source,
         )
-        self.assertIn("Shift/Option+Enter 换行", self.source)
+        self.assertIn("data-ui-placeholder=", self.source)
+        self.assertIn("Shift%2FOption%2BEnter%20inserts%20a%20newline", self.source)
 
 
 class DashboardExitedSessionContractTests(unittest.TestCase):
@@ -643,7 +644,7 @@ class DashboardExitedSessionContractTests(unittest.TestCase):
     def test_exited_agent_gets_a_contextual_end_control(self):
         self.assertIn('class="btn-end-session"', self.source)
         self.assertIn("endExitedSession(runId, btnEndSession)", self.source)
-        self.assertIn('text: "exited"', self.source)
+        self.assertIn('text: ui.message("exited")', self.source)
 
     def test_exited_agent_can_be_resumed_in_one_action(self):
         self.assertIn('class="btn-recover-session"', self.source)
@@ -1086,7 +1087,7 @@ class DashboardSidebarLocationGroupingContractTests(unittest.TestCase):
 
     def test_location_identity_uses_remote_node_metadata(self):
         self.assertIn("function sidebarLocationInfo(session)", self.source)
-        self.assertIn('key: "local", label: "Local"', self.source)
+        self.assertIn('key: "local", label: ui.message("Local")', self.source)
         self.assertIn("session.node_label || configured?.label || nodeId", self.source)
         self.assertIn("REMOTE_NODES.map((node, index)", self.source)
 

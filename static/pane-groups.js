@@ -269,7 +269,7 @@
     }
     renderBar();
     return {
-      matches, decorate, applyVisibility,
+      matches, decorate, applyVisibility, refreshLabels: renderBar,
       reveal(runId) {
         if (!matches({run_id:runId})) selectFilter("all");
       },

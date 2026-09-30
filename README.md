@@ -362,8 +362,12 @@ Lead is a role; P0/P1/P2 are priorities; Blocked/Watching/Done are manual flags.
 They still share one saved field, so selecting one replaces the previous flag.
 
 **Settings → Appearance** controls app theme (system/dark/light), density,
-interface text size, reduced motion, and language (English/Chinese for the new
-controls). These preferences are browser-local and do not restart sessions or
+interface text size, reduced motion, and language (system/English/Chinese).
+Language applies to Dashboard controls, Settings, session creation, pane actions,
+file navigation, and status labels, including tooltips and input hints. Switching
+does not reload terminals or discard drafts. Agent output, user-defined names,
+file contents and raw backend error details remain unchanged.
+These preferences are browser-local and do not restart sessions or
 change terminal palettes. **Terminal** applies a palette to open panes explicitly;
 terminal scrollbars follow each pane's palette, including dark and light variants.
 **Notifications** holds priority reminders; **Connections & updates** holds the

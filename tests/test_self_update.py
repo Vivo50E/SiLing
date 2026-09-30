@@ -255,8 +255,8 @@ class SelfUpdateDashboardContractTests(unittest.TestCase):
         self.assertIn('id="btn-self-update"', self.index)
         self.assertNotIn('id="self-update-modal"', self.index)
         self.assertNotIn('typed !== "APPROVE"', self.index)
-        self.assertIn('button.textContent = "approve update"', self.index)
-        self.assertIn('button.textContent = pending.length ? "update blocked"', self.index)
+        self.assertIn('button.textContent = ui.message("approve update")', self.index)
+        self.assertIn('button.textContent = pending.length ? ui.message("update blocked")', self.index)
         self.assertIn('confirmation: "APPROVE"', self.index)
 
     def test_apply_requires_verification_token_and_requests_restart(self):
