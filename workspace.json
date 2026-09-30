@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "name": "SiLing",
+  "description": "Component navigation for a single-deployment workspace; not a package-manager manifest or inferred dependency graph.",
+  "components": {
+    "backend": {
+      "root": "agent_orchestrator",
+      "role": "Python CLI, Dashboard API and session orchestration",
+      "forbidden_imports": ["tools", "tests"],
+      "entrypoints": ["siling", "orchestrator.py", "dashboard.py", "agent_orchestrator/cli.py", "agent_orchestrator/dashboard.py"],
+      "tests": ["tests/test_*.py"],
+      "guide": "docs/architecture/README.md"
+    },
+    "dashboard": {
+      "root": "static",
+      "role": "Browser UI, terminal interaction and PWA assets served by the backend",
+      "entrypoints": ["static/index.html", "static/ui-foundation.js", "static/ui-messages.js"],
+      "tests": ["tests/test_ui_foundation.py", "tests/test_pane_interactions.py", "tests/ui_browser.mjs", "tests/terminal_browser.mjs"],
+      "guide": "docs/architecture/README.md"
+    },
+    "session-runtime": {
+      "root": "scripts",
+      "role": "Session launch, monitoring, cleanup and artifact operations; not developer tooling",
+      "forbidden_imports": ["tools", "tests"],
+      "entrypoints": ["scripts/run.sh", "scripts/continue.sh", "scripts/organize.sh"],
+      "tests": ["tests/test_agent_cli.py", "tests/test_siling_brand.py", "tests/test_dashboard_security.py"],
+      "guide": "docs/architecture/README.md"
+    },
+    "macos-deployment": {
+      "root": "launchd",
+      "role": "Explicitly approved install, deployment and LaunchAgent lifecycle",
+      "entrypoints": ["launchd/deploy.sh", "launchd/install.sh", "launchd/render_plist.py"],
+      "tests": ["tests/test_dashboard_security.py"],
+      "guide": "RELEASING.md"
+    },
+    "quality": {
+      "root": "tests",
+      "role": "Shared regression tests and opt-in isolated browser/terminal checks",
+      "entrypoints": ["tests/ui_browser.mjs", "tests/terminal_browser.mjs"],
+      "tests": ["tests/test_repository.py"],
+      "guide": "CONTRIBUTING.md"
+    },
+    "tooling": {
+      "root": "tools",
+      "role": "Repository validation only; never imported by the running application",
+      "entrypoints": ["Makefile", "tools/check.py"],
+      "tests": ["tests/test_repository.py"],
+      "guide": "CONTRIBUTING.md"
+    },
+    "documentation": {
+      "root": "docs",
+      "role": "Architecture, user guides, specifications and implementation evidence",
+      "entrypoints": ["docs/README.md", "docs/architecture/README.md", "README.md"],
+      "tests": ["tests/test_readme.py", "tests/test_repository.py"],
+      "guide": "docs/README.md"
+    },
+    "examples": {
+      "root": "examples",
+      "role": "Portable configuration samples without machine-local secrets",
+      "entrypoints": ["examples/dashboard.local.json"],
+      "tests": ["tests/test_repository.py"],
+      "guide": "CONTRIBUTING.md"
+    },
+    "recipes": {
+      "root": "tasks",
+      "role": "Public YAML recipes; tasks/private is runtime configuration, not source",
+      "entrypoints": ["tasks/example.yaml"],
+      "tests": ["tests/test_repository.py"],
+      "guide": "README_EN.md"
+    },
+    "prompt-resources": {
+      "root": "skills",
+      "role": "Legacy recipe prompt resources, not an automatically installed agent skill registry",
+      "entrypoints": ["skills/cluster-usage.md"],
+      "tests": ["tests/test_repository.py"],
+      "guide": "docs/architecture/README.md"
+    }
+  },
+  "checks": {
+    "python": ["*.py", "agent_orchestrator/**/*.py", "scripts/**/*.py", "launchd/**/*.py", "tools/**/*.py", "tests/**/*.py", "siling"],
+    "shell": ["scripts/**/*.sh", "launchd/**/*.sh"],
+    "javascript": ["static/**/*.js", "tests/**/*.mjs", "tests/**/*.cjs"],
+    "json": ["workspace.json", "examples/*.json", "static/*.webmanifest"],
+    "inline_script": "static/index.html"
+  }
+}

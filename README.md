@@ -80,6 +80,13 @@ HTTPS，不要直接将未受保护的服务暴露到公网。不要公开令牌
 
 [安全说明](SECURITY.md) · [贡献指南](CONTRIBUTING.md) · [UI/UX 规格](docs/uiux-improvement-spec.md) · [MIT 许可证](LICENSE)
 
+### 开发与项目结构
+
+从[文档导航](docs/README.md)和[架构地图](docs/architecture/README.md)开始。
+`make map` 输出机器可读的组件目录，`make verify PYTHON=.venv/bin/python`
+执行与 CI 相同的结构、语法及完整测试检查。开发工具位于 `tools/`，与 `scripts/`
+中的会话运行脚本分离；现有启动入口和数据路径保持兼容。
+
 ---
 
 ## English
@@ -162,3 +169,11 @@ MCP management, multi-device workflows, safe public access, external integration
 and mobile UX. **Planned features are not claims of current support.**
 
 [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [UI/UX spec](docs/uiux-improvement-spec.md) · [MIT License](LICENSE)
+
+### Development and repository structure
+
+Start with the [documentation index](docs/README.md) and
+[architecture map](docs/architecture/README.md). `make map` prints the validated
+component catalog; `make verify PYTHON=.venv/bin/python` runs the same structure,
+syntax and full-suite checks as CI. Developer tooling in `tools/` is separate
+from session-runtime scripts in `scripts/`; existing entrypoints and data paths remain compatible.

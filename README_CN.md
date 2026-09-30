@@ -527,6 +527,17 @@ SiLing 可以向本地 terminal sessions 发送输入，应当把它视为一个
 
 ## 当前范围
 
+### 仓库导航与开发检查
+
+开发者和 Agent 可从[文档导航](docs/README.md)、[架构地图](docs/architecture/README.md)
+和 `make map` 查询组件职责、入口及测试位置。`tools/` 只放开发工具，`scripts/` 保留会话
+运行脚本；`workspace.json` 是导航清单，不是包管理器配置或自动推断的依赖图。
+运行 `make verify PYTHON=.venv/bin/python` 执行结构、语法与完整测试；隔离 worktree 可改用
+已安装依赖的 Python 绝对路径。现有 CLI、导入路径、自更新测试入口与运行数据位置保持兼容。
+完整命令及协作流程见[贡献指南](CONTRIBUTING.md)。
+
+### 产品边界
+
 Dashboard-first 是主要支持的体验。由于各 agent CLI 暴露的 session metadata
 不同，resume 能力是 best-effort。项目面向可信的本地开发者机器，而不是托管式
 多用户部署。旧版 YAML recipe runner 仍为高级用户保留。

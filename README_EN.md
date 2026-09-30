@@ -626,6 +626,20 @@ guidance. Development checks and contribution instructions are in
 
 ## Current scope
 
+### Repository navigation and development checks
+
+Contributors and Agents can use the [documentation index](docs/README.md),
+[architecture map](docs/architecture/README.md), and `make map` to find component
+responsibilities, entrypoints and tests. `tools/` is development-only; `scripts/`
+remains session-runtime code. `workspace.json` is a navigation catalog, not a
+package-manager configuration or inferred dependency graph.
+Run `make verify PYTHON=.venv/bin/python` for layout, syntax and full-suite checks;
+isolated worktrees can select an absolute path to an existing dependency runtime.
+Existing CLI/import paths, update verification and runtime data locations remain
+compatible. See [CONTRIBUTING](CONTRIBUTING.md) for commands and workflow.
+
+### Product boundaries
+
 The Dashboard-first workflow is the primary supported experience. Resume is
 best-effort because each agent CLI exposes different session metadata. The
 project targets trusted local developer machines rather than hosted multi-user
