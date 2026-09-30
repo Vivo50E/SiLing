@@ -219,6 +219,8 @@ Terminal、Codex 和 Cursor pane 在浏览 tmux 历史时，开始打字或粘�
 滚动和文本选择仍保留历史视图，方向键等 Escape 序列仍用于历史导航。
 通过滚轮进入历史后，向下滚回最新一屏也会自动退出历史模式；自定义 tmux 滚轮绑定保持不变。
 
+已结束的 pane 会保留历史日志并标注“只读”。有原生恢复信息时，可直接点击 **恢复会话**，在原 pane 位置继续；失败时保留日志并可重试。
+
 ## 每个 task 都有自己的 Linked Items
 
 ![Linked Items 展示 task workspace、文件树和 Markdown 状态报告](docs/assets/linked-items.webp)

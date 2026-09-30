@@ -28,6 +28,8 @@ const fileDiscoveries = [];
 let frameLoads = 0;
 let pendingCreation;
 let pendingRestart;
+let pendingResume;
+let resumeBody;
 const groupFixture = {groups: [], members: {}};
 let failGroupSave = false;
 let systemBrowserAvailable = false;
@@ -121,6 +123,9 @@ const server = http.createServer((req, res) => {
       let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{
         sentPrompts.push({path:url.pathname,...JSON.parse(body)});res.end(JSON.stringify({ok:true}));
       });return;
+    }
+    if (url.pathname === '/api/resume') {
+      let body='';req.on('data',c=>body+=c);req.on('end',()=>{resumeBody=JSON.parse(body);pendingResume=res;});return;
     }
     if (url.pathname === '/api/create') { pendingCreation = res; return; }
     if (url.pathname.endsWith('/restart')) { pendingRestart = res; return; }
@@ -683,6 +688,10 @@ try {
   // The embedded web fixture also increments frameLoads. Finish its async
   // navigation before measuring whether the next dialog reloads a terminal.
   await waitFor(`Array.from(document.querySelectorAll('.pane iframe, #projects-browser-modal iframe')).every(f=>f.contentDocument?.querySelector('textarea'))`);
+  for(let i=0;i<80;i++) {
+    if(await evaluate(`Array.from(document.querySelectorAll('.pane-card:not(.ended-session):not(.empty-slot)')).every(card=>card.querySelector('.pane-node-badge.offline') || card.querySelector('iframe')?.contentDocument?.querySelector('textarea'))`))break;
+    await pause(100);
+  }
   const beforeFileContextFrames=frameLoads;
   await evaluate(`document.querySelector('[data-run-id="fixture-2"] .btn-pane-more').click();document.querySelector('[data-run-id="fixture-2"] .btn-terminal-files').click()`);
   for(let i=0;i<50;i++){if(await evaluate(`!!document.querySelector('dialog[open] [data-text]')`))break;await pause(50);}
@@ -735,6 +744,38 @@ try {
     assert.ok(!sent.text.includes('projects-dir-layout'),'Link no longer asks for directory reorganization');
   }
   console.log('PASS: Link prompt language, session routing and submission');
+  await evaluate(`document.querySelector('#projects-browser-modal-close').click()`);
+  const ended=sessions.find(s=>s.run_id==='fixture-2');
+  ended.alive=false;ended.agent='codex';ended.resume_id='fixture-native-resume';
+  await evaluate(`document.querySelector('#btn-refresh').click()`);await pause(250);
+  const endedSlot=await evaluate(`JSON.parse(localStorage.getItem('orch_slots')).indexOf('fixture-2')`);
+  assert.ok(endedSlot>=0,'Ended pane remains in its slot');
+  assert.ok(await evaluate(`document.querySelector('[data-run-id="fixture-2"] .pane-ended-notice').textContent.includes('read-only')`));
+  assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-2"] .btn-resume-ended').hidden`),false);
+  assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-2"] .pane-input textarea').disabled`),true);
+  assert.equal(await evaluate(`!!document.querySelector('[data-run-id="fixture-2"] iframe')`),false,'Ended terminal becomes a log view');
+  await screenshot('ended-session-resume');
+  ended.resume_id='';await evaluate(`document.querySelector('#btn-refresh').click()`);await pause(150);
+  assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-2"] .btn-resume-ended').hidden`),true,'Missing metadata does not advertise recovery');
+  ended.resume_id='fixture-native-resume';await evaluate(`document.querySelector('#btn-refresh').click()`);await pause(150);
+  const stoppedBefore=requests.filter(r=>/\/(stop|kill)$/.test(r.path)).length;
+  await evaluate(`document.querySelector('[data-run-id="fixture-2"] .btn-resume-ended').click()`);
+  for(let i=0;i<50&&!pendingResume;i++)await pause(50);
+  assert.deepEqual(resumeBody,{run_id:'fixture-2',node_id:'local',mode:'background'});
+  await evaluate(`document.querySelector('[data-run-id="fixture-2"] .btn-recover-session').dispatchEvent(new Event('click'))`);
+  assert.equal(requests.filter(r=>r.path==='/api/resume').length,1,'Pending recovery cannot be duplicated from another button');
+  pendingResume.writeHead(500);pendingResume.end(JSON.stringify({detail:'Fixture resume failure'}));pendingResume=undefined;
+  await pause(300);
+  assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-2"] .btn-resume-ended').disabled`),false,'Failed recovery can be retried');
+  assert.equal(await evaluate(`JSON.parse(localStorage.getItem('orch_slots'))[${endedSlot}]`),'fixture-2');
+  await evaluate(`document.querySelector('[data-run-id="fixture-2"] .btn-resume-ended').click()`);
+  for(let i=0;i<50&&!pendingResume;i++)await pause(50);
+  sessions.push({...ended,alive:true,run_id:'fixture-resumed',tmux_session:'fixture-resumed'});
+  pendingResume.end(JSON.stringify({ok:true,run_id:'fixture-resumed'}));
+  for(let i=0;i<80;i++){if(await evaluate(`!!document.querySelector('[data-run-id="fixture-resumed"] iframe')`))break;await pause(100);}
+  assert.equal(await evaluate(`JSON.parse(localStorage.getItem('orch_slots'))[${endedSlot}]`),'fixture-resumed','Recovery replaces its original pane');
+  assert.equal(requests.filter(r=>/\/(stop|kill)$/.test(r.path)).length,stoppedBefore,'Ended-session recovery never stops or kills another process');
+  console.log('PASS: ended log notice, recovery eligibility, failure retry, duplicate prevention and same-slot recovery');
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));
   }

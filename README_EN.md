@@ -262,6 +262,8 @@ Recovery is best-effort because the agent CLIs expose different metadata, but
 the Dashboard makes that state explicit instead of leaving it hidden in a
 terminal scrollback buffer.
 
+Ended panes retain their history with a read-only notice. When native resume metadata is available, **Resume session** continues the conversation in the same pane slot. Failed recovery keeps the log and allows retry.
+
 ## Every task has a home with Linked Items
 
 ![Linked Items showing a task workspace, file tree, and Markdown status report](docs/assets/linked-items.webp)

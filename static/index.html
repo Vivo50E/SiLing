@@ -1033,6 +1033,9 @@
     background: var(--bg-soft);
     min-width: 0;
   }
+  .pane-card.ended-session .pane-input { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+  .pane-ended-notice { min-width: 0; white-space: normal; color: var(--text-dim); font-size: 12px; }
+  .pane-card.ended-session .pane-input > :not(.pane-ended-notice):not(.btn-resume-ended) { display: none; }
   .pane-input textarea {
     resize: none; min-height: 32px; max-height: 120px;
     width: 100%; min-width: 0;
@@ -2744,7 +2747,7 @@
   }
 </style>
 <link rel="stylesheet" href="/static/ui-foundation.css?v=6" />
-<script src="/static/ui-messages.js?v=3"></script>
+<script src="/static/ui-messages.js?v=4"></script>
 <script src="/static/ui-foundation.js?v=9"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=2" />
 <script src="/static/pane-groups.js?v=3"></script>
@@ -4104,6 +4107,7 @@
   // rebuild the grid once the new run becomes visible.
   const pendingRecoveredSessions = new Map();
   const restartingSessions = new Set();
+  const recoveringSessions = new Set();
   const retainedRestartFailures = new Set();
 
   function mergePendingPanelStates(nextSessions) {
@@ -6161,16 +6165,17 @@
           }
         }
 
-        // Drop slots only when the owning source is authoritative.  Remote
+        // Keep known ended sessions available as read-only logs with recovery.
+        // Drop missing slots only when the owning source is authoritative.  Remote
         // nodes briefly disappear while SSH tunnels reconnect after a local
         // Dashboard restart; clearing those ids here permanently destroyed
         // the user's saved pane positions before the node came back.
-        const alive = new Set(
-          sessions.filter(s => s.alive).map(s => s.run_id)
+        const knownSessions = new Set(
+          sessions.map(s => s.run_id)
         );
         let changed = false;
         for (let i = 0; i < slots.length; i++) {
-          if (slots[i] && !alive.has(slots[i])
+          if (slots[i] && !knownSessions.has(slots[i])
               && !restartingSessions.has(slots[i])
               && !retainedRestartFailures.has(slots[i])
               && !retainPendingRecoveredSlot(slots[i])
@@ -6380,6 +6385,12 @@
     return String(s?.agent || "").trim().toLowerCase() === "terminal";
   }
 
+  function sessionCanResumeEnded(s) {
+    return !!s && !s.alive
+      && ["codex", "claude", "cursor"].includes(String(s.agent || "").toLowerCase())
+      && !!String(s.resume_id || s.resume?.id || "").trim();
+  }
+
   function sessionPrefersNativeSelection(s) {
     return ["terminal", "codex", "cursor"].includes(String(s?.agent || "").trim().toLowerCase());
   }
@@ -6434,6 +6445,7 @@
 
   function updatePaneHeader(ctrl, fresh) {
     if (!ctrl || !ctrl.cardEl || !fresh) return;
+    const wasAlive = ctrl.session?.alive;
     const wasRemoteOffline = !!(
       ctrl.session && ctrl.session.remote && ctrl.session.node_online === false
     );
@@ -6468,10 +6480,18 @@
       endSession.hidden = !(s.alive && s.agent_exited === true);
       endSession.disabled = !!(s.remote && s.node_online === false);
     }
+    card.classList.toggle("ended-session", !s.alive);
+    const endedNotice = card.querySelector(".pane-ended-notice");
+    if (endedNotice) endedNotice.hidden = !!s.alive;
+    const resumeEnded = card.querySelector(".btn-resume-ended");
+    if (resumeEnded) {
+      resumeEnded.hidden = !sessionCanResumeEnded(s);
+      resumeEnded.disabled = recoveringSessions.has(s.run_id) || !!(s.remote && s.node_online === false);
+    }
     const recoverSession = card.querySelector(".btn-recover-session");
     if (recoverSession) {
-      recoverSession.hidden = !(s.alive && s.agent_exited === true);
-      recoverSession.disabled = !!(s.remote && s.node_online === false);
+      recoverSession.hidden = !(s.alive && s.agent_exited === true) && !sessionCanResumeEnded(s);
+      recoverSession.disabled = recoveringSessions.has(s.run_id) || !!(s.remote && s.node_online === false);
     }
     const terminateSession = card.querySelector(".btn-terminate");
     if (terminateSession) {
@@ -6505,6 +6525,9 @@
       card.querySelectorAll("button, select, textarea").forEach(el => { el.disabled = true; });
     } else {
       ctrl.inputEl.disabled = disable;
+    }
+    if (wasAlive && !s.alive && ctrl.usingTty && !restartingSessions.has(s.run_id)) {
+      void attachPaneView(ctrl, { priority: true });
     }
     if (wasRemoteOffline && s.remote && s.node_online !== false) {
       void attachPaneView(ctrl, { priority: true });
@@ -7566,6 +7589,8 @@
       </div>
       <div class="pane ${ttyMode && s.alive ? 'pane-tty' : 'empty'} ${terminalThemeClass}"></div>
       <div class="pane-input">
+        <span class="pane-ended-notice" role="status" hidden data-ui-message="Session ended — history log (read-only)">Session ended — history log (read-only)</span>
+        <button class="btn-resume-ended primary" hidden data-ui-message="Resume session">Resume session</button>
         <textarea rows="1" data-ui-placeholder="Enter%20sends%20%C2%B7%20Shift%2FOption%2BEnter%20inserts%20a%20newline%20%C2%B7%20%2Fup%20%2Fdown%20%2Fenter%20%2Fesc%20%2Fclr%20sends%20keys"></textarea>
         <button class="btn-send primary"><span data-ui-message=Send>Send</span></button>
         <button class="btn-progress" ${terminalSession ? "hidden" : ""} data-ui-title=Ask%20for%20a%20progress%20update><span data-ui-message=Progress>Progress</span></button>
@@ -7889,6 +7914,7 @@
       }
     });
     btnFolders.addEventListener("click", () => openFolderViewer(runId));
+    card.querySelector(".btn-resume-ended").addEventListener("click", event => recoverExitedSession(runId, event.currentTarget));
     btnRestartSession.addEventListener("click", () => restartAgentSession(runId));
     btnRecoverSession.addEventListener("click", () => recoverExitedSession(
       runId, btnRecoverSession, btnEndSession
@@ -7916,6 +7942,7 @@
     });
 
     // Decide view: tty iframe vs SSE pane
+    updatePaneHeader(ctrl, s);
     attachPaneView(ctrl);
   }
 
@@ -8902,10 +8929,13 @@
 
   async function recoverExitedSession(runId, button, endButton) {
     const s = sessions.find(x => x.run_id === runId);
-    if (!s || !s.alive || s.agent_exited !== true) return;
+    if (!s || (s.alive ? s.agent_exited !== true : !sessionCanResumeEnded(s))
+        || recoveringSessions.has(runId) || (s.remote && s.node_online === false)) return;
+    recoveringSessions.add(runId);
     const name = s.display_name || s.task || s.run_name || "session";
-    const oldSlot = slotOf(runId);
     const ctrl = paneCtrls.get(runId);
+    const draft = ctrl?.inputEl.value || "";
+    if (ctrl) updatePaneHeader(ctrl, s);
     const wasZoomed = !!(paneZoomState && ctrl && paneZoomState.card === ctrl.cardEl);
     const previousText = button ? button.textContent : "▶";
     if (button) {
@@ -8915,21 +8945,22 @@
     }
     if (endButton) endButton.disabled = true;
     try {
-      const stopped = await api(
-        `/api/sessions/${encodeURIComponent(runId)}/stop`,
-        { method: "POST" },
-      );
-      if (!stopped.ok) {
-        if (!stopped.needs_force) {
-          throw new Error(stopped.reason || "could not end the exited wrapper");
-        }
-        const forced = await api(
-          `/api/sessions/${encodeURIComponent(runId)}/kill`,
+      if (s.alive) {
+        const stopped = await api(
+          `/api/sessions/${encodeURIComponent(runId)}/stop`,
           { method: "POST" },
         );
-        if (!forced?.ok) throw new Error("could not close the exited wrapper");
+        if (!stopped.ok) {
+          if (!stopped.needs_force) {
+            throw new Error(stopped.reason || "could not end the exited wrapper");
+          }
+          const forced = await api(
+            `/api/sessions/${encodeURIComponent(runId)}/kill`,
+            { method: "POST" },
+          );
+          if (!forced?.ok) throw new Error("could not close the exited wrapper");
+        }
       }
-
       const nodeId = s.remote
         ? (s.node_id || remoteNodeIdFromRunId(runId))
         : "local";
@@ -8940,9 +8971,10 @@
       const newRunId = String(resumed?.run_id || "");
       if (!newRunId) throw new Error("resume succeeded without a new run id");
 
-      pendingRecoveredSessions.set(newRunId, {
+      const oldSlot = slotOf(runId);
+      if (oldSlot >= 0) pendingRecoveredSessions.set(newRunId, {
         expiresAt: Date.now() + 30000,
-        zoom: wasZoomed,
+        zoom: wasZoomed, draft,
       });
       if (oldSlot >= 0) slots[oldSlot] = newRunId;
       closePane(runId);
@@ -8955,12 +8987,14 @@
       alert(ui.message("recover session failed: ") + e.message);
       setTimeout(() => void refreshList(), 250);
     } finally {
+      recoveringSessions.delete(runId);
       if (button && button.isConnected) {
         button.disabled = false;
         button.textContent = previousText;
         button.title = ui.message("Resume this exited agent in a new session");
       }
       if (endButton && endButton.isConnected) endButton.disabled = false;
+      if (ctrl?.cardEl.isConnected) updatePaneHeader(ctrl, s);
     }
   }
 

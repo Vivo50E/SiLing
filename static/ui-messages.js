@@ -1,6 +1,8 @@
 /* Authored Dashboard copy only. Never translate terminal output or user data. */
 (() => {
   const zh = {
+    "Session ended — history log (read-only)": "会话已结束 · 历史日志（只读）",
+    "Resume session": "恢复会话",
     "About SiLing": "关于司令",
     "Running version": "运行版本",
     "Git commit": "Git 提交",

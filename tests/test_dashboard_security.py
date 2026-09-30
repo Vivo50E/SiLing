@@ -693,9 +693,9 @@ class DashboardExitedSessionContractTests(unittest.TestCase):
         self.assertIn("forceKillSession(runId)", stop_block)
         self.assertIn("closePane(runId);", stop_block)
 
-    def test_ended_sessions_are_not_restored_into_empty_slots(self):
+    def test_known_ended_panes_are_retained_but_empty_slots_only_pick_live(self):
         self.assertIn(
-            "sessions.filter(s => s.alive).map(s => s.run_id)",
+            "sessions.map(s => s.run_id)",
             self.source,
         )
         self.assertIn(
