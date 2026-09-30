@@ -346,6 +346,7 @@ They still share one saved field, so selecting one replaces the previous flag.
 interface text size, reduced motion, and language (English/Chinese for the new
 controls). These preferences are browser-local and do not restart sessions or
 change terminal palettes. **Terminal** applies a palette to open panes explicitly;
+terminal scrollbars follow each pane's palette, including dark and light variants.
 **Notifications** holds priority reminders; **Connections & updates** holds the
 login-link copy action and verified-update controls. Displayed login links mask
 credentials, but the copied link grants access: share it only with trusted devices.

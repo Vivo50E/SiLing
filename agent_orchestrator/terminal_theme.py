@@ -125,6 +125,43 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     if (!terminal || !screen || !mouse || !selection) return false;
     if (mouse.__orchInteractionPatch) return true;
 
+    // The iframe does not inherit Dashboard CSS. Keep its native scrollbar
+    // aligned with xterm's actual palette, including late ttyd preferences.
+    const scrollbarStyle = document.createElement("style");
+    scrollbarStyle.textContent = `
+      .xterm-viewport { scrollbar-color: var(--orch-scroll-thumb) var(--orch-scroll-track); }
+      .xterm-viewport::-webkit-scrollbar { width: 12px; height: 12px; }
+      .xterm-viewport::-webkit-scrollbar-track,
+      .xterm-viewport::-webkit-scrollbar-corner { background: var(--orch-scroll-track); }
+      .xterm-viewport::-webkit-scrollbar-thumb {
+        background: var(--orch-scroll-thumb); border: 3px solid var(--orch-scroll-track);
+        border-radius: 8px;
+      }
+      .xterm-viewport::-webkit-scrollbar-thumb:hover { background: var(--orch-scroll-hover); }
+      @media (forced-colors: active) { .xterm-viewport { scrollbar-color: auto; } }
+    `;
+    document.head.appendChild(scrollbarStyle);
+    let scrollbarPalette = "";
+    const syncScrollbarTheme = () => {
+      const palette = terminal.options.theme || {};
+      const hex = (value, fallback) => /^#[0-9a-f]{6}$/i.test(value || "") ? value : fallback;
+      const background = hex(palette.background, "#2b2b2b");
+      const foreground = hex(palette.foreground, "#d2d2d2");
+      const key = background + foreground;
+      if (key === scrollbarPalette) return;
+      scrollbarPalette = key;
+      const rgb = value => [1, 3, 5].map(i => parseInt(value.slice(i, i + 2), 16));
+      const bg = rgb(background), fg = rgb(foreground);
+      const blend = amount => `rgb(${bg.map((v, i) => Math.round(v + (fg[i] - v) * amount)).join(",")})`;
+      const style = document.documentElement.style;
+      style.colorScheme = bg[0] * .299 + bg[1] * .587 + bg[2] * .114 < 128 ? "dark" : "light";
+      style.setProperty("--orch-scroll-track", background);
+      style.setProperty("--orch-scroll-thumb", blend(.45));
+      style.setProperty("--orch-scroll-hover", blend(.65));
+    };
+    syncScrollbarTheme();
+    terminal.onRender(syncScrollbarTheme);
+
     let mode = "";
     let pendingUrl = "";
     let startX = 0;

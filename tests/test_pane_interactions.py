@@ -230,11 +230,14 @@ const selection = {
 };
 const mouse = { triggerMouseEvent: () => { reported++; return true; } };
 global.window = {
-  term: { _core: { coreMouseService: mouse, _selectionService: selection } },
+  term: { options: {}, onRender() {}, _core: { coreMouseService: mouse, _selectionService: selection } },
   frameElement: { dataset: { nativeSelection: String(sessionPrefersNativeSelection({agent: 'codex'})) } },
   addEventListener: () => {},
 };
 global.document = {
+  head: { appendChild() {} },
+  documentElement: { style: { setProperty() {} } },
+  createElement: () => ({}),
   querySelector: () => ({
     addEventListener: (name, fn) => { screenEvents[name] = fn; },
     getBoundingClientRect: () => ({width: 0, height: 0}),

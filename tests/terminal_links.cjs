@@ -5,7 +5,7 @@ const source = fs.readFileSync(0, 'utf8');
 const listeners = {}, documentListeners = {}, callbacks = {}, timers = [];
 function element() {
   return {
-    style: {}, children: [],
+    style: {setProperty(name, value) { this[name] = value; }}, children: [],
     appendChild(child) { this.children.push(child); },
     replaceChildren() { this.children = []; },
   };
@@ -30,16 +30,30 @@ const term = {
   onScroll: fn => { callbacks.scroll = fn; },
   onResize: fn => { callbacks.resize = fn; },
   onWriteParsed: fn => { callbacks.write = fn; },
+  onRender: fn => { callbacks.render = fn; },
 };
 global.window = {term, frameElement: {dataset: {nativeSelection: 'true'}},
   addEventListener() {}, open: url => opened.push(url)};
 window.parent = window;
 global.document = {
+  head: element(), documentElement: element(),
   querySelector: () => screen, createElement: element,
   addEventListener: (name, fn) => { documentListeners[name] = fn; },
 };
 global.setTimeout = fn => timers.push(fn);
 eval(source);
+assert.equal(document.documentElement.style.colorScheme, 'dark');
+assert.equal(document.documentElement.style['--orch-scroll-track'], '#2b2b2b');
+assert.equal(document.documentElement.style['--orch-scroll-thumb'], 'rgb(118,118,118)');
+term.options.theme = {background: '#ffffff', foreground: '#000000'};
+callbacks.render();
+assert.equal(document.documentElement.style.colorScheme, 'light');
+assert.equal(document.documentElement.style['--orch-scroll-track'], '#ffffff');
+assert.equal(document.documentElement.style['--orch-scroll-thumb'], 'rgb(140,140,140)');
+eval(source);
+assert.equal(document.head.children.length, 1, 'Repeated installation must not duplicate scrollbar styles');
+term.options.theme = {};
+callbacks.render();
 
 function row(chars, wrapped = false, id = 0) {
   const cells = [...chars].map(char => ({getChars: () => char, getWidth: () => 1,

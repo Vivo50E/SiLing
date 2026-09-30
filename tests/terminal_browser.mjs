@@ -84,6 +84,24 @@ try {
   const injection=execFileSync(python,['-c',"from agent_orchestrator.terminal_theme import _TTYD_INTERACTION_SCRIPT as s;print(s.split('>',1)[1].rsplit('</script>',1)[0])"],{cwd:root,encoding:'utf8'});
   await evaluate(`Object.defineProperty(window,'frameElement',{value:{dataset:{inlineSelection:'true',nativeSelection:'true'}}});window.localMessages=[];Object.defineProperty(window,'parent',{value:{postMessage: message=>window.localMessages.push(message)}});void 0;`);
   await evaluate(injection);
+  // Real xterm viewport: scrollbar colors must follow the terminal palette,
+  // including palette changes after ttyd receives its WebSocket preferences.
+  const palettes=JSON.parse(execFileSync(python,['-c',"import json;from agent_orchestrator.terminal_theme import _TTYD_THEME_PALETTES;print(json.dumps(_TTYD_THEME_PALETTES))"],{cwd:root,encoding:'utf8'}));
+  palettes.dark={background:'#2b2b2b',foreground:'#d2d2d2'};
+  await evaluate('window.originalTheme=term.options.theme;window.originalCols=term.cols;window.originalRows=term.rows');
+  for(const [name,palette] of Object.entries(palettes)) {
+    await evaluate(`term.options.theme=${JSON.stringify(palette)};term.refresh(0,term.rows-1)`);
+    await pause(150);
+    const style=await evaluate(`(()=>{const v=document.querySelector('.xterm-viewport'),s=getComputedStyle(v);return {scheme:s.colorScheme,colors:s.scrollbarColor,overflow:s.overflowY,background:s.backgroundColor,thumb:getComputedStyle(v,'::-webkit-scrollbar-thumb').backgroundColor};})()`);
+    assert.equal(style.scheme,['dark','soft-dark'].includes(name)?'dark':'light',name+' scrollbar scheme');
+    assert.notEqual(style.colors,'auto',name+' explicitly colors the native scrollbar');
+    assert.ok(style.colors.endsWith(style.background),name+' track matches terminal background');
+    assert.notEqual(style.thumb,'rgba(0, 0, 0, 0)',name+' WebKit fallback has a visible thumb');
+    assert.equal(style.overflow,'scroll','Scrollbar remains available');
+  }
+  assert.ok(await evaluate('term.cols===originalCols && term.rows===originalRows'),'Palette styling does not change terminal dimensions');
+  await evaluate('term.options.theme=originalTheme;term.refresh(0,term.rows-1)');
+  console.log('PASS: native terminal scrollbars follow all five palettes without resizing the terminal');
   // The real ttyd encoder must distinguish newline from submit. Run a raw
   // byte recorder in our private tmux server; no model or live agent is used.
   const recorder = String.raw`import os,termios,tty
@@ -206,6 +224,21 @@ finally:
   assert.equal(tmux('display-message','-p','-t','check','#{selection_present}').trim(),'1','Copy leaves the selection highlighted');
   await screenshot('inline-selection');
   console.log('PASS: real tmux drag + wheel cross-screen selection and copy, plus local links');
+  // Populate xterm's normal scrollback for visible native-scrollbar evidence.
+  // tmux's alternate-screen history above is separate from this browser buffer.
+  await evaluate(`new Promise(resolve=>term.write('\x1b[?1049l\x1b[?1000l\x1b[?1002l\x1b[?1003l'+Array.from({length:200},(_,i)=>'Scrollbar fixture line '+i+'\\r\\n').join(''),resolve))`);
+  await pause(150);
+  assert.ok(await evaluate(`{const v=document.querySelector('.xterm-viewport');v.scrollHeight>v.clientHeight}`),'Fixture has native scrollback');
+  const beforeScroll=await evaluate('term.buffer.active.viewportY');
+  await cdp('Input.dispatchMouseEvent',{type:'mouseWheel',x:600,y:300,deltaX:0,deltaY:-250});
+  await pause(150);
+  assert.ok(await evaluate('term.buffer.active.viewportY')<beforeScroll,'Wheel still scrolls native history');
+  for(const [name,palette] of Object.entries(palettes)) {
+    await evaluate(`term.options.theme=${JSON.stringify(palette)};term.refresh(0,term.rows-1)`);
+    await pause(150);
+    await screenshot('scrollbar-'+name);
+  }
+  console.log('PASS: native scrollback remains scrollable with themed scrollbar');
 }finally{
   ws?.close();browser?.kill('SIGKILL');ttyd.kill();selectionServer.close();
   try{tmux('kill-server');}catch{}
