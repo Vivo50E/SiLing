@@ -31,6 +31,8 @@ const groupFixture = {groups: [], members: {}};
 let failGroupSave = false;
 let systemBrowserAvailable = false;
 let failBrowserOpen = false;
+let versionMode = 'ok';
+let versionCommit = 'a'.repeat(40);
 const systemBrowserOpens = [];
 const linkedFixtures = new Map();
 const server = http.createServer((req, res) => {
@@ -81,6 +83,13 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname.startsWith('/api/')) {
     res.setHeader('Content-Type', 'application/json');
+    if (url.pathname === '/api/version') {
+      if (versionMode === 'timeout') return;
+      if (versionMode === 'error') { res.writeHead(503); return res.end('{}'); }
+      return res.end(JSON.stringify(versionMode === 'unknown'
+        ? {version:'0.3.0+unknown',commit:null,dirty:null}
+        : {version:'0.3.0+g'+versionCommit.slice(0,12),commit:versionCommit,dirty:false}));
+    }
     if (url.pathname === '/api/browser/open') {
       let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{
         assert.equal(req.headers['x-siling-browser-open'],'user-click');
@@ -164,6 +173,10 @@ try {
     await cdp('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
     await pause(150);
   };
+  const waitFor = async expression => {
+    for (let i=0; i<100; i++) { if (await evaluate(expression)) return; await pause(100); }
+    assert.fail('Timed out: ' + expression);
+  };
   const screenshot = async name => {
     const shot = await cdp('Page.captureScreenshot', { format: 'png' });
     fs.writeFileSync(path.join(artifacts, name + '.png'), Buffer.from(shot.data, 'base64'));
@@ -186,10 +199,6 @@ try {
   if (!baseline) {
     const groupFrames = frameLoads;
     const oldSlots = await evaluate(`localStorage.getItem('orch_slots')`);
-    const waitFor = async expression => {
-      for (let i=0; i<100; i++) { if (await evaluate(expression)) return; await pause(100); }
-      assert.fail('Timed out: ' + expression);
-    };
     await waitFor(`Array.from(document.querySelectorAll('.pane iframe')).every(f=>f.contentDocument?.querySelector('textarea'))`);
     const newlineResults = await evaluate(`(()=>{
       return ['fixture-0','fixture-1','fixture-2','fixture-3'].map(id=>{
@@ -444,10 +453,10 @@ try {
   assert.equal(await evaluate(`JSON.parse(localStorage.getItem('siling_appearance_v1')).fontSize`), 16, 'Failed save leaves persisted preference intact');
   await evaluate(`{Storage.prototype.setItem=window.realSetItem;const c=document.querySelector('[data-appearance="fontSize"]');c.value='16';c.dispatchEvent(new Event('change'));}`);
   await screenshot('settings-light');
-  assert.equal(await evaluate(`document.querySelectorAll('.settings-nav svg').length`),5,'Applying appearance keeps navigation icons');
+  assert.equal(await evaluate(`document.querySelectorAll('.settings-nav svg').length`),6,'Applying appearance keeps navigation icons');
   await evaluate(`{const c=document.querySelector('[data-appearance="language"]');c.value='zh';c.dispatchEvent(new Event('change'));}`);
   assert.equal(await evaluate(`document.querySelector('[data-settings-section="appearance"] span').textContent`),'外观');
-  assert.equal(await evaluate(`document.querySelectorAll('.settings-nav svg').length`),5,'Translation keeps icons');
+  assert.equal(await evaluate(`document.querySelectorAll('.settings-nav svg').length`),6,'Translation keeps icons');
   assert.equal(await evaluate(`document.querySelector('#settings-panel-opacity').closest('label').querySelector('.settings-row-title').textContent`),'面板不透明度');
   assert.equal(await evaluate(`document.querySelector('#btn-apply-global-theme').textContent`),'应用到已打开面板');
   assert.equal(await evaluate(`document.querySelector('.btn-progress').textContent`),'进度');
@@ -480,6 +489,45 @@ try {
   assert.ok(!/\p{Script=Han}/u.test(await evaluate(`document.querySelector('.pane-input textarea').placeholder`)));
   await evaluate(`document.querySelector('#untranslated-user-data').remove()`);
   await screenshot('settings-en');
+  await clickIcon('[data-settings-section="about"]');
+  await waitFor(`document.querySelector('#about-version').textContent==='0.3.0+gaaaaaaaaaaaa'`);
+  assert.equal(await evaluate(`document.querySelector('#about-commit').textContent`), versionCommit);
+  await screenshot('about-en-light');
+  await evaluate(`{const c=document.querySelector('[data-appearance="language"]');c.value='zh';c.dispatchEvent(new Event('change'));const t=document.querySelector('[data-appearance="theme"]');t.value='dark';t.dispatchEvent(new Event('change'));}`);
+  assert.equal(await evaluate(`document.querySelector('#settings-section-about h2').textContent`), '关于司令');
+  assert.equal(await evaluate(`document.querySelector('#about-refresh').textContent`), '刷新版本');
+  await viewport(390, 844);
+  await evaluate(`{const s=document.querySelector('#settings-section-picker');s.value='appearance';s.dispatchEvent(new Event('change'));s.value='about';s.dispatchEvent(new Event('change'));}`);
+  await waitFor(`document.querySelector('#about-commit').textContent==='${versionCommit}'`);
+  assert.ok(await evaluate(`document.querySelector('.settings-content').scrollWidth<=document.querySelector('.settings-content').clientWidth`), 'Version and full commit fit mobile width');
+  await screenshot('about-zh-mobile-dark');
+  versionMode = 'error';
+  await evaluate(`document.querySelector('#about-refresh').click()`);
+  await waitFor(`document.querySelector('#about-status').textContent.includes('无法读取版本')`);
+  assert.equal(await evaluate(`document.querySelector('#about-version').textContent`), '—', 'Failure never keeps an old version visible');
+  assert.equal(await evaluate(`document.querySelector('#about-commit').textContent`), '—');
+  versionMode = 'unknown';
+  await evaluate(`document.querySelector('#about-refresh').click()`);
+  await waitFor(`document.querySelector('#about-version').textContent==='0.3.0+unknown'`);
+  assert.equal(await evaluate(`document.querySelector('#about-commit').textContent`), '构建信息不可用');
+  versionMode = 'timeout';
+  await evaluate(`document.querySelector('#about-refresh').click()`);
+  await waitFor(`document.querySelector('#about-status').textContent.includes('无法读取版本')`);
+  versionMode = 'ok';
+  versionCommit = 'b'.repeat(40);
+  await evaluate(`document.querySelector('#settings-close').click()`);
+  await pause(50);
+  await evaluate(`document.querySelector('#btn-settings').click()`);
+  await waitFor(`document.querySelector('#about-version').textContent==='0.3.0+gbbbbbbbbbbbb'`);
+  await evaluate(`{const c=document.querySelector('[data-appearance="language"]');c.value='en';c.dispatchEvent(new Event('change'));}`);
+  assert.equal(await evaluate(`document.querySelector('#about-commit').textContent`), versionCommit, 'Language switch does not restore the unavailable placeholder');
+  assert.equal(await evaluate(`document.querySelector('#about-status').textContent`), '');
+  assert.equal(frameLoads, frames, 'About never reconnects terminal displays');
+  assert.equal(await evaluate(`document.querySelector('.pane-input textarea').value`), 'preserved draft');
+  assert.equal(requests.some(r=>r.path==='/api/version' && r.method!=='GET'),false);
+  await viewport(1280,800);
+  await clickIcon('[data-settings-section="appearance"]');
+  console.log('PASS: About version, bilingual labels, mobile layout, failed/unknown/timeout responses and refresh after restart');
   console.log('PASS: English/Chinese labels, tooltips and placeholders switch without changing drafts, API values, user content or terminal frames');
   await evaluate(`{const c=document.querySelector('[data-appearance="theme"]');c.value='system';c.dispatchEvent(new Event('change'));}`);
   for(const [scheme,foreground] of [['dark','rgb(13, 17, 23)'],['light','rgb(255, 255, 255)']]) {

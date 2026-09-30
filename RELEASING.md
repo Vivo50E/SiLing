@@ -9,6 +9,14 @@ state—not in a second source variant.
 
 ## Before a release
 
+The base product version lives in `agent_orchestrator/version.py` (`VERSION`).
+Bump it for a named release; ordinary committed updates automatically receive a
+unique `+g<12-character commit>` build suffix. About SiLing reports the identity
+captured at Dashboard app startup, not a fetched candidate. Restart the service
+through the approved update flow before checking the new running version.
+Source archives without `.git` report `+unknown`; retain Git metadata for an
+identifiable build. Do not publish `.dirty` or `.unknown` as verified releases.
+
 1. Keep machine-specific settings, credentials, logs, and task data in ignored
    local files or outside the repository.
 2. Run the test suite and syntax checks documented in `CONTRIBUTING.md`.

@@ -379,6 +379,20 @@ The first UI/UX implementation increment and its remaining work are tracked in
 [the implementation report](docs/uiux-implementation-status.md). Mobile single-task
 navigation and service-wide settings editing are not included in this increment.
 
+### Check the SiLing version
+
+Open **Settings → About SiLing** on desktop or mobile to see the running version
+and full Git commit. Versions use `0.3.0+g<first 12 commit characters>`; every
+committed update changes the build suffix without a manual version-string edit.
+`.dirty` denotes local changes at startup; `unknown` denotes missing or
+unverified Git metadata, not a verified release build.
+
+The version is captured at Dashboard service startup. Fetching or pushing code
+alone does not change it. After an approved update restarts the service, reopen
+About or choose **Refresh version**. This never restarts Agents or reconnects
+terminals. The version belongs to the connected Dashboard, not its remote nodes
+or the Agent CLIs.
+
 ## Quick start
 
 Requirements: macOS or Linux, `tmux`, Python 3.10+, and at least one supported

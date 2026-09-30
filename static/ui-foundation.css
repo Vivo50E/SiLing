@@ -131,6 +131,9 @@ button.primary, button.toggle-on { color: var(--on-accent); }
 #settings-modal .modal-foot button { flex-shrink: 0; }
 #settings-save-status.error { color: var(--err); }
 .settings-inline-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.about-build { display: grid; gap: 8px; margin: 0; }
+.about-build dt { color: var(--text-dim); }
+.about-build dd { margin: 0 0 8px; overflow-wrap: anywhere; user-select: text; }
 html[data-density="compact"] .pane-head { padding: 3px 6px; }
 html[data-density="compact"] .session-item { padding-top: 5px; padding-bottom: 5px; }
 html[data-density="compact"] .topbar-global { padding: 4px 8px; }

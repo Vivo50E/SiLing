@@ -49,6 +49,8 @@ Cursor Agent 和普通终端放到同一个 Dashboard。用多面板布局、项
   Agent 输出、用户内容和后端原始错误不翻译。
 - **独立应用与受控更新**：支持 PWA 安装和 `siling` CLI；更新先验证指定提交，再明确批准应用。
   推送到 `main` 不等于部署。
+- **可核对的运行版本**：在 **设置 → 关于司令** 查看版本号和 Git 提交标识；每次提交更新后
+  构建标识自动变化，服务重启后才反映新版本。
 
 ### 快速开始
 
@@ -124,6 +126,8 @@ sync come from the upstream foundation, not new work built from scratch here.
 - **Installable app and controlled updates:** PWA installation and the `siling` CLI;
   updates verify a specific commit before explicit approval. Pushing to `main`
   does not deploy it.
+- **Visible running version:** **Settings → About SiLing** shows the version and Git
+  commit. Each committed update gets a distinct build suffix, reflected after the service restarts.
 
 ### Quick start
 

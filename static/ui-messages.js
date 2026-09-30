@@ -1,6 +1,15 @@
 /* Authored Dashboard copy only. Never translate terminal output or user data. */
 (() => {
   const zh = {
+    "About SiLing": "关于司令",
+    "Running version": "运行版本",
+    "Git commit": "Git 提交",
+    "Refresh version": "刷新版本",
+    "Loading version…": "正在读取版本…",
+    "Version unavailable. Check the Dashboard connection and retry.": "无法读取版本，请检查 Dashboard 连接后重试。",
+    "Build metadata unavailable": "构建信息不可用",
+    "Version captured when this Dashboard service started. Fetching or pushing code does not update the running service.": "此版本记录于 Dashboard 服务启动时。拉取或推送代码不会更新正在运行的服务。",
+    "The commit suffix identifies each update. dirty means local changes; unknown means build metadata could not be fully verified.": "提交标识用于区分每次更新。dirty 表示存在本地改动；unknown 表示构建信息无法完整验证。",
     "{working} working now across {count} sessions": "{count} 个会话中，{working} 个正在工作",
     "{waiting} waiting · {ended} ended": "{waiting} 个等待中 · {ended} 个已结束",
     "{count} need attention": "{count} 个需要关注",

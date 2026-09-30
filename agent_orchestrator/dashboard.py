@@ -82,6 +82,7 @@ from .ssh_files import (
     validate_target as validate_ssh_target,
 )
 from .self_update import SelfUpdateError, SelfUpdateManager
+from .version import build_info
 from .sync_status import SyncStatusService, load_settings as load_sync_settings
 from .sync_transfer import TransferCancelled
 from .terminal_theme import (
@@ -8350,6 +8351,9 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
     )
     native_activity = NativeActivityService()
     self_updates = SelfUpdateManager(PROJECT_DIR)
+    # Freeze the service's build identity. A later fetch/checkout is not a
+    # running-code update until the Dashboard has actually restarted.
+    runtime_version = build_info(PROJECT_DIR)
     pane_groups = PaneGroups(outputs_dir)
 
     def scan_session_snapshot() -> list[dict[str, Any]]:
@@ -8471,7 +8475,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
 
     app = FastAPI(
         title="SiLing Dashboard",
-        version="0.2.0",
+        version=str(runtime_version["version"]),
         lifespan=lifespan,
     )
     app.state.ttyd = ttyd
@@ -8749,6 +8753,10 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             "sync_status": sync_status.health_status(),
             "remote_nodes": remote_nodes.public_status(),
         }
+
+    @app.get("/api/version")
+    def dashboard_version():
+        return JSONResponse(runtime_version, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/config")
     def dashboard_config(request: Request):

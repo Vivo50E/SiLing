@@ -2917,9 +2917,22 @@
           <button data-settings-section="notifications" data-ui-icon="bell"><span data-i18n="notifications">Notifications</span></button>
           <button data-settings-section="browsing" data-ui-icon="folder"><span data-i18n="browsing">Browsing &amp; files</span></button>
           <button data-settings-section="connections" data-ui-icon="connection"><span data-i18n="connections">Connections &amp; updates</span></button>
+          <button data-settings-section="about" data-ui-icon="info"><span data-ui-message="About%20SiLing">About SiLing</span></button>
         </nav>
         <label class="settings-mobile-nav"><span class="ui-secondary" data-i18n="settings">Settings</span><select id="settings-section-picker" aria-label="Settings section" data-ui-label=Settings%20section><option value="appearance" data-i18n="appearance">Appearance</option><option value="terminal" data-i18n="terminal">Terminal</option><option value="notifications" data-i18n="notifications">Notifications</option><option value="browsing" data-i18n="browsing">Browsing &amp; files</option><option value="connections" data-i18n="connections">Connections &amp; updates</option></select></label>
         <div class="settings-content">
+        <section class="settings-section" id="settings-section-about" hidden>
+          <h2 data-ui-message="About%20SiLing">About SiLing</h2>
+          <p>司令 · SiLing</p>
+          <dl class="about-build">
+            <dt data-ui-message="Running%20version">Running version</dt><dd><code id="about-version">—</code></dd>
+            <dt data-ui-message="Git%20commit">Git commit</dt><dd><code id="about-commit">—</code></dd>
+          </dl>
+          <p class="ui-secondary" data-ui-message="Version%20captured%20when%20this%20Dashboard%20service%20started.%20Fetching%20or%20pushing%20code%20does%20not%20update%20the%20running%20service.">Version captured when this Dashboard service started. Fetching or pushing code does not update the running service.</p>
+          <p class="ui-secondary" data-ui-message="The%20commit%20suffix%20identifies%20each%20update.%20dirty%20means%20local%20changes%3B%20unknown%20means%20build%20metadata%20could%20not%20be%20fully%20verified.">The commit suffix identifies each update. dirty means local changes; unknown means build metadata could not be fully verified.</p>
+          <p id="about-status" role="status" aria-live="polite"></p>
+          <div class="settings-inline-actions"><button id="about-refresh" data-ui-message="Refresh%20version">Refresh version</button></div>
+        </section>
         <section class="settings-section" id="settings-section-appearance">
           <h2 data-i18n="appearance">Appearance</h2>
           <p class="ui-secondary" data-i18n="scope">Saved in this browser only. Changes apply immediately; running sessions are not restarted.</p>
@@ -3458,6 +3471,7 @@
 
   function openSettingsModal() {
     syncSettingsControls();
+    if ($("settings-section-picker").value === "about") refreshAboutVersion();
     settingsModal.hidden = false;
     settingsModal.showModal();
     (window.innerWidth <= 600 ? $("settings-section-picker") : settingsModal.querySelector('[aria-current="true"]')).focus({ preventScroll: true });
@@ -3482,11 +3496,41 @@
         section.hidden = section.id !== `settings-section-${button.dataset.settingsSection}`;
       });
       $("settings-section-picker").value = button.dataset.settingsSection;
+      if (button.dataset.settingsSection === "about") refreshAboutVersion();
     });
   });
   $("settings-section-picker").addEventListener("change", event => {
     settingsModal.querySelector(`[data-settings-section="${event.target.value}"]`)?.click();
   });
+  const aboutOption = document.createElement("option");
+  aboutOption.value = "about";
+  ui.setMessage(aboutOption, "About SiLing");
+  $("settings-section-picker").append(aboutOption);
+  let aboutRequest = 0;
+  async function refreshAboutVersion() {
+    const request = ++aboutRequest;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    $("about-version").textContent = "—";
+    $("about-commit").textContent = "—";
+    delete $("about-commit").dataset.uiMessage;
+    ui.setMessage($("about-status"), "Loading version…");
+    try {
+      const data = await api("/api/version", {cache: "no-store", signal: controller.signal});
+      if (request !== aboutRequest) return;
+      if (typeof data?.version !== "string" || !data.version) throw new Error("Missing version");
+      $("about-version").textContent = data.version;
+      if (data.commit) $("about-commit").textContent = data.commit;
+      else ui.setMessage($("about-commit"), "Build metadata unavailable");
+      $("about-status").textContent = "";
+      delete $("about-status").dataset.uiMessage;
+    } catch {
+      if (request === aboutRequest) ui.setMessage($("about-status"), "Version unavailable. Check the Dashboard connection and retry.");
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  $("about-refresh").addEventListener("click", refreshAboutVersion);
   // Preserve the existing opacity preference and event handlers.
   $("settings-section-appearance").insertBefore(
     panelOpacitySetting.closest("label"), $("settings-reset-appearance"),

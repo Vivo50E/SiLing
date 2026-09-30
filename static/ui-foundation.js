@@ -47,6 +47,7 @@
     plus: "M12 5v14M5 12h14", search: "M21 21l-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0",
     grid: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",
     settings: "M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M10 15v6",
+    info: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM12 11v6M12 7v1",
     folder: "M3 7V4h6l3 3h9v13H3z", zoom: "M3 9V3h6M15 3h6v6M21 15v6h-6M9 21H3v-6",
     more: "M5 11v2M12 11v2M19 11v2", workspace: "M3 5h18v15H3zM3 10h18M9 10v10",
     close: "M6 6l12 12M6 18 18 6", refresh: "M20 8a8 8 0 1 0 0 8M20 3v5h-5",
