@@ -1,19 +1,19 @@
 <div align="center">
 
-# SiLing
+# 司令 · SiLing
 
-**随时知道每个 coding agent 在做什么、哪个最重要，以及如何把工作完整找回来。**
+**随时掌握每个编程 Agent 的进度、任务优先级与恢复入口。**
 
 [![CI](https://github.com/Vivo50E/SiLing/actions/workflows/ci.yml/badge.svg)](https://github.com/Vivo50E/SiLing/actions/workflows/ci.yml)
 ![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![macOS and Linux](https://img.shields.io/badge/macOS%20%7C%20Linux-local--first-24292f)
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-[English](README.md)
+[首页 / Home](README.md) · **中文指南** · [English guide](README_EN.md)
 
 </div>
 
-SiLing 基于 [YAMY1234 的 Agent Orchestrator](https://github.com/YAMY1234/agent-orchestrator-public)
+**司令（SiLing）**基于 [YAMY1234 的 Agent Orchestrator](https://github.com/YAMY1234/agent-orchestrator-public)
 fork 并独立维护。原项目提供了本地优先、基于 tmux 的多 Agent Dashboard；
 SiLing 在此基础上增加会话控制、改进终端交互，并提供更可配置的工作台。
 感谢原作者和贡献者提供的项目基础。
@@ -33,8 +33,8 @@ SiLing 在此基础上增加会话控制、改进终端交互，并提供更可�
   Files 预览；配置文件主机后，也可预览 SSH 终端中的远程文件只读副本。改善换行
   链接识别（包括带长查询参数的 URL），Markdown 预览跟随应用主题。
 - **可配置的工作台**：分组设置、深色／浅色／系统主题、面板透明度、界面密度和
-  字号、减少动画、统一图标与不同 Agent 的身份徽标。新增工作台控件支持中英文，
-  尚非全界面翻译。
+  字号、减少动画、统一图标与不同 Agent 的身份徽标。Dashboard 操作界面可在设置中
+  切换中英文；Agent 输出、用户内容和后端原始错误保持原样。
 - **独立应用与受控更新**：PWA 安装、`siling` CLI，以及先在隔离环境测试指定
   commit、再明确批准应用的更新流程。推送到本 fork 的 `main` 不等于部署。
 - **按项目分组 pane**：命名与标识色、单个或批量归组、不重启终端的分组筛选；
