@@ -167,7 +167,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     let pendingFileContext = "";
     let startX = 0;
     let startY = 0;
-    // Shell and Codex use tmux selection to span its history buffer. Older
+    // Shell, Codex and Cursor use tmux selection to span its history buffer. Older
     // dashboard frames keep native selection; Option-drag still selects in
     // xterm, and Ctrl-drag remains available to terminal applications.
     const nativeSelection = (event) => {
@@ -640,7 +640,16 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       }
     }, true);
 
-    window.addEventListener("blur", () => { clearMode(); clearHover(); });
+    // A mouseup outside the iframe never reaches xterm. Its native drag
+    // interval otherwise keeps scrolling after focus or pane geometry changes.
+    // Remove only drag listeners/timers; preserve the selected text for copying.
+    const cancelDrag = () => {
+      selection._removeMouseDownListeners?.();
+      clearMode();
+      clearHover();
+    };
+    window.silingCancelTerminalDrag = cancelDrag;
+    window.addEventListener("blur", cancelDrag);
     return true;
   };
 
@@ -763,7 +772,7 @@ def patch_ttyd_index_interactions(content: bytes) -> bytes:
     report after an Option-drag selection. The resulting redraw immediately
     clears the selection. The same mouse-reporting path consumes ordinary URL
     clicks. Inject a small, idempotent compatibility layer into the HTML page;
-    keyboard input is unchanged. Shell and Codex panes favor native selection;
+    keyboard input is unchanged. Shell, Codex and Cursor panes favor native selection;
     Ctrl-drag retains mouse reporting, as does dragging in other agent panes.
     """
     if not content or _TTYD_INTERACTION_MARKER.encode() in content:

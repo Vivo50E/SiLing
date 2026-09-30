@@ -6337,7 +6337,7 @@
   }
 
   function sessionPrefersNativeSelection(s) {
-    return ["terminal", "codex"].includes(String(s?.agent || "").trim().toLowerCase());
+    return ["terminal", "codex", "cursor"].includes(String(s?.agent || "").trim().toLowerCase());
   }
 
   function sessionDotPresentation(s) {
@@ -7412,10 +7412,17 @@
     card.style.setProperty("--zoom-height", `${height}px`);
   }
 
+  function cancelPaneTerminalDrag(card) {
+    for (const frame of card?.querySelectorAll("iframe") || []) {
+      try { frame.contentWindow?.silingCancelTerminalDrag?.(); } catch (_) {}
+    }
+  }
+
   function closePaneZoom() {
     if (!paneZoomState) return;
     const state = paneZoomState;
     const card = state.card;
+    cancelPaneTerminalDrag(card);
     paneZoomState = null;
     if (card) {
       card.classList.remove("zoomed-pane");
@@ -7434,6 +7441,7 @@
     }
     if (card.dataset.runId) idleNotif.acknowledge(card.dataset.runId);
     closePaneZoom();
+    cancelPaneTerminalDrag(card);
     paneZoomState = { card, onClose: options.onClose };
     applyPaneZoomLayout();
     paneZoomBackdrop.hidden = false;
