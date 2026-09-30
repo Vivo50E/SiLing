@@ -9,7 +9,7 @@
 ![macOS and Linux](https://img.shields.io/badge/macOS%20%7C%20Linux-local--first-24292f)
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-[首页 / Home](README.md) · **中文指南** · [English guide](README_EN.md)
+[English](README.md) | **中文**
 
 </div>
 
@@ -526,6 +526,9 @@ SiLing 可以向本地 terminal sessions 发送输入，应当把它视为一个
 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 当前范围
+
+后续计划见 [Roadmap #1](https://github.com/Vivo50E/SiLing/issues/1)，涵盖子 Agent 协作、
+MCP 管理、多设备协同和移动端体验等；计划不代表已实现。
 
 ### 仓库导航与开发检查
 

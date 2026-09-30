@@ -68,8 +68,10 @@ and verify session discovery plus HTTP/WebSocket terminal proxying.
 
 - Keep each change focused and explain its user-visible behavior.
 - Add or update tests for logic changes.
-- Keep the bilingual homepage (`README.md`) and both detailed guides
-  (`README_EN.md`, `README_CN.md`) in sync when user-facing instructions change.
+- Keep the English homepage (`README.md`) and Chinese page (`README_CN.md`) in
+  sync, with a language switch at the top of each. `README_EN.md` is only a
+  compatibility link; do not duplicate the English content there or combine
+  both languages into the homepage.
 - Preserve the safe defaults: localhost binding without a token, mandatory
   authentication for non-loopback binds, and ignored runtime data.
 

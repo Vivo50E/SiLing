@@ -1,4 +1,4 @@
-"""Keep the bilingual landing page and its detailed guides navigable."""
+"""Keep the separate English/Chinese README pages and their switch navigable."""
 
 from pathlib import Path
 import re
@@ -11,11 +11,13 @@ READMES = ("README.md", "README_CN.md", "README_EN.md")
 
 
 class ReadmeTests(unittest.TestCase):
-    def test_homepage_has_both_languages_and_guides_share_the_brand(self):
+    def test_readmes_use_separate_language_pages_and_preserve_the_brand(self):
         homepage = (PROJECT_DIR / "README.md").read_text(encoding="utf-8")
-        self.assertIn("## 中文\n", homepage)
-        self.assertIn("## English\n", homepage)
-        for filename in READMES:
+        self.assertNotIn("## 中文\n", homepage)
+        self.assertNotIn("](#中文)", homepage)
+        self.assertNotIn("](#english)", homepage)
+        for filename, switch in (("README.md", "[中文](README_CN.md)"),
+                                 ("README_CN.md", "[English](README.md)")):
             with self.subTest(filename=filename):
                 text = (PROJECT_DIR / filename).read_text(encoding="utf-8")
                 title = re.search(r"^# (.+)$", text, re.MULTILINE).group(1)
@@ -24,8 +26,10 @@ class ReadmeTests(unittest.TestCase):
                 self.assertIn(
                     "https://github.com/YAMY1234/agent-orchestrator-public", text
                 )
-                for other in set(READMES) - {filename}:
-                    self.assertIn(f"]({other})", text)
+                self.assertIn(switch, text.split("</div>", 1)[0])
+        legacy = (PROJECT_DIR / "README_EN.md").read_text(encoding="utf-8")
+        self.assertIn("](README.md)", legacy)
+        self.assertNotIn("## Quick start", legacy)
 
     def test_relative_links_and_images_exist(self):
         for filename in READMES:
@@ -51,11 +55,16 @@ class ReadmeTests(unittest.TestCase):
                         )
 
     def test_bilingual_quick_start_commands_match(self):
-        text = (PROJECT_DIR / "README.md").read_text(encoding="utf-8")
-        chinese, english = text.split("## English\n", 1)
-        commands = [re.findall(r"```bash\n(.*?)```", part, re.DOTALL)
-                    for part in (chinese, english)]
-        self.assertEqual(len(commands[0]), 1)
+        commands = []
+        for filename, heading in (("README.md", "## Quick start"),
+                                  ("README_CN.md", "## 快速开始")):
+            text = (PROJECT_DIR / filename).read_text(encoding="utf-8")
+            section = text.split(heading, 1)[1]
+            block = re.search(r"```bash\n(.*?)```", section, re.DOTALL).group(1)
+            # The Python-version comment is localized; executable lines match.
+            commands.append([line.split("  #", 1)[0].rstrip()
+                             for line in block.splitlines() if line.strip()])
+        self.assertTrue(commands[0])
         self.assertEqual(commands[0], commands[1])
 
 
