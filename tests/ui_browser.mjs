@@ -23,6 +23,7 @@ const sessions = ['claude', 'codex', 'terminal', 'cursor', 'custom-agent'].map((
   remote: i === 4, node_id: i === 4 ? 'fixture-remote' : '', node_online: i !== 4,
 }));
 const requests = [];
+const fileDiscoveries = [];
 let frameLoads = 0;
 let pendingCreation;
 let pendingRestart;
@@ -47,7 +48,7 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname.endsWith('/discover-files')) {
     let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{
-      const data=JSON.parse(body);assert.equal(data.context_id,'fixture-context');assert.equal(data.text,'reports/test.md');
+      const data=JSON.parse(body);fileDiscoveries.push(data);assert.equal(data.context_id,'fixture-context');assert.equal(data.text,'reports/test.md');
       res.setHeader('Content-Type','application/json');res.end(JSON.stringify({files:[{source_path:'/remote/work/reports/test.md',folder:{path:'/fixture/report.md'}}],errors:[]}));
     });return;
   }
@@ -594,12 +595,41 @@ try {
   await evaluate(`document.querySelector('[data-run-id="fixture-2"] .btn-pane-more').click();document.querySelector('[data-run-id="fixture-2"] .btn-terminal-files').click()`);
   for(let i=0;i<50;i++){if(await evaluate(`!!document.querySelector('dialog[open] [data-text]')`))break;await pause(50);}
   assert.ok(await evaluate(`!!document.querySelector('dialog[open] [data-context]')`),'Ordinary Terminal exposes file context and selected-text discovery');
+  const discoveryRequests=()=>requests.filter(r=>r.path.endsWith('/discover-files')).length;
+  const beforeInvalid=discoveryRequests();
+  for(const invalid of ['', '   ', 'x'.repeat(16001)]) {
+    await evaluate(`document.querySelector('dialog[open] [data-text]').value=${JSON.stringify(invalid)};document.querySelector('dialog[open] [data-model]').click()`);
+    await pause(100);
+    assert.equal(discoveryRequests(),beforeInvalid,'Invalid text must never be sent to Claude');
+    assert.ok(await evaluate(`document.querySelector('dialog[open] [data-status]').textContent.length>0`));
+  }
+  await evaluate(`document.querySelector('dialog[open] [data-load]').click()`);
+  for(let i=0;i<50;i++){if(await evaluate(`document.querySelector('dialog[open] [data-text]').value.includes('history-')`))break;await pause(50);}
+  assert.ok(await evaluate(`document.querySelector('dialog[open] [data-text]').value.includes('history-')`),'Load terminal output without a selection');
+  assert.equal(discoveryRequests(),beforeInvalid,'Reading output does not call Claude or discover files');
   await evaluate(`document.querySelector('dialog[open] [data-text]').value='reports/test.md';document.querySelector('dialog[open] [data-scan]').click()`);
   for(let i=0;i<50;i++){if(await evaluate(`document.querySelector('dialog[open] [data-results]')?.children.length===1`))break;await pause(50);}
   assert.equal(await evaluate(`document.querySelector('dialog[open] [data-results] button').textContent`),'/remote/work/reports/test.md');
+  await evaluate(`document.querySelector('dialog[open] [data-model]').click()`);
+  for(let i=0;i<50;i++){if(fileDiscoveries.some(r=>r.intelligent===true))break;await pause(50);}
+  assert.ok(fileDiscoveries.some(r=>r.intelligent===true && r.text==='reports/test.md'),'Explicit Claude action sends reviewed valid text');
   assert.equal(frameLoads,beforeFileContextFrames,'File context dialog preserves terminal frames');
   await screenshot('terminal-file-context');
   await evaluate(`document.querySelector('dialog[open] [data-save]').click()`);await pause(150);
+  await evaluate(`document.querySelector('dialog[open] [data-close]').click()`);
+  await evaluate(`(async()=>{
+    const controller=window.SilingTerminalFiles.create({
+      api:async()=>({configured:true,current:{id:'viewport'},contexts:[{id:'viewport'}],settings:{}}),
+      openViewer:()=>{},
+    });
+    const buffer={viewportY:10,getLine:y=>({translateToString:()=>y===10?'x'.repeat(16001):'wrong row'})};
+    const term={getSelection:()=>'',rows:1,buffer:{active:buffer}};
+    controller.states.set('viewport',{frame:{contentWindow:{term}}});
+    await controller.configure('viewport','initial');
+    document.querySelector('dialog[open] [data-load]').click();
+  })()`);
+  assert.equal(await evaluate(`document.querySelector('dialog[open] [data-text]').value`),'x'.repeat(16000),'Viewport text is bounded and does not read unrelated rows');
+  assert.ok(await evaluate(`document.querySelector('dialog[open] [data-status]').textContent.includes('16000')`),'Truncation is explicit');
   await evaluate(`document.querySelector('dialog[open] [data-close]').click()`);
   console.log('PASS: ordinary Terminal file context, selected relative file discovery, persistence UI and frame preservation');
   assert.deepEqual(errors, [], 'No uncaught browser errors');

@@ -139,6 +139,7 @@
             <p class="ui-secondary" data-current></p></div></details>
             <label>${tr('Resolve selected text using','使用以下上下文解析选中文字')} <select data-context style="max-width:100%"></select></label>
             <textarea data-text rows="4" style="width:100%" placeholder="${tr('Select terminal text or paste it here','选中终端文字，或粘贴到这里')}"></textarea>
+            <div style="display:flex;gap:12px;align-items:center"><button class="ui-button" data-load>${tr('Read current terminal output','读取当前终端输出')}</button><span class="ui-secondary" data-count></span></div>
             <p class="ui-secondary">${tr('Intelligent identification sends only this text to your local Claude CLI’s configured model. It cannot run tools.','智能识别仅将这里的文字发送给本机 Claude CLI 配置的模型，不允许执行工具。')}</p>
             <div><button class="ui-button" data-scan>${tr('Find files','识别路径')}</button> <button class="ui-button" data-model>${tr('Identify with Claude','用 Claude 智能识别')}</button></div>
             <p role="status" data-status style="margin:0;white-space:pre-wrap"></p><div data-results style="display:grid;gap:8px"></div>
@@ -177,6 +178,31 @@
           try { const selection = await api(endpoint(id,'selection'),{method:'POST'});el('text').value=selection.text||''; }
           catch (_) { /* An empty selection is normal; users can paste instead. */ }
         }
+        const updateCount = () => {
+          const count=Array.from(el('text').value).length;
+          el('count').textContent=`${count} / 16000 ${tr('characters','字符')}`;
+          el('text').setAttribute('aria-invalid',String(count>16000));
+        };
+        el('text').oninput=updateCount;updateCount();
+        el('load').onclick = async () => {
+          el('load').disabled=el('scan').disabled=el('model').disabled=true;
+          try {
+            const term=state.frame?.contentWindow?.term;
+            const buffer=term?.buffer?.active;
+            let text='';
+            if(buffer) {
+              const lines=[];
+              for(let y=buffer.viewportY;y<buffer.viewportY+term.rows;y++) lines.push(buffer.getLine(y)?.translateToString(true)||'');
+              text=lines.join('\n');
+            } else text=await api(endpoint(id,'pane'));
+            const chars=Array.from(text.trim());
+            el('text').value=chars.slice(-16000).join('');updateCount();
+            el('status').textContent=chars.length
+              ? (chars.length>16000 ? tr('Loaded the last 16000 characters. ','已载入最后 16000 个字符。') : tr('Output loaded. ','已载入终端输出。'))+tr('Review the text and choose its host and directory, then identify files. Nothing has been sent to Claude.','请检查文字及对应主机和目录，再点击识别。尚未发送给 Claude。')
+              : tr('The terminal has no output to read. Paste text above.','终端暂无可读取的输出，请在上方粘贴文字。');
+          } catch(error) {el('status').textContent=error.message;}
+          finally {el('load').disabled=el('scan').disabled=el('model').disabled=false;}
+        };
         el('close').onclick = () => dialog.close();
         dialog.addEventListener('close', () => dialog.remove(), {once:true});
         el('save').onclick = async () => {
@@ -187,11 +213,19 @@
           } catch(error) {el('status').textContent=error.message;}
         };
         const identify = async intelligent => {
-          el('scan').disabled=el('model').disabled=true;
+          const text=el('text').value;
+          updateCount();
+          if(!text.trim() || Array.from(text).length>16000) {
+            el('status').textContent=!text.trim()
+              ? tr('Read current terminal output or paste text above before identifying files.','请先点击“读取当前终端输出”，或在上方粘贴文字，再识别文件。')
+              : tr('Text exceeds 16000 characters. Shorten it before identifying files.','文字超过 16000 字符，请缩短内容后再识别文件。');
+            el('text').focus();return;
+          }
+          el('load').disabled=el('scan').disabled=el('model').disabled=true;
           el('status').textContent=tr('Checking files…','正在检查文件…');
           el('results').replaceChildren();
           try {
-            const result=await api(endpoint(id,'discover-files'),{method:'POST',body:{text:el('text').value,context_id:el('context').value,intelligent}});
+            const result=await api(endpoint(id,'discover-files'),{method:'POST',body:{text,context_id:el('context').value,intelligent}});
             for(const item of result.files) {
               const button=document.createElement('button');button.className='ui-button';
               button.textContent=item.source_path;button.style.overflowWrap='anywhere';
@@ -199,7 +233,7 @@
             }
             el('status').textContent=`${result.files.length} ${tr('files found','个文件已找到')}${result.errors.length ? '\n'+result.errors.map(e=>e.path+': '+e.error).join('\n'):''}${result.limited?' · '+tr('First 8 candidates checked; narrow the selection for more.','本次检查前 8 个候选，请缩小选区继续。'):''}`;
           } catch(error) {el('status').textContent=error.message;}
-          finally {el('scan').disabled=el('model').disabled=false;}
+          finally {el('load').disabled=el('scan').disabled=el('model').disabled=false;}
         };
         el('scan').onclick=()=>void identify(false);el('model').onclick=()=>void identify(true);
         dialog.showModal();
