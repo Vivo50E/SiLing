@@ -1,7 +1,7 @@
 # Documentation / 文档导航
 
-Start with the [bilingual homepage](../README.md), [中文指南](../README_CN.md),
-or [English guide](../README_EN.md). The links below classify existing documents
+Start with the [English homepage](../README.md) or [中文指南](../README_CN.md).
+Use the language links at the top to switch pages. The links below classify existing documents
 without moving them or breaking their published URLs.
 
 ## Repository and development / 仓库与开发
