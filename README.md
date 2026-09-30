@@ -290,23 +290,39 @@ preserves the full query string; blank lines and following prose are not joined.
 The Dashboard does not create a second copy of your project. It remembers the
 real workspace and gives each task a stable place from which to track its work.
 
-### File links inside an SSH terminal
+### Files from ordinary Terminal and SSH sessions
 
-For a local Terminal pane running `ssh`, open its **More** menu and set
-**SSH file host** to an existing SSH alias (for example `dev-server`) or
-`user@hostname`. This setting belongs to that session in the current browser;
-clear it after returning to a local shell. Absolute file links, including bare
-paths following Chinese punctuation or split across indented terminal rows,
-are fetched through SSH and opened
-in Files without restarting the terminal or its agent. HTTP links keep their normal behavior.
+Open a pane's **More → Terminal files** to manage file context and identify
+files in selected output. This works with ordinary shell/tmux sessions and
+programs launched inside SSH; the program does not need to call `siling link-file`.
 
-The Dashboard host must already have noninteractive SSH access and a verified
-host key; use `~/.ssh/config` for custom ports, jump hosts and identity files.
-The remote host needs `python3`, but does not need SiLing. Each click refreshes a
-read-only local snapshot (up to 16 MiB) under the session's `ssh-previews/`
-directory, labeled with its source host and path. Files retains that snapshot
-for offline viewing; it is not a live remote mount. Directories are not supported.
-Remote Nodes panes continue to use their node's existing file access.
+- **Auto** detects local shell working directories and direct SSH destinations.
+  Set the remote base directory once for relative paths such as `reports/test.md`.
+  For SSH commands with custom flags, configure a host alias in `~/.ssh/config`
+  and choose manual SSH mode. Remote directory changes must be updated here.
+- File context is saved per session on the Dashboard host. Supported existing
+  browser-local SSH bindings migrate on first use. New observed output retains
+  its host/directory context when the pane switches back to a local shell.
+  Older or ambiguous output asks you to choose a context instead of guessing.
+- Automatic discovery periodically examines bounded new terminal output,
+  verifies file-shaped paths and adds readable files to Files. It does not call
+  a model. Disable it in the same dialog. Relative path clicks use their recorded
+  directory; existing absolute links and URLs continue to work.
+- Select terminal text, then choose **Find files**, or **Identify with Claude**
+  for wrapped/natural-language output. The latter sends only the dialog text to
+  the model configured in the Dashboard user's Claude CLI. It disables tools,
+  hooks, skills and MCP, has a 45-second timeout and a $0.10 call budget, and
+  verifies returned paths before linking them. It requires an installed,
+  authenticated Claude CLI. Ordinary discovery works without it.
+
+Remote file reads require existing noninteractive SSH access, a verified host
+key and remote `python3`. SiLing need not be installed remotely. Previews are
+local snapshots up to 16 MiB; clicking a terminal link refreshes the snapshot.
+Automatic discovery caches results and checks at most eight candidates per
+batch. It samples live output (up to 200 scrollback rows between polls), so use
+selected-text identification for older or rapidly scrolling output. Local files
+and snapshot directories must be within configured linked-file allowed roots.
+Remote Nodes use the same APIs on their node; older nodes retain legacy links.
 
 ### Workbench appearance and controls
 

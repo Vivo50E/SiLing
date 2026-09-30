@@ -62,6 +62,7 @@ from urllib.parse import quote, urlparse
 
 from .agent_cli import resolve_agent_cli
 from .browser_open import open_system_browser, system_browser_available, validate_web_url
+from . import terminal_files
 from .conversation_metrics import TranscriptMetricsCache
 from .dashboard_network import build_access_url, list_local_ipv4, pick_best_ip
 from .json_store import edit_json, write_json
@@ -2805,6 +2806,10 @@ def _persist_linked_path(r: dict[str, Any], linked_path: Path,
             )
         return changed
     path = Path(run_dir) / "session.json"
+    if r.get("kind") == "orphan":
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        with edit_json(path, create=True) as data:
+            return _add_linked_path(data, linked_path, label, item_type)
     if not path.exists():
         raise HTTPException(400, "session.json not found")
     with edit_json(path) as data:
@@ -7022,9 +7027,14 @@ def _lookup_run_light(outputs_dir: Path, run_id: str) -> Optional[dict[str, Any]
         if Path(task_name).name != task_name:
             return None
         alive = tmux_alive(task_name)
+        file_dir = terminal_files.state_dir(outputs_dir, run_id)
+        try:
+            file_metadata = json.loads((file_dir / "session.json").read_text())
+        except (OSError, ValueError):
+            file_metadata = {}
         return {
             "run_id": run_id,
-            "run_dir": "",
+            "run_dir": str(file_dir),
             "run_name": task_name,
             "task": task_name.replace("orch-", "", 1),
             "kind": "orphan",
@@ -7037,7 +7047,7 @@ def _lookup_run_light(outputs_dir: Path, run_id: str) -> Optional[dict[str, Any]
             "auto_title": None,
             "display_name": task_name.replace("orch-", "", 1),
             "cwd": tmux_get_cwd(task_name) if alive else "",
-            "linked_folders": [],
+            "linked_folders": _normalize_linked_folders(file_metadata.get("linked_folders")),
             "busy": False,
         }
     if sep != "::" or not run_name or run_name == "tmux":
@@ -9138,7 +9148,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         if not port:
             return {"ok": False, "reason": "failed to launch ttyd"}
         # NOTE trailing slash matters — ttyd serves SPA from `/`.
-        return {"ok": True, "url": f"/tty/{session}/", "selection_copy": True}
+        return {"ok": True, "url": f"/tty/{session}/", "selection_copy": True, "file_context": True}
 
     # ---- Reverse proxy for ttyd (HTTP + WebSocket) ----
     # Keeps the iframe same-origin with the dashboard.
@@ -9890,6 +9900,90 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             "omitted": omitted_any,
             "scanned": scanned_total,
         }
+
+    def terminal_file_run(run_id: str):
+        run = _lookup_run_light(outputs_dir, run_id)
+        if not run:
+            raise HTTPException(404, "run not found")
+        return run, terminal_files.state_dir(outputs_dir, run_id)
+
+    @app.get("/api/sessions/{run_id}/file-context")
+    def get_terminal_file_context(run_id: str):
+        run, directory = terminal_file_run(run_id)
+        detected = terminal_files.detect_environment(run.get("tmux_session", ""), run.get("cwd", ""))
+        return terminal_files.context(directory, detected)
+
+    @app.put("/api/sessions/{run_id}/file-context")
+    def set_terminal_file_context(run_id: str, body: dict):
+        run, directory = terminal_file_run(run_id)
+        detected = terminal_files.detect_environment(run.get("tmux_session", ""), run.get("cwd", ""))
+        try:
+            return terminal_files.context(directory, detected, body)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+
+    def terminal_file_result(run_id: str, run: dict, ctx: dict, raw: str):
+        path = terminal_files.resolve_path(raw, ctx)
+        if ctx.get("host"):
+            result = post_session_ssh_file(run_id, {"host": ctx["host"], "path": path})
+            return {"raw": raw, "source_path": path, "context_id": ctx["id"], **result}
+        linked = _resolve_linked_path(path)
+        if not linked.is_file():
+            raise ValueError("Only regular files can be discovered")
+        _persist_linked_path(run, linked, linked.name, "file")
+        return {"ok": True, "raw": raw, "source_path": str(linked), "context_id": ctx["id"],
+                "folder": _linked_folder_summary({"path": str(linked), "label": linked.name,
+                                                  "type": "file", "created_at": _iso_now()})}
+
+    @app.post("/api/sessions/{run_id}/terminal-file")
+    def open_terminal_file(run_id: str, body: dict):
+        run, directory = terminal_file_run(run_id)
+        try:
+            ctx = terminal_files.get_context(directory, str(body.get("context_id") or ""))
+            return terminal_file_result(run_id, run, ctx, body.get("path"))
+        except (ValueError, OSError) as exc:
+            raise HTTPException(400, str(exc))
+
+    @app.post("/api/sessions/{run_id}/discover-files")
+    def discover_terminal_files(run_id: str, body: dict):
+        run, directory = terminal_file_run(run_id)
+        text = body.get("text", "")
+        if not isinstance(text, str) or len(text) > 16000:
+            raise HTTPException(400, "Select at most 16000 characters")
+        automatic = body.get("automatic") is True
+        try:
+            ctx = terminal_files.get_context(directory, str(body.get("context_id") or ""))
+            state = terminal_files.read_state(directory)
+            if automatic and not state.get("settings", {}).get("auto_discover", True):
+                return {"files": [], "errors": []}
+            if automatic and body.get("intelligent"):
+                raise ValueError("Model identification requires an explicit selection action")
+            paths = (terminal_files.model_paths(text) if body.get("intelligent")
+                     else terminal_files.extract_paths(text))
+        except (ValueError, OSError) as exc:
+            raise HTTPException(400, str(exc))
+        files, errors = [], []
+        seen = state.get("seen", {})
+        for raw in paths[:8]:
+            key = ctx['id'] + ':' + raw
+            previous = seen.get(key)
+            if automatic and previous and time.time() - previous.get("time", 0) < (3600 if previous.get("file") else 30):
+                if previous.get("file"):
+                    files.append(previous["file"])
+                continue
+            try:
+                result = terminal_file_result(run_id, run, ctx, raw)
+                files.append(result)
+                seen[key] = {"time": time.time(), "file": result}
+            except (HTTPException, OSError, ValueError) as exc:
+                errors.append({"path": raw, "error": str(getattr(exc, 'detail', exc))})
+                seen[key] = {"time": time.time()}
+        with edit_json(directory / "context.json") as data:
+            records = data.setdefault("seen", {})
+            records.update(seen)
+            data["seen"] = dict(sorted(records.items(), key=lambda item: item[1].get("time", 0))[-512:])
+        return {"files": files, "errors": errors, "context": ctx,
+                "limited": len(paths) > 8}
 
     @app.post("/api/sessions/{run_id}/ssh-file")
     def post_session_ssh_file(run_id: str, body: dict):

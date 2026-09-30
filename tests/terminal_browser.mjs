@@ -182,6 +182,31 @@ finally:
     await screenshot(pathRows===bareRows?'hard-wrapped-ssh-path':'announcement-ssh-path');
   }
   console.log('PASS: bare and Chinese-prefixed SSH paths highlight and open complete targets from every line');
+  await evaluate(`window.frameElement.dataset.fileContext='true';window.silingFileContextForRow=()=> 'historical-ssh-context';`);
+  tmux('send-keys','-t','check',"printf '%s\\n' 'reports/relative-result.md'",'Enter');
+  await pause(500);
+  const relativeCell=await evaluate(`(()=>{const b=term.buffer.active;const r=document.querySelector('.xterm-screen').getBoundingClientRect();for(let y=b.viewportY;y<b.length;y++){if(b.getLine(y).translateToString(true)==='reports/relative-result.md')return{x:r.x+2.5*r.width/term.cols,y:r.y+(y-b.viewportY+.5)*r.height/term.rows};}})()`);
+  assert.ok(relativeCell);
+  await cdp('Input.dispatchMouseEvent',{type:'mouseMoved',...relativeCell,buttons:0});
+  assert.ok(await evaluate(`document.querySelector('.siling-link-highlight')?.children.length>0`));
+  await cdp('Input.dispatchMouseEvent',{type:'mousePressed',...relativeCell,button:'left',buttons:1,clickCount:1});
+  await cdp('Input.dispatchMouseEvent',{type:'mouseReleased',...relativeCell,button:'left',buttons:0,clickCount:1});
+  assert.deepEqual(await evaluate('window.localMessages.at(-1)'),{type:'siling:open-local-path',path:'reports/relative-result.md',context_id:'historical-ssh-context'});
+  await evaluate(`window.frameElement.dataset.fileContext='false';`);
+  console.log('PASS: relative file highlight and click retain historical SSH context');
+  await evaluate(fs.readFileSync(path.join(root,'static/terminal-files.js'),'utf8'));
+  await evaluate(`window.observedContext={id:'observed-remote',host:'fixture-ssh',cwd:'/remote'};window.fileDiscovery=[];window.fileObserver=SilingTerminalFiles.create({api:async(url,options={})=>{if(url.endsWith('/file-context'))return{configured:true,current:observedContext,settings:{auto_discover:true},contexts:[observedContext]};fileDiscovery.push(options.body);return{files:[],errors:[]};},openViewer:async()=>{}});window.observerFrame={dataset:{fileContext:'true'},isConnected:true,contentWindow:window,addEventListener:(name,fn)=>{window.startFileObserver=fn;}};fileObserver.attach(observerFrame,'browser-fixture');startFileObserver();`);
+  tmux('send-keys','-t','check',"printf '%s\\n' '/tmp/remote-observer-report.md'",'Enter');
+  await pause(4500);
+  assert.ok(await evaluate(`fileObserver.states.get('browser-fixture').records.some(r=>r.text==='/tmp/remote-observer-report.md' && r.context==='observed-remote')`),'Real xterm markers capture remote output context: '+JSON.stringify(await evaluate(`({error:fileObserver.states.get('browser-fixture').error,records:fileObserver.states.get('browser-fixture').records.map(r=>({text:r.text,context:r.context})).slice(-6),bufferType:term.buffer.active.type})`)));
+  await evaluate(`window.observedContext={id:'observed-local',host:'',cwd:'/local'};`);
+  tmux('send-keys','-t','check',"printf '%s\\n' '/tmp/local-observer-report.md'",'Enter');
+  await pause(4500);
+  assert.ok(await evaluate(`fileObserver.states.get('browser-fixture').records.some(r=>r.text==='/tmp/remote-observer-report.md' && r.context==='observed-remote')`),'Remote output is not relabeled on host change');
+  assert.ok(await evaluate(`fileObserver.states.get('browser-fixture').records.some(r=>r.text==='/tmp/local-observer-report.md' && r.context==='observed-local')`),'New output receives new local context');
+  assert.ok(await evaluate(`fileDiscovery.some(body=>body?.automatic===true && body.text.includes('/tmp/local-observer-report.md'))`));
+  await evaluate(`observerFrame.isConnected=false;fileObserver.states.get('browser-fixture').stop();`);
+  console.log('PASS: real xterm observer records host transitions and triggers automatic discovery');
   // Exercise tmux history itself, not a separately rendered text snapshot.
   await evaluate(`window.silingReadSelection=()=>fetch('http://127.0.0.1:${selectionPort}').then(r=>r.json());Object.defineProperty(navigator.clipboard,'write',{value:async items=>{window.copiedText=await(await items[0].getType('text/plain')).text();}});void 0;`);
   tmux('send-keys','-t','check','i=1; while [ $i -le 150 ]; do echo cross-screen-$i; i=$((i+1)); done','Enter');
