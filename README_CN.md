@@ -240,6 +240,7 @@ CLI 主动换行的裸 HTTP(S) 链接，在缩进一致且接近 pane 行尾时�
 - 绑定整个项目或 task 文件夹，直接在 Dashboard 中浏览目录树。
 - 当 task 跨越多个位置时，可以单独绑定文件或 URL。
 - 预览 Markdown、源码（含 SQL）、图片、CSV 数据和报告。
+- 文本预览中的 **复制全部** 会复制完整文件，即使预览已截断。
 - 可在 **设置 → 浏览与文件 → Open web links inside SiLing** 中选择将 terminal、Markdown
   和 Linked Items 里的 HTTP(S) 链接打开为内嵌 Projects 标签页。
 - 在 Dashboard 所在的 Mac 上，默认开启 **通过 macOS 打开外部链接**：

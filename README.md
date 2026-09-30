@@ -288,6 +288,7 @@ preserves the full query string; blank lines and following prose are not joined.
   Dashboard.
 - Link individual files or URLs when the task spans several locations.
 - Preview Markdown, source files (including SQL), images, CSV data, and reports.
+- **Copy all** copies the full text file, including content beyond a truncated preview.
 - Optionally open terminal, Markdown, and linked HTTP(S) URLs in an embedded
   Projects tab via **Settings → Browsing & files → Open web links inside SiLing**.
 - On the Dashboard's Mac, **Open external links via macOS** is on by default:

@@ -38,6 +38,9 @@ let versionMode = 'ok';
 let versionCommit = 'a'.repeat(40);
 const systemBrowserOpens = [];
 const linkedFixtures = new Map();
+const previewSource = '# Readable Markdown\n\nAn isolated preview fixture.';
+const completeSource = previewSource + '\n' + 'Full source line\n'.repeat(18000) + 'END OF FILE';
+let truncatePreview = false;
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   requests.push({ method: req.method, path: url.pathname });
@@ -73,12 +76,16 @@ const server = http.createServer((req, res) => {
     return res.end(JSON.stringify({folders:linkedFixtures.get(id)||[]}));
   }
   if (url.pathname.endsWith('/folders/file/raw')) {
+    if (url.searchParams.get('folder') === '/fixture/report.md') {
+      res.setHeader('Content-Type','text/plain');
+      return res.end(completeSource);
+    }
     res.setHeader('Content-Type','image/png');
     return res.end(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64'));
   }
   if (url.pathname.endsWith('/folders/file')) {
     res.setHeader('Content-Type','application/json');
-    return res.end(JSON.stringify({ok:true,kind:'markdown',name:'report.md',path:'/fixture/report.md',content:'# Readable Markdown\n\nAn isolated preview fixture.'}));
+    return res.end(JSON.stringify({ok:true,kind:'markdown',name:'report.md',path:'/fixture/report.md',content:previewSource,truncated:truncatePreview}));
   }
   if (url.pathname.endsWith('/pane')) {
     res.setHeader('Content-Type', 'text/plain');
@@ -364,6 +371,22 @@ try {
       await pause(50);
     }
     assert.ok(await evaluate(`!!document.querySelector('.markdown-body h1')`),'Files renders the Markdown preview');
+    await evaluate(`window.originalClipboard=navigator.clipboard;Object.defineProperty(navigator,'clipboard',{configurable:true,value:{write:async items=>{window.copiedFile=await(await items[0].getType('text/plain')).text()},writeText:async text=>{window.copiedFile=text}}});document.querySelector('#folder-copy-all').click()`);
+    for(let i=0;i<80 && !(await evaluate(`window.copiedFile!==undefined`));i++) await pause(25);
+    assert.equal(await evaluate(`window.copiedFile`),previewSource,'Copy all preserves raw Markdown source');
+    truncatePreview=true;
+    await evaluate(`document.querySelector('#folder-modal-refresh').click()`);
+    for(let i=0;i<80 && !(await evaluate(`!document.querySelector('#folder-copy-all').disabled`));i++) await pause(25);
+    await evaluate(`window.copiedFile=undefined;document.querySelector('#folder-copy-all').click()`);
+    for(let i=0;i<80 && !(await evaluate(`window.copiedFile!==undefined`));i++) await pause(25);
+    assert.equal(await evaluate(`window.copiedFile`),completeSource,'Copy all fetches the entire truncated file');
+    await evaluate(`window.originalAlert=window.alert;window.alert=text=>{window.copyError=text};navigator.clipboard.write=async()=>{throw Error('clipboard denied')};document.querySelector('#folder-copy-all').click()`);
+    for(let i=0;i<80 && !(await evaluate(`!!window.copyError`));i++) await pause(25);
+    assert.match(await evaluate(`window.copyError`),/clipboard denied/);
+    assert.equal(await evaluate(`document.querySelector('#folder-copy-all').disabled`),false,'Failed copying permits retry');
+    await evaluate(`window.alert=window.originalAlert;Object.defineProperty(navigator,'clipboard',{configurable:true,value:window.originalClipboard})`);
+    truncatePreview=false;
+    console.log('PASS: Copy all preserves source, fetches complete truncated files, and permits retry after failure');
     assert.ok(await evaluate(`[...document.querySelectorAll('.folder-section-title')].every(el=>getComputedStyle(el).backgroundImage==='none')`),'Files headers must not keep a fixed light gradient behind theme-colored text');
     const previewContrast = async () => evaluate(`(()=>{
       const rgb = color => color.match(/[\\d.]+/g).map(Number);

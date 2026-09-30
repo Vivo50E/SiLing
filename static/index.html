@@ -2284,6 +2284,10 @@
     font-size: 11px;
     text-transform: uppercase;
   }
+  #folder-copy-all {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
   .folder-preview-refresh {
     width: 30px;
     height: 30px;
@@ -2747,7 +2751,7 @@
   }
 </style>
 <link rel="stylesheet" href="/static/ui-foundation.css?v=6" />
-<script src="/static/ui-messages.js?v=4"></script>
+<script src="/static/ui-messages.js?v=5"></script>
 <script src="/static/ui-foundation.js?v=9"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=2" />
 <script src="/static/pane-groups.js?v=3"></script>
@@ -10071,6 +10075,7 @@
               <div class="name" id="folder-file-name"><span data-ui-message=Preview>Preview</span></div>
               <div class="path" id="folder-file-path"></div>
             </div>
+            <button class="btn-secondary" id="folder-copy-all" type="button" disabled data-ui-message="Copy all">Copy all</button>
             <button class="folder-preview-refresh" id="folder-modal-refresh" type="button" title="Refresh preview" data-ui-title=Refresh%20preview aria-label="Refresh preview" data-ui-label=Refresh%20preview>↻</button>
             <span class="file-badge" id="folder-file-kind"><span data-ui-message=folder>folder</span></span>
           </div>
@@ -11318,7 +11323,11 @@
     return `<pre class="file-plain">${escapeHtml(markdown || "")}</pre>`;
   }
 
+  let previewCopyTarget = null;
   function setPreviewHeader(name, path, kind) {
+    previewCopyTarget = null;
+    $("folder-copy-all").disabled = true;
+    ui.setMessage($("folder-copy-all"), "Copy all");
     $("folder-file-name").textContent = name || ui.message("Preview");
     $("folder-file-path").textContent = path || "";
     $("folder-file-kind").textContent = kind || "file";
@@ -11751,6 +11760,11 @@
       return;
     }
     setPreviewHeader(file.name || entry.name, file.path || filePathFor(folder, entry.rel), file.kind || entry.kind || "text");
+    previewCopyTarget = {
+      text: file.content || "", truncated: !!file.truncated,
+      url: `/api/sessions/${encodeURIComponent(folderModalState.runId)}/folders/file/raw?${new URLSearchParams({folder:folder.path, rel:entry.rel})}`,
+    };
+    $("folder-copy-all").disabled = false;
     if (isCsvFile(entry)) {
       renderCsvPreview(file);
     } else if ((file.kind || entry.kind) === "markdown") {
@@ -12042,6 +12056,43 @@
 
   $("folder-history-forward").addEventListener("click", () => {
     goFolderHistory(1);
+  });
+
+  $("folder-copy-all").addEventListener("click", async () => {
+    const target = previewCopyTarget;
+    const button = $("folder-copy-all");
+    if (!target || button.disabled) return;
+    button.disabled = true;
+    ui.setMessage(button, "Copying…");
+    try {
+      const text = target.truncated ? (async () => {
+        const headers = TOKEN ? {Authorization: "Bearer " + TOKEN} : {};
+        const response = await fetch(target.url, {headers, cache:"no-store"});
+        if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+        return response.text();
+      })() : Promise.resolve(target.text);
+      // Keep clipboard permission attached to the click, including Safari,
+      // while a truncated preview's full file is fetched asynchronously.
+      if (window.ClipboardItem && navigator.clipboard?.write) {
+        const blob = text.then(value => new Blob([value], {type:"text/plain"}));
+        // A denied clipboard permission may reject before the fetch finishes.
+        blob.catch(() => {});
+        await navigator.clipboard.write([new ClipboardItem({"text/plain": blob})]);
+      } else {
+        await navigator.clipboard.writeText(await text);
+      }
+      if (previewCopyTarget === target) ui.setMessage(button, "Copied ✓");
+    } catch (error) {
+      if (previewCopyTarget === target) ui.setMessage(button, "Copy all");
+      alert(ui.message("Copy failed: ") + error.message);
+    } finally {
+      if (previewCopyTarget === target) {
+        button.disabled = false;
+        setTimeout(() => {
+          if (previewCopyTarget === target && !button.disabled) ui.setMessage(button, "Copy all");
+        }, 1500);
+      }
+    }
   });
 
   $("folder-modal-copy").addEventListener("click", async () => {
