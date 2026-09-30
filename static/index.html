@@ -2747,6 +2747,7 @@
 <script src="/static/ui-foundation.js?v=7"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=2" />
 <script src="/static/pane-groups.js?v=2"></script>
+<script src="/static/terminal-files.js?v=1"></script>
 <script src="/static/terminal-keys.js?v=1"></script>
 </head>
 <body>
@@ -7512,6 +7513,7 @@
               <input class="pane-ssh-host" placeholder="dev-server or user@host" value="${escapeHtml(terminalSshHost(runId))}" aria-label="SSH file host">
             </label>
             <p class="ui-secondary" ${s.remote ? "hidden" : ""} data-i18n="sshFileHelp">File links use this SSH host. Saved in this browser; clear to use local files.</p>
+            <button class="btn-terminal-files" data-dialog-close data-i18n="terminalFiles">Terminal files</button>
             <button class="btn-reload" data-dialog-close>${ui.icon("refresh")}<span data-i18n="reconnect">Reconnect display</span></button>
             <label><span data-i18n="move">Move / swap with pane</span><select class="pane-move-select"></select></label>
           </div>
@@ -7535,6 +7537,9 @@
     paneGroups.decorate(card, s);
     const paneMenu = card.querySelector(".pane-menu");
     const moveSelect = card.querySelector(".pane-move-select");
+    card.querySelector(".btn-terminal-files").addEventListener("click", () => {
+      void terminalFileController().configure(runId).catch(error => alert(error.message));
+    });
     card.querySelector(".pane-ssh-host").addEventListener("change", ev => {
       const host = ev.target.value.trim();
       if (host && !/^[A-Za-z0-9_][A-Za-z0-9_.@-]{0,254}$/.test(host)) {
@@ -8221,6 +8226,14 @@
           ifr.dataset.nativeSelection = sessionPrefersNativeSelection(s) ? "true" : "false";
           ifr.dataset.inlineSelection = ifr.dataset.nativeSelection === "true"
             && resp.selection_copy === true ? "true" : "false";
+          ifr.dataset.fileContext = resp.file_context === true ? "true" : "false";
+          if (resp.file_context === true) {
+            const legacyHost = ctrl.cardEl.querySelector('.pane-ssh-host');
+            if (legacyHost) legacyHost.closest('label').hidden = true;
+            const legacyHelp = ctrl.cardEl.querySelector('[data-i18n="sshFileHelp"]');
+            if (legacyHelp) legacyHelp.hidden = true;
+          }
+          terminalFileController().attach(ifr, runId);
           ifr.src = resp.url;
           if (theme === "light") ifr.classList.add("terminal-light-frame");
           if (theme === "soft-dark") ifr.classList.add("terminal-soft-dark-frame");
@@ -9481,7 +9494,7 @@
     if (event.data?.type === "siling:open-local-path") {
       const ctrl = Array.from(paneCtrls.values()).find(item =>
         item.paneEl.querySelector("iframe")?.contentWindow === event.source);
-      if (ctrl) void openTerminalLocalPath(ctrl.runId, event.data.path);
+      if (ctrl) void openTerminalLocalPath(ctrl.runId, event.data.path, event.data.context_id);
       return;
     }
     if (event.data?.type !== "siling:open-web-url") return;
@@ -11472,13 +11485,24 @@
     return String(path || "").split("/").filter(Boolean).pop() || "linked file";
   }
 
+  let terminalFileInstance;
+  function terminalFileController() {
+    return terminalFileInstance ||= window.SilingTerminalFiles.create({api, openViewer:openFolderViewer});
+  }
+
   function terminalSshHost(runId) {
     try { return localStorage.getItem("siling_ssh_host:" + runId) || ""; }
     catch (_) { return ""; }
   }
 
   let terminalLocalOpenSeq = 0;
-  async function openTerminalLocalPath(runId, rawPath) {
+  async function openTerminalLocalPath(runId, rawPath, contextId) {
+    const ctrl = paneCtrls.get(runId);
+    if (ctrl?.paneEl.querySelector('iframe')?.dataset.fileContext === 'true') {
+      try { await terminalFileController().openPath(runId, rawPath, contextId); }
+      catch(error) { alert(error.message); }
+      return;
+    }
     if (typeof rawPath !== "string" || !rawPath.startsWith("/")
         || rawPath.startsWith("//") || /[\x00-\x1f]/.test(rawPath)) return;
     const path = normalizeLocalPreviewPath(rawPath);

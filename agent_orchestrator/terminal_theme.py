@@ -164,6 +164,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
 
     let mode = "";
     let pendingUrl = "";
+    let pendingFileContext = "";
     let startX = 0;
     let startY = 0;
     // Shell and Codex use tmux selection to span its history buffer. Older
@@ -202,7 +203,9 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
           path = decodeURIComponent(url.pathname);
         } catch (_) { return ""; }
       }
-      if (!path.startsWith("/") || path.startsWith("//") || /[\x00-\x1f]/.test(path)) return "";
+      const relative = window.frameElement?.dataset.fileContext === "true"
+        && /^(?:\.\.?\/)?(?:[\p{L}\p{N}_.@+~-]+\/)*[\p{L}\p{N}_.@+~-]+\.[A-Za-z0-9]{1,12}(?::\d+(?::\d+)?)?$/u.test(path);
+      if ((!path.startsWith("/") && !relative) || path.startsWith("//") || /[\x00-\x1f]/.test(path)) return "";
       return path.replace(/(?::\d+(?::\d+)?|#L\d+(?:C\d+)?)$/, "");
     };
     const cleanLinkTarget = (value) => {
@@ -446,6 +449,16 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
           return { url, ranges: rangesForCells(cells.slice(begin, begin + length)) };
         }
       }
+      if (window.frameElement?.dataset.fileContext === "true") {
+        const relativePattern = /(?:\.\.?\/)?(?:[\p{L}\p{N}_.@+~-]+\/)*[\p{L}\p{N}_.@+~-]+\.[A-Za-z0-9]{1,12}(?::\d+(?::\d+)?)?/gu;
+        for (const match of text.matchAll(relativePattern)) {
+          const begin = match.index;
+          if (begin && /[\w/]/.test(text[begin - 1])) continue;
+          if (offset >= begin && offset < begin + match[0].length) {
+            return {url: cleanLocalPath(match[0]), ranges: rangesForCells(cells.slice(begin, begin + match[0].length))};
+          }
+        }
+      }
       return null;
     };
     const urlForEvent = (event) => linkForEvent(event)?.url || "";
@@ -499,6 +512,8 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
         return;
       }
       pendingUrl = urlForEvent(event);
+      const point = coordsForEvent(event);
+      pendingFileContext = point ? window.silingFileContextForRow?.(point[1]) || "" : "";
       if (nativeSelection(event)) {
         mode = pendingUrl ? "native-link" : inlineSelection() ? "tmux-selection" : "selection";
         tmuxSelectionPending = false;
@@ -563,7 +578,8 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       if (!moved && cleanLocalPath(pendingUrl)) {
         if (window.parent !== window) {
           window.parent.postMessage(
-            { type: "siling:open-local-path", path: cleanLocalPath(pendingUrl) },
+            { type: "siling:open-local-path", path: cleanLocalPath(pendingUrl),
+              ...(window.frameElement?.dataset.fileContext === "true" ? {context_id:pendingFileContext} : {}) },
             window.location.origin,
           );
         }

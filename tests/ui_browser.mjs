@@ -40,6 +40,17 @@ const server = http.createServer((req, res) => {
     res.setHeader('Content-Type', 'text/html');
     return res.end('<!doctype html><body style="background:#151b24;color:#d9e2ef;font:14px monospace"><pre>Isolated terminal fixture\nNo live session or credentials loaded.</pre><textarea aria-label="Terminal input"></textarea></body>');
   }
+  if (url.pathname.endsWith('/file-context')) {
+    const reply=()=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({configured:true,current:{id:'fixture-context',host:'fixture-ssh',cwd:'/remote/work'},settings:{mode:'auto',auto_discover:true},contexts:[{id:'fixture-context',host:'fixture-ssh',cwd:'/remote/work'}]}));};
+    if(req.method==='PUT') {req.resume();req.on('end',reply);} else reply();
+    return;
+  }
+  if (url.pathname.endsWith('/discover-files')) {
+    let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{
+      const data=JSON.parse(body);assert.equal(data.context_id,'fixture-context');assert.equal(data.text,'reports/test.md');
+      res.setHeader('Content-Type','application/json');res.end(JSON.stringify({files:[{source_path:'/remote/work/reports/test.md',folder:{path:'/fixture/report.md'}}],errors:[]}));
+    });return;
+  }
   if (url.pathname.endsWith('/folders') || url.pathname.endsWith('/ssh-file')) {
     const id = url.pathname.split('/')[3];
     res.setHeader('Content-Type','application/json');
@@ -579,6 +590,18 @@ try {
   assert.equal(await evaluate('webAlerts.length'),1,'System failure is visible');
   assert.deepEqual(await evaluate('webOpens'),[nativeUrl],'Failure never silently opens a duplicate in another profile');
   console.log('PASS: system browser routing, remote-device fallback, opt-out, internal precedence and failure handling');
+  const beforeFileContextFrames=frameLoads;
+  await evaluate(`document.querySelector('[data-run-id="fixture-2"] .btn-pane-more').click();document.querySelector('[data-run-id="fixture-2"] .btn-terminal-files').click()`);
+  for(let i=0;i<50;i++){if(await evaluate(`!!document.querySelector('dialog[open] [data-text]')`))break;await pause(50);}
+  assert.ok(await evaluate(`!!document.querySelector('dialog[open] [data-context]')`),'Ordinary Terminal exposes file context and selected-text discovery');
+  await evaluate(`document.querySelector('dialog[open] [data-text]').value='reports/test.md';document.querySelector('dialog[open] [data-scan]').click()`);
+  for(let i=0;i<50;i++){if(await evaluate(`document.querySelector('dialog[open] [data-results]')?.children.length===1`))break;await pause(50);}
+  assert.equal(await evaluate(`document.querySelector('dialog[open] [data-results] button').textContent`),'/remote/work/reports/test.md');
+  assert.equal(frameLoads,beforeFileContextFrames,'File context dialog preserves terminal frames');
+  await screenshot('terminal-file-context');
+  await evaluate(`document.querySelector('dialog[open] [data-save]').click()`);await pause(150);
+  await evaluate(`document.querySelector('dialog[open] [data-close]').click()`);
+  console.log('PASS: ordinary Terminal file context, selected relative file discovery, persistence UI and frame preservation');
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));
   }

@@ -277,3 +277,13 @@ term._core._oscLinkService.getLinkData=()=>({uri:authorization});
 rows=[row('authorize',false,1)];
 click(3,0);
 assert.equal(opened.at(-1),authorization);
+
+// Relative links require a file-context capable frame and preserve output ownership.
+window.parent={postMessage:(message,origin)=>messages.push({message,origin})};
+window.frameElement.dataset.fileContext='true';
+window.silingFileContextForRow=()=> 'historical-remote';
+rows=[row('reports/test.md')];
+click(3,0);
+assert.equal(messages.at(-1).message.path,'reports/test.md');
+assert.equal(messages.at(-1).message.context_id,'historical-remote');
+window.frameElement.dataset.fileContext='false';
