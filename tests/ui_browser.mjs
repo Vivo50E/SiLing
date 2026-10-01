@@ -800,6 +800,25 @@ try {
   assert.equal(await evaluate(`JSON.parse(localStorage.getItem('orch_slots'))[${endedSlot}]`),'fixture-resumed','Recovery replaces its original pane');
   assert.equal(requests.filter(r=>/\/(stop|kill)$/.test(r.path)).length,stoppedBefore,'Ended-session recovery never stops or kills another process');
   console.log('PASS: ended log notice, recovery eligibility, failure retry, duplicate prevention and same-slot recovery');
+  const reopened=sessions.find(s=>s.run_id==='fixture-resumed');
+  reopened.agent='terminal';reopened.alive=false;reopened.resume_id='';
+  pendingResume=undefined;
+  await evaluate(`document.querySelector('#btn-refresh').click()`);await pause(200);
+  const reopenButton='[data-run-id="fixture-resumed"] .btn-resume-ended';
+  assert.equal(await evaluate(`document.querySelector('${reopenButton}').hidden`),false,'Ended shell can reopen without an agent id');
+  assert.equal(await evaluate(`document.querySelector('${reopenButton}').textContent`),'Reopen terminal');
+  await screenshot('ended-terminal-reopen');
+  await evaluate(`document.querySelector('${reopenButton}').click()`);
+  for(let i=0;i<50&&!pendingResume;i++)await pause(50);
+  assert.deepEqual(resumeBody,{run_id:'fixture-resumed',node_id:'local',mode:'background'});
+  assert.equal(await evaluate(`document.querySelector('${reopenButton}').disabled`),true);
+  sessions.push({...reopened,alive:true,run_id:'fixture-reopened',tmux_session:'fixture-reopened'});
+  pendingResume.end(JSON.stringify({ok:true,run_id:'fixture-reopened',reopened_terminal:true}));
+  for(let i=0;i<80;i++){if(await evaluate(`!!document.querySelector('[data-run-id="fixture-reopened"] iframe')`))break;await pause(100);}
+  assert.equal(await evaluate(`JSON.parse(localStorage.getItem('orch_slots'))[${endedSlot}]`),'fixture-reopened','New shell replaces the ended shell in the same pane');
+  assert.equal(requests.filter(r=>/\/(stop|kill)$/.test(r.path)).length,stoppedBefore);
+  console.log('PASS: ended Terminal reopens without native resume metadata in the original pane');
+
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));
   }

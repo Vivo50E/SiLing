@@ -1,6 +1,9 @@
 /* Authored Dashboard copy only. Never translate terminal output or user data. */
 (() => {
   const zh = {
+    "Reopen terminal": "重新打开终端",
+    "Open a new shell with the same name and working directory": "使用原名称和工作目录打开新终端",
+    "Terminal reopened": "终端已重新打开",
     "Copying…": "正在复制…",
     "Session ended — history log (read-only)": "会话已结束 · 历史日志（只读）",
     "Resume session": "恢复会话",

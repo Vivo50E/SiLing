@@ -2751,7 +2751,7 @@
   }
 </style>
 <link rel="stylesheet" href="/static/ui-foundation.css?v=6" />
-<script src="/static/ui-messages.js?v=5"></script>
+<script src="/static/ui-messages.js?v=6"></script>
 <script src="/static/ui-foundation.js?v=9"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=2" />
 <script src="/static/pane-groups.js?v=3"></script>
@@ -6409,8 +6409,8 @@
 
   function sessionCanResumeEnded(s) {
     return !!s && !s.alive
-      && ["codex", "claude", "cursor"].includes(String(s.agent || "").toLowerCase())
-      && !!String(s.resume_id || s.resume?.id || "").trim();
+      && (sessionIsTerminal(s) || (["codex", "claude", "cursor"].includes(String(s.agent || "").toLowerCase())
+        && !!String(s.resume_id || s.resume?.id || "").trim()));
   }
 
   function sessionPrefersNativeSelection(s) {
@@ -6507,11 +6507,14 @@
     if (endedNotice) endedNotice.hidden = !!s.alive;
     const resumeEnded = card.querySelector(".btn-resume-ended");
     if (resumeEnded) {
+      ui.setMessage(resumeEnded, sessionIsTerminal(s) ? "Reopen terminal" : "Resume session");
+      resumeEnded.title = ui.message(sessionIsTerminal(s) ? "Open a new shell with the same name and working directory" : "Resume this exited agent in a new session");
       resumeEnded.hidden = !sessionCanResumeEnded(s);
       resumeEnded.disabled = recoveringSessions.has(s.run_id) || !!(s.remote && s.node_online === false);
     }
     const recoverSession = card.querySelector(".btn-recover-session");
     if (recoverSession) {
+      recoverSession.title = ui.message(sessionIsTerminal(s) ? "Reopen terminal" : "Resume this exited agent in a new session");
       recoverSession.hidden = !(s.alive && s.agent_exited === true) && !sessionCanResumeEnded(s);
       recoverSession.disabled = recoveringSessions.has(s.run_id) || !!(s.remote && s.node_online === false);
     }
@@ -9009,7 +9012,7 @@
       saveSlots();
       renderList();
       renderGrid();
-      $("conn-status").textContent = `Resumed ${name}; waiting for the new pane…`;
+      $("conn-status").textContent = sessionIsTerminal(s) ? ui.message("Terminal reopened") : `Resumed ${name}; waiting for the new pane…`;
       setTimeout(() => void refreshList(), s.remote ? 500 : 200);
     } catch (e) {
       alert(ui.message("recover session failed: ") + e.message);

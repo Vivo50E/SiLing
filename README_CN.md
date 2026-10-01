@@ -210,6 +210,8 @@ Dashboard 会明确展示这些状态，而不是让它们消失在 terminal scr
 
 Terminal、Codex 和 Cursor pane 可直接拖选文本，按住鼠标时滚动滚轮即可跨屏扩展选区。
 松开鼠标后按 ⌘C（macOS）或 Ctrl+Shift+C 复制完整选区；输入时回到实时末尾。
+已结束的 Terminal pane 可点击 **重新打开终端**，在原 pane 中使用原名称、工作目录、主题和关联文件启动新的 shell。旧日志保留；SSH 连接和原进程不会自动恢复。
+
 终端选区在拖动过程中实时排除前导空格的高亮，不移动拖选起点。多行选区去掉非空行共有的前导空格，
 保留代码相对缩进和空行；存在无缩进行、Tab 缩进、矩形选区或无法准确对应的软换行时保持原样。
 Option+拖选保留 xterm 当前屏幕内的选择方式。复制依赖 tmux 的 `copy-pipe-no-clear -CP`

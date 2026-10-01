@@ -11580,21 +11580,23 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             raise HTTPException(404, "source run not found")
         if src.get("alive"):
             raise HTTPException(409, "source session is still running")
-        src = _run_with_native_model_effort(src)
-        resume_id = (src.get("resume_id") or "").strip()
-        if not resume_id:
+        terminal = _norm_agent(src.get("agent", "")) == "terminal"
+        if not terminal:
+            src = _run_with_native_model_effort(src)
+        resume_id = "" if terminal else (src.get("resume_id") or "").strip()
+        if not terminal and not resume_id:
             raise HTTPException(409, "source session has no resume id")
 
         mode = (body.get("mode") or "background").strip()
         if mode not in ("iterm", "background"):
             raise HTTPException(400, "mode must be 'iterm' or 'background'")
-        agent = (
+        agent = "terminal" if terminal else (
             (src.get("resume") or {}).get("agent")
             or src.get("agent")
             or "cursor"
         )
         agent = "cursor" if agent == "agent" else agent
-        if agent not in ("cursor", "claude", "codex"):
+        if agent not in ("cursor", "claude", "codex", "terminal"):
             raise HTTPException(400,
                 "resume source agent must be 'cursor', 'claude', or 'codex'")
         model = src.get("model") or ""
@@ -11614,8 +11616,8 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         label = (body.get("label") or "").strip()
         if not label:
             base = src.get("display_name") or src.get("task") or "resumed"
-            label = f"{base} (resume)"[:80]
-        inherited_resume = _build_inherited_resume_meta(src, agent, resume_id)
+            label = str(src.get("label") or base)[:80] if terminal else f"{base} (resume)"[:80]
+        inherited_resume = None if terminal else _build_inherited_resume_meta(src, agent, resume_id)
         result = _spawn_session(agent, model, label, cwd, mode,
                                 resume_id=resume_id,
                                 resume_meta=inherited_resume,
@@ -11629,6 +11631,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         return {
             **result,
             "resumed_from": run_id,
+            "reopened_terminal": terminal,
             "resume_id": resume_id,
             "linked_folders_copied": linked_copy.get("copied", 0),
             "linked_folders_run_dir": linked_copy.get("run_dir", ""),
