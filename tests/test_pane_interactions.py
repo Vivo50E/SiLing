@@ -21,6 +21,48 @@ from agent_orchestrator.config import TaskConfig
 
 class PaneInteractionTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("tmux"), "tmux required")
+    def test_single_line_selection_trims_highlight_and_preserves_multiline(self):
+        with tempfile.TemporaryDirectory(prefix="siling-trim-", dir="/tmp") as temp:
+            socket = str(Path(temp) / "tmux.sock")
+            def tmux(*args):
+                return subprocess.check_output(["tmux", "-S", socket, *args], text=True, timeout=5).strip()
+            def key(*args):
+                tmux("send-keys", "-t", "check", "-X", *args)
+            try:
+                tmux("-f", "/dev/null", "new-session", "-d", "-s", "check", "-x", "80", "-y", "20",
+                     "printf '   hello world\\n    second line\\n'; exec cat")
+                for _ in range(100):
+                    if "hello world" in tmux("capture-pane", "-p", "-t", "check"):
+                        break
+                    time.sleep(.01)
+                with patch.dict(os.environ, {"TMUX": socket + ",0,0"}):
+                    for reverse in (False, True):
+                        tmux("copy-mode", "-t", "check")
+                        key("history-top"); key("start-of-line")
+                        if reverse:
+                            key("-N", "8", "cursor-right")
+                        key("begin-selection")
+                        key("-N", "8", "cursor-left" if reverse else "cursor-right")
+                        self.assertTrue(dashboard._tmux_trim_selection("check"))
+                        self.assertEqual(dashboard._tmux_copy_selection("check"), "hello")
+                        self.assertEqual(tmux("display-message", "-p", "-t", "check",
+                                              "#{selection_start_x} #{selection_end_x}"), "8 3" if reverse else "3 8")
+                        key("cancel")
+                    tmux("copy-mode", "-t", "check")
+                    key("history-top"); key("start-of-line"); key("begin-selection")
+                    key("cursor-down"); key("-N", "10", "cursor-right")
+                    before = dashboard._tmux_copy_selection("check")
+                    self.assertFalse(dashboard._tmux_trim_selection("check"))
+                    self.assertEqual(dashboard._tmux_copy_selection("check"), before)
+                    key("cancel")
+                    tmux("copy-mode", "-t", "check")
+                    key("history-top"); key("start-of-line"); key("begin-selection")
+                    key("cursor-right")
+                    self.assertFalse(dashboard._tmux_trim_selection("check"))
+            finally:
+                subprocess.run(["tmux", "-S", socket, "kill-server"], capture_output=True, timeout=5)
+
+    @unittest.skipUnless(shutil.which("tmux"), "tmux required")
     def test_wheel_history_exits_only_when_scrolled_back_to_latest(self):
         # An isolated socket keeps the user's tmux server and bindings intact.
         with tempfile.TemporaryDirectory(prefix="siling-scroll-", dir="/tmp") as temp:
@@ -92,6 +134,12 @@ class PaneInteractionTests(unittest.TestCase):
             response = client.post("/api/sessions/example/selection")
             self.assertEqual(response.json(), {"text": "selected\ntext"})
             copy.assert_called_once_with("private-test")
+            with patch.object(dashboard, "_tmux_trim_selection", return_value=True) as trim:
+                self.assertEqual(client.post("/api/sessions/example/selection/trim").json(), {"adjusted": True})
+                trim.assert_called_once_with("private-test")
+                lookup.return_value = None
+                self.assertEqual(client.post("/api/sessions/missing/selection/trim").status_code, 404)
+                trim.assert_called_once()
             lookup.return_value = None
             self.assertEqual(client.post("/api/sessions/missing/selection").status_code, 404)
             lookup.return_value = {"tmux_session": "private-test"}

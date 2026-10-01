@@ -542,10 +542,28 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     terminal.onResize?.(clearHover);
     terminal.onWriteParsed?.(clearHover);
 
+    const trimSingleLineSelection = () => {
+      const text = terminal.getSelection?.() || "";
+      const position = terminal.getSelectionPosition?.();
+      if (!position || position.start.y !== position.end.y
+          || selection.columnSelectMode || selection._activeSelectionMode === 3
+          || /[\r\n]/.test(text)) return;
+      const spaces = text.match(/^[ \t]+(?=\S)/)?.[0].length || 0;
+      if (spaces) terminal.select(position.start.x + spaces, position.start.y,
+        position.end.x - position.start.x - spaces);
+    };
+    let selectionAdjustment = Promise.resolve();
     document.addEventListener("mouseup", (event) => {
+      if (event.button === 0 && !event.ctrlKey && mode !== "tmux-selection") {
+        setTimeout(trimSingleLineSelection, 0);
+      }
       if (mode === "tmux-selection") {
         // Suppress the default drag-end copy-and-cancel: retain the highlighted
         // tmux selection so wheel scrolling and the copy shortcut can use it.
+        if (tmuxSelectionPending && window.silingTrimSelection) {
+          selectionAdjustment = Promise.resolve().then(() => window.silingTrimSelection())
+            .catch(() => {}); // Keep the original selection if adjustment is unavailable.
+        }
         setTimeout(clearMode, 0);
         return;
       }
@@ -622,7 +640,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
         event.stopImmediatePropagation();
         const read = window.silingReadSelection;
         if (!read) return;
-        const text = Promise.resolve().then(read).then(result => {
+        const text = selectionAdjustment.then(read).then(result => {
           if (!result.text) throw new Error("No terminal text is selected");
           return result.text;
         });

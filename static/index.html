@@ -8255,6 +8255,9 @@
       iframe.contentWindow.silingReadSelection = () => api(
         `/api/sessions/${encodeURIComponent(runId)}/selection`, {method: "POST"},
       );
+      iframe.contentWindow.silingTrimSelection = () => api(
+        `/api/sessions/${encodeURIComponent(runId)}/selection/trim`, {method: "POST"},
+      );
       ttyShortcutDocuments.add(frameDocument);
       window.SiLingTerminalKeys.install(
         frameDocument,

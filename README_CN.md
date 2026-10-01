@@ -210,6 +210,7 @@ Dashboard 会明确展示这些状态，而不是让它们消失在 terminal scr
 
 Terminal、Codex 和 Cursor pane 可直接拖选文本，按住鼠标时滚动滚轮即可跨屏扩展选区。
 松开鼠标后按 ⌘C（macOS）或 Ctrl+Shift+C 复制完整选区；输入时回到实时末尾。
+终端单行选区在松开鼠标时自动跳过开头空格；多行选区保留原始缩进。
 Option+拖选保留 xterm 当前屏幕内的选择方式。复制依赖 tmux 的 `copy-pipe-no-clear -CP`
 支持。Ctrl+拖选可向终端程序
 传递鼠标操作。其他 Agent pane 保留原有鼠标行为，macOS 可用 Option+拖选选择文本。

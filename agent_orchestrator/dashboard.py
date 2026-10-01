@@ -559,6 +559,45 @@ def _tmux_copy_selection(session: str) -> str:
         return target.read_text(errors="replace")
 
 
+def _tmux_trim_selection(session: str) -> bool:
+    """Move a live single-line selection past leading spaces, preserving its text."""
+    def run(*args):
+        result = subprocess.run(["tmux", *args], capture_output=True,
+                                text=True, timeout=5, check=True)
+        return result.stdout.strip()
+    fields = ("pane_id", "selection_present", "selection_active", "rectangle_toggle",
+              "selection_start_x", "selection_start_y", "selection_end_x",
+              "selection_end_y", "copy_cursor_x")
+    fmt = " ".join("#{" + field + "}" for field in fields)
+    before = run("display-message", "-p", "-t", session, fmt)
+    values = before.split()
+    if len(values) != len(fields) or values[1:4] != ["1", "1", "0"]:
+        return False
+    pane = values[0]
+    sx, sy, ex, ey, cursor = map(int, values[4:])
+    if sy != ey or sx == ex:
+        return False
+    text = _tmux_copy_selection(pane)
+    if "\n" in text or "\r" in text or not text.strip(" \t"):
+        return False
+    count = len(text) - len(text.lstrip(" \t"))
+    if not count:
+        return False
+    # Guard against a new drag or navigation while the selected text was read.
+    commands = []
+    def key(*args):
+        commands.append(shlex.join(["send-keys", "-t", pane, "-X", *args]))
+    switch = cursor != min(sx, ex)
+    if switch:
+        key("other-end")
+    key("-N", str(count), "cursor-right")
+    if switch:
+        key("other-end")
+    run("if-shell", "-F", "-t", pane, "#{==:" + fmt + "," + before + "}",
+        " ; ".join(commands))
+    return True
+
+
 def _tmux_target_pane(session: str) -> tuple[str, str]:
     """Resolve a session to an explicit live pane target.
 
@@ -9680,6 +9719,19 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             raise HTTPException(409, "session has no terminal")
         try:
             return {"text": _tmux_copy_selection(session)}
+        except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/api/sessions/{run_id}/selection/trim")
+    def trim_session_selection(run_id: str):
+        r = _lookup_run_light(outputs_dir, run_id)
+        if not r:
+            raise HTTPException(404, "run not found")
+        session = r.get("tmux_session", "")
+        if not session:
+            raise HTTPException(409, "session has no terminal")
+        try:
+            return {"adjusted": _tmux_trim_selection(session)}
         except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
             raise HTTPException(409, str(exc)) from exc
 

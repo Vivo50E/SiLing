@@ -22,7 +22,9 @@ tmux('send-keys','-t','check',"i=1; while [ $i -le 150 ]; do echo smoke-history-
 const listener=http.createServer();await new Promise(r=>listener.listen(0,'127.0.0.1',r));const port=listener.address().port;await new Promise(r=>listener.close(r));
 const selectionServer=http.createServer((req,res)=>{
   try {
-    const text=execFileSync(python,['-c',"import json;from agent_orchestrator.dashboard import _tmux_copy_selection;print(json.dumps({'text':_tmux_copy_selection('check')}))"],{cwd:root,env:{...process.env,TMUX:`${socket},0,0`},encoding:'utf8'});
+    const normalize=req.url==='/trim';
+    const script=normalize ? "import json;from agent_orchestrator.dashboard import _tmux_trim_selection;print(json.dumps({'adjusted':_tmux_trim_selection('check')}))" : "import json;from agent_orchestrator.dashboard import _tmux_copy_selection;print(json.dumps({'text':_tmux_copy_selection('check')}))";
+    const text=execFileSync(python,['-c',script],{cwd:root,env:{...process.env,TMUX:`${socket},0,0`},encoding:'utf8'});
     res.setHeader('Access-Control-Allow-Origin','*');res.setHeader('Content-Type','application/json');res.end(text);
   }catch(error){res.writeHead(500);res.end(String(error));}
 });
@@ -226,7 +228,27 @@ finally:
   await evaluate(`observerFrame.isConnected=false;fileObserver.states.get('browser-fixture').stop();`);
   console.log('PASS: real xterm observer records host transitions and triggers automatic discovery');
   // Exercise tmux history itself, not a separately rendered text snapshot.
-  await evaluate(`window.silingReadSelection=()=>fetch('http://127.0.0.1:${selectionPort}').then(r=>r.json());Object.defineProperty(navigator.clipboard,'write',{value:async items=>{window.copiedText=await(await items[0].getType('text/plain')).text();}});void 0;`);
+  await evaluate(`window.silingTrimSelection=()=>fetch('http://127.0.0.1:${selectionPort}/trim').then(r=>r.json());window.silingReadSelection=()=>fetch('http://127.0.0.1:${selectionPort}').then(r=>r.json());Object.defineProperty(navigator.clipboard,'write',{value:async items=>{window.copiedText=await(await items[0].getType('text/plain')).text();}});void 0;`);
+  tmux('send-keys','-t','check',"printf '   trim-command\\n'",'Enter');
+  await pause(300);
+  let trimLine=await evaluate(`(()=>{const b=term.buffer.active;for(let y=b.length-1;y>=0;y--){if(b.getLine(y)?.translateToString(true)==='   trim-command')return y-b.viewportY;}return -1;})()`);
+  assert.ok(trimLine>=0);
+  const geometry=await evaluate(`(()=>{const r=document.querySelector('.xterm-screen').getBoundingClientRect();return{x:r.x,y:r.y,w:r.width/term.cols,h:r.height/term.rows};})()`);
+  const dragLine=async(row,start,end,modifiers=0)=>{
+    const point=col=>({x:geometry.x+(col+.2)*geometry.w,y:geometry.y+(row+.5)*geometry.h});
+    await cdp('Input.dispatchMouseEvent',{type:'mousePressed',...point(start),button:'left',buttons:1,clickCount:1,modifiers});
+    await cdp('Input.dispatchMouseEvent',{type:'mouseMoved',...point(end),button:'left',buttons:1,modifiers});
+    await pause(100);
+    await cdp('Input.dispatchMouseEvent',{type:'mouseReleased',...point(end),button:'left',buttons:0,clickCount:1,modifiers});
+    await pause(500);
+  };
+  await dragLine(trimLine,0,15);
+  assert.equal(tmux('display-message','-p','-t','check','#{selection_start_x}').trim(),'3','tmux highlight skips leading spaces on mouse release');
+  const trimmedCopy=await evaluate('silingReadSelection().then(r=>r.text)');
+  assert.ok(trimmedCopy.startsWith('trim-command'),'tmux copied text matches adjusted highlight');
+  await screenshot('trimmed-tmux-selection');
+  tmux('send-keys','-t','check','-X','cancel');
+  await pause(200);
   tmux('send-keys','-t','check','i=1; while [ $i -le 150 ]; do echo cross-screen-$i; i=$((i+1)); done','Enter');
   await pause(400);
   await evaluate('term.select(0,term.buffer.active.viewportY,5)');
@@ -253,6 +275,23 @@ finally:
   // tmux's alternate-screen history above is separate from this browser buffer.
   await evaluate(`new Promise(resolve=>term.write('\x1b[?1049l\x1b[?1000l\x1b[?1002l\x1b[?1003l'+Array.from({length:200},(_,i)=>'Scrollbar fixture line '+i+'\\r\\n').join(''),resolve))`);
   await pause(150);
+  await evaluate(`new Promise(resolve=>term.write('\\r\\n   trim-command\\r\\n',resolve))`);
+  trimLine=await evaluate(`(()=>{const b=term.buffer.active;for(let y=b.length-1;y>=0;y--){if(b.getLine(y)?.translateToString(true)==='   trim-command')return y-b.viewportY;}return -1;})()`);
+  await evaluate(`window.frameElement.dataset.inlineSelection='false'`);
+  await dragLine(trimLine,0,15);
+  assert.equal(await evaluate('term.getSelection()'),'trim-command','Native selection skips leading spaces before copying');
+  assert.equal(await evaluate('term.getSelectionPosition().start.x'),3);
+  await screenshot('trimmed-native-selection');
+  await dragLine(trimLine,15,0);
+  assert.equal(await evaluate('term.getSelection()'),'trim-command','Reverse drag trims the same selection');
+  await evaluate(`window.nativeTrimRow=term.getSelectionPosition().start.y;term.select(0,nativeTrimRow,term.cols+1);window.multilineBefore=term.getSelection();document.dispatchEvent(new MouseEvent('mouseup',{button:0,bubbles:true}))`);
+  await pause(50);
+  assert.equal(await evaluate('term.getSelection()'),await evaluate('window.multilineBefore'),'Multiline native selection retains indentation');
+  assert.match(await evaluate('term.getSelection()'),/^   trim-command\r?\n/);
+  await evaluate(`term.select(0,nativeTrimRow,3);document.dispatchEvent(new MouseEvent('mouseup',{button:0,bubbles:true}))`);
+  await pause(50);
+  assert.equal(await evaluate('term.getSelection()'),'   ','Whitespace-only selections stay selectable');
+  console.log('PASS: native and tmux single-line highlights skip leading spaces, including reverse native drag');
   assert.ok(await evaluate(`{const v=document.querySelector('.xterm-viewport');v.scrollHeight>v.clientHeight}`),'Fixture has native scrollback');
   const beforeScroll=await evaluate('term.buffer.active.viewportY');
   await cdp('Input.dispatchMouseEvent',{type:'mouseWheel',x:600,y:300,deltaX:0,deltaY:-250});
