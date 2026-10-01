@@ -9746,7 +9746,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             raise HTTPException(409, str(exc)) from exc
 
     @app.post("/api/sessions/{run_id}/selection/trim")
-    def trim_session_selection(run_id: str):
+    def trim_session_selection(run_id: str, preview_only: bool = False):
         r = _lookup_run_light(outputs_dir, run_id)
         if not r:
             raise HTTPException(404, "run not found")
@@ -9754,7 +9754,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         if not session:
             raise HTTPException(409, "session has no terminal")
         try:
-            adjusted = _tmux_trim_selection(session)
+            adjusted = False if preview_only else _tmux_trim_selection(session)
             return {"adjusted": adjusted, "preview": _tmux_selection_preview(session)}
         except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
             raise HTTPException(409, str(exc)) from exc

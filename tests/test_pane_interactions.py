@@ -149,6 +149,9 @@ class PaneInteractionTests(unittest.TestCase):
                     patch.object(dashboard, "_tmux_selection_preview", return_value={"text": "fixture"}):
                 self.assertEqual(client.post("/api/sessions/example/selection/trim").json(), {"adjusted": True, "preview": {"text": "fixture"}})
                 trim.assert_called_once_with("private-test")
+                live = client.post("/api/sessions/example/selection/trim?preview_only=true")
+                self.assertEqual(live.json(), {"adjusted": False, "preview": {"text": "fixture"}})
+                trim.assert_called_once_with("private-test")
                 lookup.return_value = None
                 self.assertEqual(client.post("/api/sessions/missing/selection/trim").status_code, 404)
                 trim.assert_called_once()

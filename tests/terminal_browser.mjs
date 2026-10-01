@@ -20,10 +20,14 @@ tmux('set-option','-t','check','mouse','on');
 tmux('set-option','-t','check','status','off');
 tmux('send-keys','-t','check',"i=1; while [ $i -le 150 ]; do echo smoke-history-$i; i=$((i+1)); done",'Enter');
 const listener=http.createServer();await new Promise(r=>listener.listen(0,'127.0.0.1',r));const port=listener.address().port;await new Promise(r=>listener.close(r));
+let livePreviewReads=0;
 const selectionServer=http.createServer((req,res)=>{
   try {
-    const normalize=req.url==='/trim';
-    const script=normalize ? "import json;from agent_orchestrator.dashboard import _tmux_trim_selection,_tmux_selection_preview;print(json.dumps({'adjusted':_tmux_trim_selection('check'),'preview':_tmux_selection_preview('check')}))" : "import json;from agent_orchestrator.dashboard import _tmux_copy_selection;print(json.dumps({'text':_tmux_copy_selection('check')}))";
+    const requestUrl=new URL(req.url,'http://localhost');
+    const normalize=requestUrl.pathname==='/trim';
+    const previewOnly=requestUrl.searchParams.get('preview_only')==='true';
+    if(normalize && previewOnly) livePreviewReads++;
+    const script=normalize ? `import json;from agent_orchestrator.dashboard import _tmux_trim_selection,_tmux_selection_preview;print(json.dumps({'adjusted':${previewOnly ? "False" : "_tmux_trim_selection('check')"},'preview':_tmux_selection_preview('check')}))` : "import json;from agent_orchestrator.dashboard import _tmux_copy_selection;print(json.dumps({'text':_tmux_copy_selection('check')}))";
     const text=execFileSync(python,['-c',script],{cwd:root,env:{...process.env,TMUX:`${socket},0,0`},encoding:'utf8'});
     res.setHeader('Access-Control-Allow-Origin','*');res.setHeader('Content-Type','application/json');res.end(text);
   }catch(error){res.writeHead(500);res.end(String(error));}
@@ -228,21 +232,30 @@ finally:
   await evaluate(`observerFrame.isConnected=false;fileObserver.states.get('browser-fixture').stop();`);
   console.log('PASS: real xterm observer records host transitions and triggers automatic discovery');
   // Exercise tmux history itself, not a separately rendered text snapshot.
-  await evaluate(`window.silingTrimSelection=()=>fetch('http://127.0.0.1:${selectionPort}/trim').then(r=>r.json());window.silingReadSelection=()=>fetch('http://127.0.0.1:${selectionPort}').then(r=>r.json());Object.defineProperty(navigator.clipboard,'write',{value:async items=>{window.copiedText=await(await items[0].getType('text/plain')).text();}});void 0;`);
+  await evaluate(`window.silingTrimSelection=(previewOnly=false)=>fetch('http://127.0.0.1:${selectionPort}/trim?preview_only='+previewOnly).then(r=>r.json());window.silingReadSelection=()=>fetch('http://127.0.0.1:${selectionPort}').then(r=>r.json());Object.defineProperty(navigator.clipboard,'write',{value:async items=>{window.copiedText=await(await items[0].getType('text/plain')).text();}});void 0;`);
   tmux('send-keys','-t','check',"printf '   trim-command\\n'",'Enter');
   await pause(300);
   let trimLine=await evaluate(`(()=>{const b=term.buffer.active;for(let y=b.length-1;y>=0;y--){if(b.getLine(y)?.translateToString(true)==='   trim-command')return y-b.viewportY;}return -1;})()`);
   assert.ok(trimLine>=0);
   const geometry=await evaluate(`(()=>{const r=document.querySelector('.xterm-screen').getBoundingClientRect();return{x:r.x,y:r.y,w:r.width/term.cols,h:r.height/term.rows};})()`);
-  const dragLine=async(row,start,end,modifiers=0,endRow=row)=>{
+  const dragLine=async(row,start,end,modifiers=0,endRow=row,whileHeld=null)=>{
     const point=(col,y=row)=>({x:geometry.x+(col+.2)*geometry.w,y:geometry.y+(y+.5)*geometry.h});
     await cdp('Input.dispatchMouseEvent',{type:'mousePressed',...point(start),button:'left',buttons:1,clickCount:1,modifiers});
     await cdp('Input.dispatchMouseEvent',{type:'mouseMoved',...point(end,endRow),button:'left',buttons:1,modifiers});
     await pause(100);
+    if(whileHeld) await whileHeld();
     await cdp('Input.dispatchMouseEvent',{type:'mouseReleased',...point(end,endRow),button:'left',buttons:0,clickCount:1,modifiers});
     await pause(500);
   };
-  await dragLine(trimLine,0,15);
+  await dragLine(trimLine,0,15,0,trimLine,async()=>{
+    for(let i=0;i<40 && !(await evaluate(`document.querySelector('.siling-selection-margin').children.length`));i++) await pause(50);
+    assert.ok(await evaluate(`document.querySelector('.siling-selection-margin').children.length>0`),'tmux highlight trims while mouse is still held');
+    assert.equal(tmux('display-message','-p','-t','check','#{selection_start_x}').trim(),'0','Live preview never moves the drag anchor');
+    const readsAtRest=livePreviewReads;
+    await pause(300);
+    assert.ok(livePreviewReads-readsAtRest<=2,'Stationary drag does not continuously poll tmux');
+    await screenshot('live-tmux-selection');
+  });
   assert.equal(tmux('display-message','-p','-t','check','#{selection_start_x}').trim(),'3','tmux highlight skips leading spaces on mouse release');
   const trimmedCopy=await evaluate('silingReadSelection().then(r=>r.text)');
   assert.ok(trimmedCopy.startsWith('trim-command'),'tmux copied text matches adjusted highlight');
@@ -253,7 +266,10 @@ finally:
   await pause(300);
   const tmuxCodeRow=await evaluate(`(()=>{const b=term.buffer.active;for(let y=b.length-1;y>=0;y--){if(b.getLine(y)?.translateToString(true)==='  if ready:')return y-b.viewportY;}return -1;})()`);
   assert.ok(tmuxCodeRow>=0);
-  await dragLine(tmuxCodeRow,0,8,0,tmuxCodeRow+3);
+  await dragLine(tmuxCodeRow,0,8,0,tmuxCodeRow+3,async()=>{
+    for(let i=0;i<40 && !(await evaluate(`document.querySelector('.siling-selection-margin').children.length>=3`));i++) await pause(50);
+    assert.ok(await evaluate(`document.querySelector('.siling-selection-margin').children.length>=3`),'Multiline tmux margin updates before mouseup');
+  });
   await evaluate('window.copiedText=undefined');
   await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:'c',code:'KeyC',modifiers:4,windowsVirtualKeyCode:67});
   await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'c',code:'KeyC',modifiers:4,windowsVirtualKeyCode:67});
@@ -292,7 +308,12 @@ finally:
   await evaluate(`new Promise(resolve=>term.write('\\r\\n   trim-command\\r\\n',resolve))`);
   trimLine=await evaluate(`(()=>{const b=term.buffer.active;for(let y=b.length-1;y>=0;y--){if(b.getLine(y)?.translateToString(true)==='   trim-command')return y-b.viewportY;}return -1;})()`);
   await evaluate(`window.frameElement.dataset.inlineSelection='false'`);
-  await dragLine(trimLine,0,15);
+  await dragLine(trimLine,0,15,0,trimLine,async()=>{
+    assert.ok(await evaluate(`document.querySelector('.siling-selection-margin').children.length>0`),'Native margin updates before mouseup');
+    assert.equal(await evaluate('term.getSelectionPosition().start.x'),0,'Native live preview keeps the original anchor');
+    assert.equal(await evaluate('term.getSelection()'),'trim-command');
+    await screenshot('live-native-selection');
+  });
   assert.equal(await evaluate('term.getSelection()'),'trim-command','Native selection skips leading spaces before copying');
   assert.equal(await evaluate('term.getSelectionPosition().start.x'),3);
   await screenshot('trimmed-native-selection');
@@ -307,6 +328,15 @@ finally:
   assert.equal(await evaluate('term.getSelection()'),'   ','Whitespace-only selections stay selectable');
   await evaluate(`new Promise(resolve=>term.write('\\r\\n  if ready:\\r\\n      run()\\r\\n\\r\\n  done()\\r\\n',resolve))`);
   const codeRow=await evaluate(`(()=>{const b=term.buffer.active;for(let y=b.length-1;y>=0;y--){if(b.getLine(y)?.translateToString(true)==='  if ready:')return y;}return -1;})()`);
+  const visibleCodeRow=codeRow-await evaluate('term.buffer.active.viewportY');
+  await dragLine(visibleCodeRow,0,8,0,visibleCodeRow+3,async()=>{
+    assert.equal(await evaluate('term.getSelection()'),'if ready:\n    run()\n\ndone()','Native multiline dedent follows the drag before release');
+    assert.ok(await evaluate(`document.querySelector('.siling-selection-margin').children.length>=3`));
+    await screenshot('live-native-multiline');
+  });
+  await dragLine(visibleCodeRow+3,8,0,0,visibleCodeRow,async()=>{
+    assert.equal(await evaluate('term.getSelection()'),'if ready:\n    run()\n\ndone()','Reverse multiline drag also updates before release');
+  });
   await evaluate(`term.select(0,${codeRow},term.cols*3+8);document.dispatchEvent(new MouseEvent('mouseup',{button:0,bubbles:true}))`);
   await pause(50);
   assert.equal(await evaluate('term.getSelection()'),'if ready:\n    run()\n\ndone()','Relative code indentation and blank lines survive');

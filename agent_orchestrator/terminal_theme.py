@@ -503,6 +503,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       if (event.button !== 0 || event.ctrlKey) return;
       clearHover();
       selectionEpoch++; tmuxPreview = null; clearMargin();
+      clearTimeout(liveMarginTimer); liveMarginTimer = null; liveMarginDirty = false;
       startX = event.clientX;
       startY = event.clientY;
       if (event.altKey || (nativeSelection(event) && event.detail >= 2)) {
@@ -529,6 +530,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       if (mode === "tmux-selection" && (event.buttons & 1)
           && Math.hypot(event.clientX - startX, event.clientY - startY) > 3) {
         tmuxSelectionPending = true;
+        scheduleLiveMargin();
       }
     }, true);
     screen.addEventListener("mousemove", (event) => {
@@ -541,14 +543,16 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     screen.addEventListener("mouseleave", clearHover);
     terminal.onScroll?.(() => { clearHover(); paintNativeMargin(); });
     terminal.onResize?.(() => { clearHover(); clearMargin(); });
-    terminal.onWriteParsed?.(() => { clearHover(); paintNativeMargin(); });
+    terminal.onWriteParsed?.(() => {
+      clearHover(); paintNativeMargin();
+      if (mode === "tmux-selection" && tmuxSelectionPending) scheduleLiveMargin();
+    });
 
     // A multiline selection has a separate left edge on each row. Keep the
     // actual buffer intact and exclude its common margin from both highlight
     // and clipboard text. A row with no indentation makes this a no-op.
     const dedentSelection = (text) => {
       const lines = text.split(/\r?\n/);
-      if (lines.length < 2) return {text, indent: 0};
       const nonempty = lines.filter(line => /\S/.test(line));
       if (!nonempty.length || nonempty.some(line => /^[ \t]*\t/.test(line))) return {text, indent: 0};
       const indent = nonempty.reduce((minimum, line) => Math.min(minimum, line.match(/^ */)[0].length), Infinity);
@@ -608,27 +612,59 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       event.stopImmediatePropagation();
     }, true);
     terminal.onSelectionChange?.(paintNativeMargin);
+    // xterm emits onSelectionChange only after some drag operations finish.
+    // Its redraw event also follows the moving selection, without changing
+    // the drag anchor (which would make extending/reversing the drag jump).
+    let nativeMarginFrame = null;
+    selection.onRequestRedraw?.(() => {
+      if (nativeMarginFrame !== null) return;
+      nativeMarginFrame = requestAnimationFrame(() => {
+        nativeMarginFrame = null;
+        paintNativeMargin();
+      });
+    });
     let tmuxPreview = null;
     let selectionEpoch = 0;
-    const updateTmuxMargin = async () => {
+    const updateTmuxMargin = async (previewOnly = false) => {
       const epoch = selectionEpoch;
-      const result = await window.silingTrimSelection();
+      const result = await window.silingTrimSelection(previewOnly);
       if (epoch !== selectionEpoch) return;
       tmuxPreview = null; clearMargin();
       const preview = result?.preview;
-      if (!preview || preview.rectangle || preview.start.y === preview.end.y
+      if (!preview || preview.rectangle
           || preview.end.y - preview.start.y + 1 !== preview.text.split(/\r?\n/).length) return;
       const normalized = dedentSelection(preview.text);
       if (!normalized.indent) return;
       tmuxPreview = {...preview, indent:normalized.indent, normalized:normalized.text};
       paintMargin(preview, normalized.indent, preview.viewport);
     };
+    let liveMarginTimer = null;
+    let liveMarginPending = false;
+    let liveMarginDirty = false;
+    const scheduleLiveMargin = () => {
+      liveMarginDirty = true;
+      if (liveMarginTimer !== null || liveMarginPending || !window.silingTrimSelection) return;
+      const epoch = selectionEpoch;
+      liveMarginTimer = setTimeout(() => {
+        liveMarginTimer = null;
+        if (epoch !== selectionEpoch || mode !== "tmux-selection" || !tmuxSelectionPending) return;
+        liveMarginPending = true;
+        liveMarginDirty = false;
+        // One read-only request at a time; final mouseup adjustment waits for
+        // it. Never move tmux's selection endpoint during an active drag.
+        selectionAdjustment = selectionAdjustment.then(() => updateTmuxMargin(true))
+          .catch(clearMargin).finally(() => {
+            liveMarginPending = false;
+            if (liveMarginDirty && mode === "tmux-selection" && tmuxSelectionPending) scheduleLiveMargin();
+          });
+      }, 60);
+    };
     let marginScrollTimer;
     screen.addEventListener("wheel", () => {
       clearTimeout(marginScrollTimer);
       marginScrollTimer = setTimeout(() => {
         if (tmuxSelectionPending && mode !== "tmux-selection" && window.silingTrimSelection) {
-          selectionAdjustment = updateTmuxMargin().catch(clearMargin);
+          selectionAdjustment = selectionAdjustment.then(() => updateTmuxMargin()).catch(clearMargin);
         }
       }, 150);
     }, {passive:true});
@@ -644,6 +680,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     };
     let selectionAdjustment = Promise.resolve();
     document.addEventListener("mouseup", (event) => {
+      clearTimeout(liveMarginTimer); liveMarginTimer = null; liveMarginDirty = false;
       if (event.button === 0 && !event.ctrlKey && mode !== "tmux-selection") {
         setTimeout(() => { trimSingleLineSelection(); paintNativeMargin(); }, 0);
       }
@@ -651,7 +688,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
         // Suppress the default drag-end copy-and-cancel: retain the highlighted
         // tmux selection so wheel scrolling and the copy shortcut can use it.
         if (tmuxSelectionPending && window.silingTrimSelection) {
-          selectionAdjustment = Promise.resolve().then(updateTmuxMargin)
+          selectionAdjustment = selectionAdjustment.then(() => updateTmuxMargin())
             .catch(() => {}); // Keep the original selection if adjustment is unavailable.
         }
         setTimeout(clearMode, 0);
