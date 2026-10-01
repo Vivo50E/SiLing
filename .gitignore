@@ -3,6 +3,7 @@ __pycache__/
 outputs/
 *.pyc
 .DS_Store
+node_modules/
 
 # Dashboard-generated runtime files.
 # .dashboard-certs/ holds the self-signed TLS cert AND the private key —

@@ -404,6 +404,18 @@ or the Agent CLIs.
 
 ## Quick start
 
+### Optional desktop browser panes
+
+The [Electron desktop client](docs/desktop-browser.md) adds real Chromium browser
+panes alongside Agents: choose **Open browser pane** in an empty grid slot, then
+enter a URL. It supports navigation, reload, move/swap, zoom, and local address
+restore without restarting Agents. Website views have no terminal-control bridge
+and use a separate login profile. This is a separately launched source client,
+not an upgrade to the existing PWA; popup login, downloads, site permissions,
+project assignment and phone browser panes are not included in this first version.
+
+### Dashboard setup
+
 Requirements: macOS or Linux, `tmux`, Python 3.10+, and at least one supported
 agent CLI (`codex`, `claude`, or `agent`). Install `ttyd` for the complete
 interactive terminal experience shown above.

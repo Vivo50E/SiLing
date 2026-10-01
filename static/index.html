@@ -2757,6 +2757,8 @@
 <script src="/static/pane-groups.js?v=3"></script>
 <script src="/static/terminal-files.js?v=2"></script>
 <script src="/static/terminal-keys.js?v=1"></script>
+<link rel="stylesheet" href="/static/browser-panes.css?v=1" />
+<script src="/static/browser-panes.js?v=1"></script>
 </head>
 <body>
 
@@ -4278,6 +4280,21 @@
     "⑪", "⑫", "⑬", "⑭", "⑮",
   ];
 
+  const browserPanes = window.SiLingBrowserPanes({
+    ui, slots: () => slots,
+    place: (id, index) => {
+      const target = Number.isInteger(index) ? index : slots.indexOf(null);
+      if (target < 0 || target >= slots.length || slots[target]) return false;
+      slots[target] = id;
+      saveSlots(); renderList(); renderGrid();
+      return true;
+    },
+    clear: id => { slots = slots.map(value => value === id ? null : value); saveSlots(); renderGrid(); },
+    setSlot: setPaneNodeSlot, drag: installPaneHeaderDrag, zoom: openPaneZoom,
+    unzoom: card => { if (paneZoomState?.card === card) closePaneZoom(); },
+    swap: (from, to) => { swapSlots(from, to); saveSlots(); renderList(); renderGrid(); },
+  });
+
   function saveSlots() { localStorage.setItem("orch_slots", JSON.stringify(slots)); }
   function saveLayout() { localStorage.setItem("orch_layout", layout); }
   function saveTty() { localStorage.setItem("orch_tty", ttyMode ? "1" : "0"); }
@@ -5387,8 +5404,8 @@
       $("conn-status").textContent = ui.message("No active sessions to show");
       return;
     }
-    const ordered = infos.slice(0, slots.length).map(x => x.runId);
-    while (ordered.length < slots.length) ordered.push(null);
+    const ranked = infos.map(x => x.runId);
+    const ordered = slots.map(id => browserPanes.isBrowser(id) ? id : ranked.shift() || null);
 
     const changed = ordered.some((runId, idx) => slots[idx] !== runId);
     slots = ordered;
@@ -5397,7 +5414,7 @@
     renderGrid();
 
     const sustainedCount = infos.filter(x => x.active).length;
-    const shown = Math.min(slots.length, infos.length);
+    const shown = Math.min(slots.filter(id => !browserPanes.isBrowser(id)).length, infos.length);
     $("conn-status").textContent = changed
       ? `${label}: showing ${shown}/${infos.length} active sessions · ${sustainedCount} sustained active`
       : `${label}: already showing top ${shown}/${infos.length} active sessions · ${sustainedCount} sustained active`;
@@ -6180,6 +6197,7 @@
         let changed = false;
         for (let i = 0; i < slots.length; i++) {
           if (slots[i] && !knownSessions.has(slots[i])
+              && !browserPanes.isBrowser(slots[i])
               && !restartingSessions.has(slots[i])
               && !retainedRestartFailures.has(slots[i])
               && !retainPendingRecoveredSlot(slots[i])
@@ -7207,6 +7225,7 @@
 
   function renderGrid() {
     const grid = $("grid");
+    browserPanes.reconcile();
     const filled = slots.filter(Boolean);
     ui.setMessage($("pill-count"), "{used}/{total} panes", {used:filled.length, total:slots.length});
 
@@ -7293,6 +7312,7 @@
   // drop-target to match the new position), otherwise builds a brand
   // new one via openPane's one-shot construction path.
   function ensurePaneCard(runId, slotIdx) {
+    if (browserPanes.isBrowser(runId)) return browserPanes.ensure(runId, slotIdx);
     const existing = paneCtrls.get(runId);
     if (existing) {
       if (existing.cached) {
@@ -7347,6 +7367,7 @@
       openNewSessionModal(idx);
     });
     installDropTarget(el, idx);
+    browserPanes.emptyButton(el, idx);
     return el;
   }
 
@@ -9086,7 +9107,7 @@
     try {
       const res = await api("/api/active-snapshot/save", {
         method: "POST",
-        body: { layout, slots },
+        body: { layout, slots: slots.map(id => browserPanes.isBrowser(id) ? null : id) },
       });
       const skipped = res.skipped_count || 0;
       const extra = skipped
@@ -9566,6 +9587,11 @@
   function openExternalWebUrl(rawUrl) {
     const url = normalizedHttpUrl(rawUrl);
     if (!url) return false;
+    if (window.silingDesktop?.version === 1) {
+      void window.silingDesktop.request({ action: "external-url", url })
+        .catch(() => alert(ui.t("systemBrowserFailed")));
+      return true;
+    }
     if (systemBrowserAvailable && useSystemBrowser) {
       void api("/api/browser/open", {
         method: "POST", headers: {"X-SiLing-Browser-Open": "user-click"}, body: {url},

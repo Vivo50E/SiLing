@@ -1,8 +1,15 @@
 {
   "schema_version": 1,
   "name": "SiLing",
-  "description": "Component navigation for a single-deployment workspace; not a package-manager manifest or inferred dependency graph.",
+  "description": "Component navigation for the Dashboard and optional desktop client; not a package-manager manifest or inferred dependency graph.",
   "components": {
+    "desktop": {
+      "root": "apps/desktop",
+      "role": "Optional Electron shell and isolated native browser panes; never starts or updates the Dashboard",
+      "entrypoints": ["apps/desktop/main.cjs", "apps/desktop/preload.cjs"],
+      "tests": ["tests/test_desktop.py", "tests/desktop_policy.cjs", "tests/desktop_integration.cjs"],
+      "guide": "docs/desktop-browser.md"
+    },
     "backend": {
       "root": "agent_orchestrator",
       "role": "Python CLI, Dashboard API and session orchestration",
@@ -79,8 +86,8 @@
   "checks": {
     "python": ["*.py", "agent_orchestrator/**/*.py", "scripts/**/*.py", "launchd/**/*.py", "tools/**/*.py", "tests/**/*.py", "siling"],
     "shell": ["scripts/**/*.sh", "launchd/**/*.sh"],
-    "javascript": ["static/**/*.js", "tests/**/*.mjs", "tests/**/*.cjs"],
-    "json": ["workspace.json", "examples/*.json", "static/*.webmanifest"],
+    "javascript": ["static/**/*.js", "tests/**/*.mjs", "tests/**/*.cjs", "apps/desktop/*.cjs"],
+    "json": ["workspace.json", "examples/*.json", "static/*.webmanifest", "apps/desktop/package*.json"],
     "inline_script": "static/index.html"
   }
 }

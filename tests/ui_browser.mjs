@@ -213,6 +213,7 @@ try {
     await pause(100);
   }
   assert.equal(await evaluate(`document.querySelectorAll('.pane iframe').length`), 4, JSON.stringify(errors));
+  assert.equal(await evaluate(`document.querySelectorAll('.new-browser-pane').length`), 0, 'Native browser panes are desktop-only');
   console.log('Dashboard booted with four isolated terminal frames');
   if (!baseline) {
     const groupFrames = frameLoads;
