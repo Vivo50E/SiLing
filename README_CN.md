@@ -13,12 +13,15 @@
 
 </div>
 
-**司令（SiLing）**基于 [YAMY1234 的 Agent Orchestrator](https://github.com/YAMY1234/agent-orchestrator-public)
-fork 并独立维护。原项目提供了本地优先、基于 tmux 的多 Agent Dashboard；
+**司令（SiLing）**是一个独立项目，最初 fork 自
+[YAMY1234 的 Agent Orchestrator](https://github.com/YAMY1234/agent-orchestrator-public)。
+本仓库现已脱离 GitHub fork 网络并独立维护，保留原有 Git 历史和原项目署名。
+原项目提供了本地优先、基于 tmux 的多 Agent Dashboard；
 SiLing 在此基础上增加会话控制、改进终端交互，并提供更可配置的工作台。
-感谢原作者和贡献者提供的项目基础。
+感谢原作者和贡献者提供的项目基础。[MIT License](LICENSE) 同时保留原项目与
+SiLing 的版权声明。
 
-## SiLing 在 fork 后增加了什么
+## SiLing 增加了什么
 
 以下是 [Vivo50E/SiLing](https://github.com/Vivo50E/SiLing) 维护的新增功能和改进，
 与继承自上游的核心能力分开列出：
@@ -36,7 +39,7 @@ SiLing 在此基础上增加会话控制、改进终端交互，并提供更可�
   字号、减少动画、统一图标与不同 Agent 的身份徽标。Dashboard 操作界面可在设置中
   切换中英文；Agent 输出、用户内容和后端原始错误保持原样。
 - **独立应用与受控更新**：PWA 安装、`siling` CLI，以及先在隔离环境测试指定
-  commit、再明确批准应用的更新流程。推送到本 fork 的 `main` 不等于部署。
+  commit、再明确批准应用的更新流程。推送到本仓库的 `main` 不等于部署。
 - **按项目分组 pane**：命名与标识色、单个或批量归组、不重启终端的分组筛选；
   连接同一 Dashboard 的设备共享分组信息。
 

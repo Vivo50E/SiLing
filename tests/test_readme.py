@@ -11,6 +11,24 @@ READMES = ("README.md", "README_CN.md", "README_EN.md")
 
 
 class ReadmeTests(unittest.TestCase):
+    def test_independent_project_preserves_origin_and_copyright(self):
+        for filename, status in (
+            ("README.md", "independent project"),
+            ("README_CN.md", "独立项目"),
+        ):
+            with self.subTest(filename=filename):
+                text = (PROJECT_DIR / filename).read_text(encoding="utf-8")
+                self.assertIn(status, text)
+                self.assertIn(
+                    "https://github.com/YAMY1234/agent-orchestrator-public", text
+                )
+                self.assertIn("[MIT License](LICENSE)", text)
+        license_text = (PROJECT_DIR / "LICENSE").read_text(encoding="utf-8")
+        for author in ("Agent Orchestrator contributors", "SiLing contributors"):
+            self.assertIn(f"Copyright (c) 2026 {author}", license_text)
+        self.assertIn("MIT License", license_text)
+        self.assertIn("The above copyright notice and this permission notice", license_text)
+
     def test_readmes_use_separate_language_pages_and_preserve_the_brand(self):
         homepage = (PROJECT_DIR / "README.md").read_text(encoding="utf-8")
         self.assertNotIn("## 中文\n", homepage)

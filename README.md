@@ -13,14 +13,17 @@
 
 </div>
 
-SiLing (Chinese name: **司令**) is an independently maintained fork of
+SiLing (Chinese name: **司令**) is an independent project originally forked from
 [Agent Orchestrator by YAMY1234](https://github.com/YAMY1234/agent-orchestrator-public).
+This repository has left GitHub's fork network and is maintained independently;
+its original Git history and attribution are preserved.
 The original project provides the local-first, tmux-backed multi-agent Dashboard;
 SiLing builds on that foundation with additional session controls, terminal
 interaction improvements, and a more configurable workbench. Thanks to the
-upstream authors and contributors for the foundation.
+original authors and contributors for the foundation. The [MIT License](LICENSE)
+retains both the original project's copyright notice and SiLing's notice.
 
-## What this fork adds
+## What SiLing adds
 
 The following are additions and improvements maintained in
 [Vivo50E/SiLing](https://github.com/Vivo50E/SiLing), not a list of upstream features:
@@ -48,7 +51,7 @@ The following are additions and improvements maintained in
   shared by devices connected to the same Dashboard.
 - **Installable app and controlled updates:** PWA installation, the `siling` CLI,
   and updates that test a specific candidate commit in isolation before explicit
-  approval to apply it. Publishing to this fork's `main` does not deploy it.
+  approval to apply it. Publishing to this repository's `main` does not deploy it.
 
 The inherited foundation includes multi-agent layouts, task priorities and states,
 linked files/folders/URLs, session save/restore, Mission Control, remote nodes, and
