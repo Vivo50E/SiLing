@@ -66,6 +66,12 @@ and verify session discovery plus HTTP/WebSocket terminal proxying.
 
 ## Pull requests
 
+For desktop changes, also run `npm ci --prefix apps/desktop` and
+`npm run test:integration --prefix apps/desktop`. This launches an isolated
+Electron window with fixture servers and a temporary profile; it never uses the
+running Dashboard. Dependency-free desktop policy tests are included in
+`make verify`. Keep Electron pinned and refresh its lockfile when updating it.
+
 - Keep each change focused and explain its user-visible behavior.
 - Add or update tests for logic changes.
 - Keep the English homepage (`README.md`) and Chinese page (`README_CN.md`) in

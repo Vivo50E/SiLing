@@ -2,14 +2,14 @@
 
 ## Current decision / 当前决策
 
-SiLing currently ships one coupled Python service and browser UI, not multiple
-independently deployable packages. This first structural increment creates an
-agent-readable component map and shared checks without changing runtime paths.
-It is a monorepo foundation, not a claim that package extraction is complete.
+SiLing's core remains a coupled Python service and browser UI. An optional
+Electron client now lives in `apps/desktop`, with its own npm manifest and lock.
+The component map and shared checks preserve existing backend runtime paths;
+this is not a claim that the remaining package extraction is complete.
 
-司令目前仍是一个共同部署的 Python 服务与浏览器界面。本阶段先建立组件边界、
-可查询导航与统一验证；不靠空的 `apps/`、`packages/` 目录宣称完成拆包。
-现有启动入口、导入路径、公开文档 URL 和运行数据保持兼容。
+司令核心仍是共同部署的 Python 服务与浏览器界面。可选 Electron 客户端位于
+`apps/desktop`，拥有独立 npm 清单与锁文件；其余模块尚未完成拆包。
+现有后端启动入口、导入路径、公开文档 URL 和运行数据保持兼容。
 
 ## Repository map / 目录职责
 
@@ -18,6 +18,7 @@ SiLing/
 ├── siling, orchestrator.py, dashboard.py  # CLI and compatibility entrypoints
 ├── agent_orchestrator/                   # Python backend and orchestration
 ├── static/                               # Dashboard UI and PWA assets
+├── apps/desktop/                         # Optional Electron client (own npm lock)
 ├── scripts/                              # Session runtime operations
 ├── launchd/                              # macOS installation and deployment
 ├── tools/                                # Development-only validation
@@ -48,6 +49,7 @@ discovery by every coding Agent.
 | Remote work | Node transport and workspace sync | `remote_nodes.py`, `sync_status.py`, `sync_transfer.py` |
 | Updates | Candidate verification, approval and build identity | `self_update.py`, `version.py` |
 | Browser UI | DOM composition, preferences, messages and groups | `static/index.html`, `ui-foundation.js`, `ui-messages.js`, `pane-groups.js` |
+| Desktop browser | Trusted Dashboard bridge, isolated native website views | `apps/desktop/`, `static/browser-panes.js`, [guide](../desktop-browser.md) |
 
 Python filenames above are relative to `agent_orchestrator/` unless otherwise
 qualified. Browser filenames are relative to `static/`.

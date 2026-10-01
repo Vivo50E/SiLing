@@ -325,6 +325,16 @@ CLI 优先从服务 PATH 查找，再检查 `~/.local/bin`；后台启动使用�
 
 ## 快速开始
 
+### 可选桌面浏览器面板
+
+[Electron 桌面客户端](docs/desktop-browser.md) 支持在 Agent 旁边使用真正的 Chromium
+浏览器面板：在空网格点击 **打开浏览器面板**，输入网址即可。支持前进/后退、刷新、
+移动/交换、放大以及本机地址恢复，不会重启 Agent。网页没有终端控制接口，登录信息
+使用独立 profile。这是单独启动的源码客户端，不是现有 PWA 的自动升级；第一版暂不
+包含弹窗登录、下载、网站权限、项目分组归属或手机浏览器面板。
+
+### Dashboard 安装
+
 需要 macOS 或 Linux、`tmux`、Python 3.10+，以及至少一个支持的 agent CLI
 （`codex`、`claude` 或 `agent`）。安装 `ttyd` 后即可使用截图中的完整交互式
 terminal 体验。

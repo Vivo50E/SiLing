@@ -1,0 +1,15 @@
+{
+  "name": "siling-desktop",
+  "productName": "SiLing",
+  "version": "0.3.0",
+  "private": true,
+  "engines": { "node": ">=22.12.0" },
+  "description": "Optional isolated desktop browser panes for SiLing",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test ../../tests/desktop_policy.cjs",
+    "test:integration": "electron ../../tests/desktop_integration.cjs"
+  },
+  "devDependencies": { "electron": "44.5.1" }
+}

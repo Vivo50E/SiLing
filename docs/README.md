@@ -17,6 +17,7 @@ without moving them or breaking their published URLs.
 - [Agent delegation / 子会话委派](agent-delegation.md)
 - [Restart an Agent / 重启会话](agent-session-restart.md)
 - [Remote nodes / 远程节点](remote-nodes.md)
+- [Desktop browser panes / 桌面浏览器面板](desktop-browser.md)
 
 ## Design and evidence / 设计与验收记录
 
