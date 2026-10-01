@@ -20,6 +20,13 @@ from agent_orchestrator.config import TaskConfig
 
 
 class PaneInteractionTests(unittest.TestCase):
+    def test_selection_preview_discards_changed_selection(self):
+        before = "%1 1 0 0 10 8 12 20 15 80"
+        after = "%1 1 0 0 10 9 12 20 15 80"
+        with patch.object(dashboard.subprocess, "check_output", side_effect=[before, after]), \
+                patch.object(dashboard, "_tmux_copy_selection", return_value="  a\n  b\n  c"):
+            self.assertEqual(dashboard._tmux_selection_preview("test"), {})
+
     @unittest.skipUnless(shutil.which("tmux"), "tmux required")
     def test_single_line_selection_trims_highlight_and_preserves_multiline(self):
         with tempfile.TemporaryDirectory(prefix="siling-trim-", dir="/tmp") as temp:
@@ -52,6 +59,10 @@ class PaneInteractionTests(unittest.TestCase):
                     key("history-top"); key("start-of-line"); key("begin-selection")
                     key("cursor-down"); key("-N", "10", "cursor-right")
                     before = dashboard._tmux_copy_selection("check")
+                    preview = dashboard._tmux_selection_preview("check")
+                    self.assertEqual(preview["text"], before)
+                    self.assertEqual(preview["end"]["y"] - preview["start"]["y"], 1)
+                    self.assertFalse(preview["rectangle"])
                     self.assertFalse(dashboard._tmux_trim_selection("check"))
                     self.assertEqual(dashboard._tmux_copy_selection("check"), before)
                     key("cancel")
@@ -134,8 +145,9 @@ class PaneInteractionTests(unittest.TestCase):
             response = client.post("/api/sessions/example/selection")
             self.assertEqual(response.json(), {"text": "selected\ntext"})
             copy.assert_called_once_with("private-test")
-            with patch.object(dashboard, "_tmux_trim_selection", return_value=True) as trim:
-                self.assertEqual(client.post("/api/sessions/example/selection/trim").json(), {"adjusted": True})
+            with patch.object(dashboard, "_tmux_trim_selection", return_value=True) as trim, \
+                    patch.object(dashboard, "_tmux_selection_preview", return_value={"text": "fixture"}):
+                self.assertEqual(client.post("/api/sessions/example/selection/trim").json(), {"adjusted": True, "preview": {"text": "fixture"}})
                 trim.assert_called_once_with("private-test")
                 lookup.return_value = None
                 self.assertEqual(client.post("/api/sessions/missing/selection/trim").status_code, 404)
@@ -286,8 +298,9 @@ global.window = {
 global.document = {
   head: { appendChild() {} },
   documentElement: { style: { setProperty() {} } },
-  createElement: () => ({}),
+  createElement: () => ({style: {}, replaceChildren() {}}),
   querySelector: () => ({
+    appendChild() {},
     addEventListener: (name, fn) => { screenEvents[name] = fn; },
     getBoundingClientRect: () => ({width: 0, height: 0}),
   }),

@@ -142,7 +142,10 @@ scrolling the wheel to extend the selection across screens, directly in the pane
 Release the mouse, then press ⌘C (macOS) or Ctrl+Shift+C to copy the complete
 selection. Typing returns to live input. Option-drag retains xterm's screen-local
 selection. This uses tmux's `copy-pipe-no-clear -CP` support for clipboard transfer.
-Single-line terminal selections skip leading spaces when the mouse is released; multiline indentation is preserved.
+Single-line terminal selections skip leading spaces when the mouse is released.
+Multiline selections remove the common leading spaces from nonblank lines, keeping
+relative code indentation and blank lines. A line without leading spaces, mixed
+tab indentation, rectangular selections, and ambiguous soft wraps are left unchanged.
 Ctrl-drag passes mouse input to terminal applications; other agent panes retain
 their mouse behavior (Option-drag on macOS selects text). Newly started or
 resumed Codex sessions use inline rendering to preserve terminal scrollback.

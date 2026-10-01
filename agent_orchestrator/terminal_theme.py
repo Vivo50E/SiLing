@@ -502,6 +502,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     screen.addEventListener("mousedown", (event) => {
       if (event.button !== 0 || event.ctrlKey) return;
       clearHover();
+      selectionEpoch++; tmuxPreview = null; clearMargin();
       startX = event.clientX;
       startY = event.clientY;
       if (event.altKey || (nativeSelection(event) && event.detail >= 2)) {
@@ -538,12 +539,101 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       if (layer) layer.style.cursor = link ? "pointer" : "default";
     }, true);
     screen.addEventListener("mouseleave", clearHover);
-    terminal.onScroll?.(clearHover);
-    terminal.onResize?.(clearHover);
-    terminal.onWriteParsed?.(clearHover);
+    terminal.onScroll?.(() => { clearHover(); paintNativeMargin(); });
+    terminal.onResize?.(() => { clearHover(); clearMargin(); });
+    terminal.onWriteParsed?.(() => { clearHover(); paintNativeMargin(); });
 
+    // A multiline selection has a separate left edge on each row. Keep the
+    // actual buffer intact and exclude its common margin from both highlight
+    // and clipboard text. A row with no indentation makes this a no-op.
+    const dedentSelection = (text) => {
+      const lines = text.split(/\r?\n/);
+      if (lines.length < 2) return {text, indent: 0};
+      const nonempty = lines.filter(line => /\S/.test(line));
+      if (!nonempty.length || nonempty.some(line => /^[ \t]*\t/.test(line))) return {text, indent: 0};
+      const indent = nonempty.reduce((minimum, line) => Math.min(minimum, line.match(/^ */)[0].length), Infinity);
+      if (!indent) return {text, indent: 0};
+      return {indent, text: text.replace(/^ */gm, spaces => spaces.slice(Math.min(indent, spaces.length)))};
+    };
+    const marginLayer = document.createElement("div");
+    marginLayer.className = "siling-selection-margin";
+    Object.assign(marginLayer.style, {position:"absolute", inset:"0", pointerEvents:"none", zIndex:"8"});
+    screen.appendChild(marginLayer);
+    const clearMargin = () => marginLayer.replaceChildren();
+    const rawSelection = terminal.getSelection?.bind(terminal) || (() => "");
+    const nativeDedent = () => {
+      const text = rawSelection();
+      const range = terminal.getSelectionPosition?.();
+      if (!range || selection._activeSelectionMode === 3
+          || range.end.y - range.start.y + 1 !== text.split(/\r?\n/).length) return {text, indent:0};
+      return dedentSelection(text);
+    };
+    terminal.getSelection = () => nativeDedent().text;
+    const paintMargin = (range, indent, viewport) => {
+      clearMargin();
+      if (!indent) return;
+      const bounds = screen.getBoundingClientRect();
+      const cellWidth = bounds.width / terminal.cols, cellHeight = bounds.height / terminal.rows;
+      for (let row = Math.max(range.start.y, viewport); row <= Math.min(range.end.y, viewport + terminal.rows - 1); row++) {
+        const col = row === range.start.y ? range.start.x : 0;
+        const end = row === range.end.y ? range.end.x : terminal.cols;
+        const line = terminal.buffer.active.getLine(terminal.buffer.active.viewportY + row - viewport);
+        let width = 0;
+        // Never cover content if the buffer changed since the snapshot.
+        while (width < indent && col + width < end) {
+          const cell = line?.getCell(col + width);
+          if (!cell || !/^[ \t]*$/.test(cell.getChars())) break;
+          width++;
+        }
+        if (!width) continue;
+        const mask = document.createElement("span");
+        Object.assign(mask.style, {position:"absolute", left:`${col * cellWidth}px`,
+          top:`${(row - viewport) * cellHeight}px`, width:`${width * cellWidth}px`,
+          height:`${cellHeight}px`, background:terminal.options.theme?.background || "#2b2b2b"});
+        marginLayer.appendChild(mask);
+      }
+    };
+    const paintNativeMargin = () => {
+      const result = nativeDedent();
+      const range = terminal.getSelectionPosition?.();
+      if (range) paintMargin(range, result.indent, terminal.buffer.active.viewportY);
+      else if (tmuxPreview) paintMargin(tmuxPreview, tmuxPreview.indent, tmuxPreview.viewport);
+      else clearMargin();
+    };
+    document.addEventListener("copy", event => {
+      const result = nativeDedent();
+      if (!result.indent || !event.clipboardData) return;
+      event.clipboardData.setData("text/plain", result.text);
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
+    terminal.onSelectionChange?.(paintNativeMargin);
+    let tmuxPreview = null;
+    let selectionEpoch = 0;
+    const updateTmuxMargin = async () => {
+      const epoch = selectionEpoch;
+      const result = await window.silingTrimSelection();
+      if (epoch !== selectionEpoch) return;
+      tmuxPreview = null; clearMargin();
+      const preview = result?.preview;
+      if (!preview || preview.rectangle || preview.start.y === preview.end.y
+          || preview.end.y - preview.start.y + 1 !== preview.text.split(/\r?\n/).length) return;
+      const normalized = dedentSelection(preview.text);
+      if (!normalized.indent) return;
+      tmuxPreview = {...preview, indent:normalized.indent, normalized:normalized.text};
+      paintMargin(preview, normalized.indent, preview.viewport);
+    };
+    let marginScrollTimer;
+    screen.addEventListener("wheel", () => {
+      clearTimeout(marginScrollTimer);
+      marginScrollTimer = setTimeout(() => {
+        if (tmuxSelectionPending && mode !== "tmux-selection" && window.silingTrimSelection) {
+          selectionAdjustment = updateTmuxMargin().catch(clearMargin);
+        }
+      }, 150);
+    }, {passive:true});
     const trimSingleLineSelection = () => {
-      const text = terminal.getSelection?.() || "";
+      const text = rawSelection();
       const position = terminal.getSelectionPosition?.();
       if (!position || position.start.y !== position.end.y
           || selection.columnSelectMode || selection._activeSelectionMode === 3
@@ -555,13 +645,13 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     let selectionAdjustment = Promise.resolve();
     document.addEventListener("mouseup", (event) => {
       if (event.button === 0 && !event.ctrlKey && mode !== "tmux-selection") {
-        setTimeout(trimSingleLineSelection, 0);
+        setTimeout(() => { trimSingleLineSelection(); paintNativeMargin(); }, 0);
       }
       if (mode === "tmux-selection") {
         // Suppress the default drag-end copy-and-cancel: retain the highlighted
         // tmux selection so wheel scrolling and the copy shortcut can use it.
         if (tmuxSelectionPending && window.silingTrimSelection) {
-          selectionAdjustment = Promise.resolve().then(() => window.silingTrimSelection())
+          selectionAdjustment = Promise.resolve().then(updateTmuxMargin)
             .catch(() => {}); // Keep the original selection if adjustment is unavailable.
         }
         setTimeout(clearMode, 0);
@@ -642,7 +732,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
         if (!read) return;
         const text = selectionAdjustment.then(read).then(result => {
           if (!result.text) throw new Error("No terminal text is selected");
-          return result.text;
+          return tmuxPreview?.text === result.text ? tmuxPreview.normalized : result.text;
         });
         // Construct ClipboardItem during the trusted key event. Safari keeps
         // its user gesture permission while the selection request completes.
@@ -655,6 +745,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       } else if (event.key === "Escape"
           || (!event.metaKey && !event.altKey && event.key.length === 1)) {
         tmuxSelectionPending = false;
+        selectionEpoch++; tmuxPreview = null; clearMargin();
       }
     }, true);
 

@@ -598,6 +598,29 @@ def _tmux_trim_selection(session: str) -> bool:
     return True
 
 
+def _tmux_selection_preview(session: str) -> dict:
+    """Return a stable selection snapshot for the browser's indentation overlay."""
+    fields = ("pane_id", "selection_present", "rectangle_toggle", "selection_start_x",
+              "selection_start_y", "selection_end_x", "selection_end_y",
+              "history_size", "scroll_position", "pane_width")
+    def snapshot():
+        return subprocess.check_output(
+            ["tmux", "display-message", "-p", "-t", session,
+             " ".join("#{" + field + "}" for field in fields)], text=True, timeout=5).strip()
+    before = snapshot()
+    values = before.split()
+    if len(values) != len(fields) or values[1] != "1":
+        return {}
+    text = _tmux_copy_selection(values[0])
+    if snapshot() != before:
+        return {}
+    rectangle, sx, sy, ex, ey, history, scroll, width = map(int, values[2:])
+    if (sy, sx) > (ey, ex):
+        sx, sy, ex, ey = ex, ey, sx, sy
+    return {"text": text, "rectangle": bool(rectangle), "start": {"x": sx, "y": sy},
+            "end": {"x": ex, "y": ey}, "viewport": history - scroll, "cols": width}
+
+
 def _tmux_target_pane(session: str) -> tuple[str, str]:
     """Resolve a session to an explicit live pane target.
 
@@ -9731,7 +9754,8 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         if not session:
             raise HTTPException(409, "session has no terminal")
         try:
-            return {"adjusted": _tmux_trim_selection(session)}
+            adjusted = _tmux_trim_selection(session)
+            return {"adjusted": adjusted, "preview": _tmux_selection_preview(session)}
         except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
             raise HTTPException(409, str(exc)) from exc
 
