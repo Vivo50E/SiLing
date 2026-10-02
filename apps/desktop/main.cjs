@@ -3,6 +3,9 @@ const path = require('node:path');
 const electron = require('electron');
 const { app, BrowserWindow, Menu, ipcMain, dialog } = electron;
 const { dashboardURL } = require('./policy.cjs');
+const { createUpdater } = require('./updates.cjs');
+const build = require('./package.json');
+let updater;
 const { BrowserHost } = require('./browser-host.cjs');
 const { DEFAULT_URL, readConnection, connectionDialog } = require('./connection.cjs');
 
@@ -55,10 +58,12 @@ async function connect(initial, choose = false) {
 }
 
 app.whenReady().then(async () => {
+  updater = createUpdater(electron, build);
+  app.once('before-quit', () => updater.dispose());
   app.setAboutPanelOptions({ applicationName: 'SiLing · 司令', applicationVersion: app.getVersion(),
-    version: `Electron ${process.versions.electron}`, copyright: 'Dashboard version: Settings → About SiLing' });
+    version: `Electron ${process.versions.electron} · ${(build.buildCommit || '').slice(0, 12) || (app.isPackaged ? 'unknown' : 'source')}`, copyright: 'Dashboard version: Settings → About SiLing' });
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    { label: 'SiLing', submenu: [{ role: 'about' }, {
+    { label: 'SiLing', submenu: [{ role: 'about' }, updater.menu, {
       label: app.getLocale().startsWith('zh') ? 'Dashboard 连接设置…' : 'Dashboard Connection…',
       click: async () => {
         if (connecting) return;
@@ -75,6 +80,7 @@ app.whenReady().then(async () => {
   ]));
   const value = process.env.SILING_DASHBOARD_URL || readConnection(app.getPath('userData'));
   await connect(value || DEFAULT_URL, app.isPackaged && !value);
+  if (!app.commandLine.hasSwitch('disable-desktop-updates')) updater.start();
 }).catch(() => {
   // URLs may include login tokens: do not put the underlying error in logs.
   dialog.showErrorBox('SiLing could not connect',

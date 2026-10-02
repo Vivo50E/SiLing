@@ -8,10 +8,12 @@
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
-    "test": "node --test ../../tests/desktop_policy.cjs ../../tests/desktop_package.cjs",
+    "test": "node --test ../../tests/desktop_policy.cjs ../../tests/desktop_package.cjs ../../tests/desktop_updates.cjs",
     "test:integration": "electron ../../tests/desktop_integration.cjs",
     "package:mac": "node package-mac.cjs",
-    "test:packaged": "node ../../tests/desktop_packaged.cjs"
+    "test:packaged": "node ../../tests/desktop_packaged.cjs",
+    "test:update": "node ../../tests/desktop_sparkle.cjs",
+    "update:key": "node create-update-key.cjs"
   },
   "devDependencies": { "@electron/packager": "20.3.0", "electron": "44.5.1" }
 }

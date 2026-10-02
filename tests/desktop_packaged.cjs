@@ -71,7 +71,7 @@ async function start(extraEnv = {}) {
   delete env.ELECTRON_RUN_AS_NODE;
   if (!Object.hasOwn(extraEnv, 'SILING_DASHBOARD_URL')) delete env.SILING_DASHBOARD_URL;
   log = '';
-  child = spawn(executable, [`--user-data-dir=${profile}`, '--remote-debugging-port=0', '--disable-gpu'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  child = spawn(executable, [`--user-data-dir=${profile}`, '--remote-debugging-port=0', '--disable-gpu', '--disable-desktop-updates'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
   closed = new Promise(resolve => child.once('close', resolve));
   child.stdout.on('data', data => { log += data; });
   child.stderr.on('data', data => { log += data; });
@@ -104,7 +104,15 @@ async function run() {
   assert.equal(plist('CFBundleExecutable'), 'SiLing');
   assert.equal(plist('CFBundleIdentifier'), 'com.vivo50e.siling');
   assert.equal(plist('CFBundleShortVersionString'), metadata.version);
-  assert.equal(plist('CFBundleVersion'), metadata.version);
+  const { extractFile } = desktopRequire('@electron/asar');
+  const packaged = JSON.parse(extractFile(path.join(bundle, 'Contents/Resources/app.asar'), 'package.json'));
+  assert.equal(plist('CFBundleVersion'), packaged.buildNumber || metadata.version);
+  if (packaged.updateChannel === 'sparkle') {
+    const framework = path.join(bundle, 'Contents/Resources/SiLingUpdater.app/Contents/Frameworks/Sparkle.framework');
+    assert.equal(fs.readlinkSync(path.join(framework, 'Sparkle')), 'Versions/Current/Sparkle');
+    assert.match(plist('SUPublicEDKey'), /^[A-Za-z0-9+/]{43}=$/);
+    assert.ok(fs.existsSync(path.join(bundle, 'Contents/Resources/SiLingUpdater.app/Contents/MacOS/SiLingUpdater')));
+  }
   const icon = path.join(bundle, 'Contents/Resources', plist('CFBundleIconFile'));
   assert.equal(fs.readFileSync(icon).subarray(0, 4).toString(), 'icns');
   assert.ok(fs.statSync(icon).size > 10000);

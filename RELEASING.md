@@ -42,26 +42,29 @@ release.
 Publishing, rewriting a public branch, and changing repository visibility each
 require an explicit maintainer review.
 
-## Automated desktop previews
+## Desktop online update releases
 
-`.github/workflows/desktop-release.yml` is the approved daily/manual preview
-pipeline for `Vivo50E/SiLing`'s `main`. It pins one commit, skips already-published
-previews, runs `make verify` on Python 3.10/3.13, then requires native arm64/x64
-Electron integration and packaged-app tests before publication. Only the publish
-job has `contents: write`; no personal token or signing secrets are needed.
-Both workflows provision checksum-pinned tmux 3.7c on Linux: the older distro
-binary lacks the `copy-pipe-no-clear -CP` flags used by selection tests. Builds
-and desktop integration run on pinned macOS 15 images, not a moving `latest` OS.
+`.github/workflows/desktop-release.yml` builds commit-bound arm64/x64 Electron
+clients on macOS and publishes Sparkle appcasts. See the
+[desktop release guide](docs/desktop-browser.md#automated-online-releases).
+The pipeline requires full Python regression, native Electron tests, packaged
+application tests and real Sparkle replacement/relaunch and rejection tests.
+Only the final publish job receives the `desktop-updates` environment's
+`SILING_UPDATE_PRIVATE_KEY` secret and release write permission.
 
-The desktop base version is `apps/desktop/package.json` (also update its lockfile
-when bumping). Release tags add `-preview.<commit>`; these are prereleases, not
-stable Latest releases. ZIPs use ad-hoc signing only, with no Apple notarization,
-automatic app update or backend deployment. `SHA256SUMS.txt` accompanies both
-architecture assets. See [desktop preview operations](docs/desktop-browser.md#automated-preview-releases)
-for scheduling, manual triggering, download limitations and recovery.
+The release key must match `apps/desktop/sparkle-config.json`. Archives and feeds
+are signed with Ed25519; no Apple membership or signing secrets are required.
+The app bundles use ad-hoc signing and are not notarized. Initial installation
+remains subject to macOS policy. Do not disable those checks for distribution.
 
-`tools/desktop_release.py` fails closed on API errors and conflicting tags,
-creates a draft first, and publishes only after every asset upload completes.
-Retries may replace assets only in that commit's matching unpublished draft;
-published previews are never overwritten. An incomplete public preview or tag
-conflict needs maintainer review instead of automatic deletion or retagging.
+Use full Git history: `git rev-list --count HEAD` supplies increasing build
+numbers on the fast-forward main branch. Keep main history intact. Tags use
+`desktop-v<base>-sparkle.<sha>` and releases become Latest only after both ZIPs,
+both signed appcasts and SHA256SUMS upload successfully. Keep Latest reserved
+for compatible desktop releases. Existing public assets are immutable; failures
+leave unpublished drafts. The legacy preview mode is retained for historical
+releases but is not the automatic update feed.
+
+Local builds neither install the app nor restart/deploy the Dashboard. Preserve
+and securely back up the release private key; losing it can require a one-time
+client reinstall. Key generation refuses silent replacement of a pinned key.

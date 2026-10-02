@@ -26,7 +26,8 @@ Builds use local ad-hoc signing with strict signature verification, not a
 Developer ID certificate or Apple notarization. No personal certificate is read.
 They are not a Developer ID-signed release; do not disable Gatekeeper,
 remove quarantine flags or bypass HTTPS certificate checks to distribute them.
-A distributable signed/notarized installer remains a separate release task.
+For automatic online updates without a paid Apple account, use the Sparkle
+release pipeline described below.
 
 To install, copy the generated **SiLing.app** in Finder to your Applications
 folder (or `~/Applications`). If an older app has that name, quit and back it up
@@ -51,44 +52,77 @@ explicitly supplied at process launch, overrides the saved URL for that launch
 only. Remote connections require HTTPS with a certificate trusted by this Mac.
 
 The Dashboard must already be running. Desktop builds do not start or restart
-it. Desktop updates require obtaining a new build and explicitly replacing the app after
-quitting it; Dashboard **Update** updates the server, not this app bundle.
-There is no desktop auto-updater or DMG in this increment.
+it.
 
-## Automated preview releases
+## Free automatic online updates
 
-[Desktop preview release](https://github.com/Vivo50E/SiLing/actions/workflows/desktop-release.yml)
-checks `main` daily at **10:17 UTC** (03:17 Pacific daylight time, 02:17 standard
-time). Maintainers can also choose **Run workflow → main**. GitHub schedules may
-be delayed and are disabled after 60 days of inactivity in a public repository;
-check the Actions page if daily checks stop.
+SiLing uses Sparkle 2 with its own Ed25519 release key. No Apple Developer
+subscription or Developer ID certificate is needed for this update mechanism.
+The bundled native helper checks and downloads updates in the background;
+**SiLing → Check for Desktop Updates… / 检查客户端更新…** opens Sparkle's update
+window. Choose its install/relaunch action to replace the client automatically.
+You can defer installation instead. Save unsaved forms and drafts before
+restarting. Dashboard and Agent processes continue running, and the desktop
+connection file and browser profiles stay in place.
 
-A successful preview for the same commit skips all builds. Otherwise CI runs the
-full Python suite on 3.10/3.13 and native Electron integration, packaging and
-packaged-app smoke tests on both Apple Silicon and Intel Macs. All jobs use the
-same pinned `main` commit. Only after every check passes does CI publish a
-[prerelease](https://github.com/Vivo50E/SiLing/releases), never a stable Latest
-release. Tags contain the desktop base version and 12-character source commit,
-for example `desktop-v0.3.0-preview.0123456789ab`; the full SHA is in release notes.
-The native About dialog still shows the base package version, not the preview tag.
+Install the first update-enabled client once. Old Electron builds without
+Sparkle cannot bootstrap themselves. These builds remain ad-hoc signed and
+not Apple-notarized: macOS can still require approval or block a first launch.
+The updater does not disable Gatekeeper, TLS or signature checks. Install the
+app in a writable Applications directory, such as `~/Applications`; running
+from an archive, read-only volume, or a translocated location can prevent updates.
 
-Download the `mac-arm64.zip` (Apple Silicon) or `mac-x64.zip` (Intel) asset. The ZIP
-contains **SiLing.app**, preserving executable permissions and symlinks. Download
-both ZIPs and `SHA256SUMS.txt` to verify with `shasum -a 256 -c SHA256SUMS.txt`, or
-compare `shasum -a 256 <your-zip>` against the matching line in that file.
+Both appcast feeds and ZIPs are Ed25519-signed. The embedded public key validates
+updates before extraction, and increasing numeric build numbers prevent
+rollback. Automatic checks do not send system profiles. Sparkle's distribution
+is downloaded from its official release with a pinned SHA-256 at build time.
+The helper and framework are included in the app, so users need no Node, Xcode,
+Git or separate updater installation. The update signing key is independent
+of Apple's code-signing certificates.
 
-**These previews are ad-hoc signed, not Apple-notarized.** Gatekeeper may block
-internet-downloaded builds; this pipeline is not yet a frictionless public
-installer. Do not disable security checks; use the local source-build path above
-if needed. A Developer ID certificate, notarization and secure signing-secret
-configuration are a separate release increment.
+### Release key setup
 
-Failures leave no public partial release. An interrupted upload may leave a draft;
-rerun the workflow to rebuild and finish that commit's draft. Published assets and
-tags are never overwritten. Intermediate Actions artifacts expire after 14 days;
-published releases remain until a maintainer removes them. To pause periodic
-publishing, disable this workflow in Actions. Nothing is installed on your Mac,
-and no Dashboard, Agent session or desktop connection settings are changed.
+The public key is pinned in `apps/desktop/sparkle-config.json`. A maintainer's
+private seed is stored outside the repository with `0600` permissions. To
+initialize a new project key (only before clients have been distributed), run:
+
+```bash
+npm run update:key --prefix apps/desktop
+```
+
+The default private-key path is `~/.config/siling/desktop-update-key`. Back it up
+securely. The tool refuses to replace an existing pinned key with an unrelated
+one. Losing this key can require users to reinstall the client; never casually
+regenerate or rotate it. The private seed must not be committed, embedded in
+binaries, written to logs, or pasted into issues/chat.
+
+Configure the existing seed as GitHub environment **desktop-updates** secret
+**SILING_UPDATE_PRIVATE_KEY** using GitHub's secret settings or `gh secret set`
+with file input. Only the final publish job receives it. Build and test jobs
+use the public key only. No Apple credentials are required.
+
+### Automated online releases
+
+**Desktop online update release** checks `main` daily at **10:17 UTC** and can
+also be started via **Run workflow → main**. It binds the release to one commit,
+uses full Git history for monotonically increasing build numbers, and requires:
+
+- Full Python verification on Python 3.10 and 3.13.
+- Native Apple Silicon and Intel Electron integration and packaged-app tests.
+- Actual Sparkle A → B replacement/relaunch plus wrong-key and tampered-ZIP
+  rejection tests using isolated apps and throwaway keys.
+
+Publication creates a draft, uploads both ZIPs, signed architecture-specific
+appcasts and SHA-256 sums, then publishes as **Latest** only when every upload
+has completed. The clients read `appcast-arm64.xml` or `appcast-x64.xml` from
+that release. Missing or mismatched release keys stop publication. Existing
+published assets are never overwritten; retryable drafts remain private.
+Keep Latest reserved for desktop releases with appcasts. Legacy `-preview.*`
+releases remain available but are not used as an automatic update feed.
+
+Closing/restarting the Electron client does not update the Python Dashboard.
+Dashboard **Update** remains a separate server operation. A local build is not
+publication or installation; review and authorize those actions separately.
 
 ## Start from source
 

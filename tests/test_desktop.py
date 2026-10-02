@@ -15,6 +15,14 @@ class DesktopTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_desktop_updates(self):
+        root = Path(__file__).resolve().parents[1]
+        result = subprocess.run(
+            ["node", "--test", str(root / "tests/desktop_updates.cjs")],
+            cwd=root, capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_desktop_policy(self):
         root = Path(__file__).resolve().parents[1]
         result = subprocess.run(

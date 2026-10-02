@@ -87,7 +87,7 @@
     "python": ["*.py", "agent_orchestrator/**/*.py", "scripts/**/*.py", "launchd/**/*.py", "tools/**/*.py", "tests/**/*.py", "siling"],
     "shell": ["scripts/**/*.sh", "launchd/**/*.sh"],
     "javascript": ["static/**/*.js", "tests/**/*.mjs", "tests/**/*.cjs", "apps/desktop/*.cjs", "apps/desktop/*.js"],
-    "json": ["workspace.json", "examples/*.json", "static/*.webmanifest", "apps/desktop/package*.json"],
+    "json": ["workspace.json", "examples/*.json", "static/*.webmanifest", "apps/desktop/*.json"],
     "inline_script": "static/index.html"
   }
 }

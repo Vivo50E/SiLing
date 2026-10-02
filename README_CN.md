@@ -345,8 +345,13 @@ CLI 优先从服务 PATH 查找，再检查 `~/.local/bin`；后台启动使用�
 包含弹窗登录、下载、网站权限、项目分组归属或手机浏览器面板。
 
 CI 每天 10:17 UTC 检查 `main`，仅在有新提交时发布已测试的 Apple Silicon / Intel
-[桌面预览包](https://github.com/Vivo50E/SiLing/releases)。这些包只有临时签名，**未经 Apple
-公证**，macOS 可能阻止下载后的启动；详见[自动预览发布说明](docs/desktop-browser.md#automated-preview-releases)。
+[桌面更新包](https://github.com/Vivo50E/SiLing/releases)。这些包只有临时签名，**未经 Apple
+公证**，macOS 可能阻止下载后的启动；详见[自动更新发布说明](docs/desktop-browser.md#automated-online-releases)。
+
+客户端采用 **Sparkle + Ed25519** 免费在线更新，无需 Apple Developer 订阅。
+原生菜单 **SiLing → 检查客户端更新…** 可完成下载、校验、自动替换和重启，Agent
+会话保持运行。首次需安装包含更新组件的客户端；发布密钥配置和首次启动限制见桌面指南。
+Dashboard 更新仍独立进行。
 
 ### Dashboard 安装
 

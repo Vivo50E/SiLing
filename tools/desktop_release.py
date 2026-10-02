@@ -46,7 +46,7 @@ def api(method: str, path: str, data=None, *, upload: bool = False):
         raise RuntimeError(f"GitHub {method} failed (HTTP {status})") from None
 
 
-def identity(sha: str) -> str:
+def identity(sha: str, channel: str = "preview") -> str:
     if not re.fullmatch(r"[0-9a-f]{40}", sha):
         raise ValueError("Expected a full commit SHA")
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
@@ -55,11 +55,16 @@ def identity(sha: str) -> str:
     version = json.loads((ROOT / "apps/desktop/package.json").read_text())["version"]
     if not re.fullmatch(r"\d+\.\d+\.\d+", version):
         raise ValueError("Expected a stable desktop base version")
-    return f"desktop-v{version}-preview.{sha[:12]}"
+    if channel not in ("preview", "sparkle"):
+        raise ValueError("Invalid release channel")
+    return f"desktop-v{version}-{channel}.{sha[:12]}"
 
 
 def asset_names(tag: str) -> list[str]:
-    return [f"SiLing-{tag}-mac-{arch}.zip" for arch in ("arm64", "x64")] + ["SHA256SUMS.txt"]
+    names = [f"SiLing-{tag}-mac-{arch}.zip" for arch in ("arm64", "x64")]
+    if "-sparkle." in tag:
+        names += ["appcast-arm64.xml", "appcast-x64.xml"]
+    return names + ["SHA256SUMS.txt"]
 
 
 def existing_release(tag: str, sha: str):
@@ -70,7 +75,7 @@ def existing_release(tag: str, sha: str):
     release = api("GET", f"releases/tags/{quote(tag, safe='')}")
     if release:
         if (release.get("tag_name") != tag or release.get("target_commitish") != sha
-                or release.get("prerelease") is not True):
+                or release.get("prerelease") is not ("-sparkle." not in tag)):
             raise ValueError("Existing release is not this commit's desktop preview")
         assets = release.get("assets", [])
         names = [asset["name"] for asset in assets]
@@ -84,10 +89,24 @@ def existing_release(tag: str, sha: str):
 
 def publish(tag: str, sha: str, directory: Path) -> None:
     names = asset_names(tag)
-    archives = [directory / name for name in names[:-1]]
+    archives = [directory / name for name in names if name.endswith(".zip")]
     if any(p.is_symlink() or not p.is_file() or not p.stat().st_size for p in archives):
         raise ValueError("Both verified architecture archives are required")
     sums = "".join(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n" for p in archives)
+    extra_assets = []
+    online = "-sparkle." in tag
+    if online:
+        if subprocess.check_output(["git", "rev-parse", "--is-shallow-repository"], cwd=ROOT, text=True).strip() != "false":
+            raise ValueError("Online releases require full Git history for monotonic build numbers")
+        build = subprocess.check_output(["git", "rev-list", "--count", "HEAD"], cwd=ROOT, text=True).strip()
+        for arch, archive in zip(("arm64", "x64"), archives):
+            # The private key stays in the publish process environment; never log it.
+            result = subprocess.run(["node", str(ROOT / "apps/desktop/sign-release.cjs"),
+                                     str(archive), tag, arch, build], cwd=ROOT,
+                                    capture_output=True, check=False, timeout=120)
+            if result.returncode != 0:
+                raise RuntimeError("Update signing failed; verify the release key matches the pinned public key")
+            extra_assets.append((f"appcast-{arch}.xml", result.stdout))
     release = existing_release(tag, sha)
     if release and not release["draft"]:
         print("Preview already published; no assets changed.")
@@ -95,8 +114,15 @@ def publish(tag: str, sha: str, directory: Path) -> None:
     if not release:
         release = api("POST", "releases", {
             "tag_name": tag, "target_commitish": sha, "name": f"SiLing {tag}",
-            "draft": True, "prerelease": True, "make_latest": "false",
-            "body": f"Automated desktop preview / 自动桌面预览版\n\nCommit: `{sha}`\n\n"
+            "draft": True, "prerelease": not online, "make_latest": "false",
+            "body": (
+                f"SiLing online-update build / 在线更新客户端\n\nCommit: `{sha}`\n\n"
+                "Install this client once. Future updates use Sparkle and Ed25519 signatures; "
+                "no paid Apple account is required. These apps are ad-hoc signed, not notarized. "
+                "macOS may require explicit approval for first launch. Dashboard and Agents are not restarted.\n\n"
+                f"[Desktop guide](https://github.com/{REPOSITORY}/blob/{sha}/docs/desktop-browser.md)"
+            ) if online else (
+                f"Automated desktop preview / 自动桌面预览版\n\nCommit: `{sha}`\n\n"
                     "mac-arm64: Apple Silicon; mac-x64: Intel. Verify with "
                     "`shasum -a 256 -c SHA256SUMS.txt` after downloading both ZIPs.\n\n"
                     "Ad-hoc signed only, **not Apple-notarized**. Gatekeeper may block downloaded builds; "
@@ -105,20 +131,21 @@ def publish(tag: str, sha: str, directory: Path) -> None:
                     "Requires a separately running Dashboard. Manual app replacement only; "
                     "no server update, session restart or desktop auto-update.\n"
                     "需单独启动 Dashboard；此发布不会更新服务端或重启会话。\n\n"
-                    f"[Desktop guide](https://github.com/{REPOSITORY}/blob/{sha}/docs/desktop-browser.md)",
+                    f"[Desktop guide](https://github.com/{REPOSITORY}/blob/{sha}/docs/desktop-browser.md)"
+            ),
         })
     release_id = release["id"]
     # Retry only this commit's unpublished draft. Published assets are immutable here.
     for asset in release.get("assets", []):
         api("DELETE", f"releases/assets/{asset['id']}")
-    for name, payload in [(p.name, p) for p in archives] + [(names[-1], sums.encode())]:
+    for name, payload in [(p.name, p) for p in archives] + extra_assets + [(names[-1], sums.encode())]:
         data = payload.read_bytes() if isinstance(payload, Path) else payload
         asset = api("POST", f"releases/{release_id}/assets?name={quote(name, safe='')}",
                     data, upload=True)
         if asset.get("state") != "uploaded" or asset.get("size") != len(data):
             raise RuntimeError("Release upload did not complete; leaving an unpublished draft")
     # This is deliberately last: failures leave a draft, never a partial public release.
-    api("PATCH", f"releases/{release_id}", {"draft": False, "prerelease": True, "make_latest": "false"})
+    api("PATCH", f"releases/{release_id}", {"draft": False, "prerelease": not online, "make_latest": "true" if online else "false"})
     print(f"https://github.com/{REPOSITORY}/releases/tag/{tag}")
 
 
@@ -126,9 +153,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("plan", "publish"))
     parser.add_argument("--sha", required=True)
+    parser.add_argument("--channel", choices=("preview", "sparkle"), default="preview")
     parser.add_argument("--artifacts", type=Path, default=ROOT / "dist/release")
     args = parser.parse_args()
-    tag = identity(args.sha)
+    tag = identity(args.sha, args.channel)
     if args.command == "plan":
         release = existing_release(tag, args.sha)
         print(f"tag={tag}")

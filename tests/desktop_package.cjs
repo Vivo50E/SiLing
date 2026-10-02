@@ -36,7 +36,8 @@ test('staging only copies explicit runtime files and MIT notice, never local sec
   for (const file of ['.env', 'connection.json', 'dashboard.local.json', 'package-lock.json']) fs.writeFileSync(path.join(fixture, file), 'private fixture');
   fs.mkdirSync(path.join(fixture, 'outputs'));
   fs.writeFileSync(path.join(fixture, 'outputs/transcript'), 'private fixture');
-  stageApp(fixture, target, path.resolve(__dirname, '../LICENSE'));
+  stageApp(fixture, target, path.resolve(__dirname, '../LICENSE'), 'a'.repeat(40));
+  assert.equal(JSON.parse(fs.readFileSync(path.join(target, 'package.json'))).buildCommit, 'a'.repeat(40));
   assert.deepEqual(fs.readdirSync(target).sort(), [...RUNTIME_FILES, 'LICENSE', 'package.json'].sort());
   assert.equal(JSON.parse(fs.readFileSync(path.join(target, 'package.json'))).devDependencies, undefined);
   assert.match(fs.readFileSync(path.join(target, 'LICENSE'), 'utf8'), /Agent Orchestrator contributors/);

@@ -246,3 +246,53 @@ class DesktopReleaseTests(unittest.TestCase):
             self.assertEqual(checkout["with"]["persist-credentials"], "false")
             self.assertEqual(checkout["with"]["ref"], "${{ github.sha }}" if name == "plan"
                              else "${{ needs.plan.outputs.sha }}")
+
+
+class SparkleReleaseTests(unittest.TestCase):
+    def test_online_release_signs_both_feeds_before_publishing_latest(self):
+        tag = TAG.replace("preview", "sparkle")
+        calls = []
+        def api(method, endpoint, data=None, **kwargs):
+            calls.append((method, endpoint, data))
+            if method == "GET": return None
+            if endpoint == "releases": return {"id": 20, "assets": []}
+            if "/assets?" in endpoint: return {"state": "uploaded", "size": len(data)}
+            return {}
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            for name in release.asset_names(tag):
+                if name.endswith(".zip"): (root / name).write_bytes(b"fixture")
+            result = release.subprocess.CompletedProcess([], 0, stdout=b"<signed-feed/>")
+            with patch.object(release, "api", side_effect=api), patch.object(
+                    release.subprocess, "check_output", side_effect=["false", "42"]), patch.object(
+                    release.subprocess, "run", return_value=result) as signer:
+                release.publish(tag, SHA, root)
+            self.assertEqual(signer.call_count, 2)
+            self.assertTrue(all(call.kwargs["capture_output"] for call in signer.call_args_list))
+        uploads = [endpoint for method, endpoint, _ in calls if "/assets?" in endpoint]
+        self.assertEqual(len(uploads), 5)
+        self.assertTrue(any(endpoint.endswith("appcast-arm64.xml") for endpoint in uploads))
+        self.assertTrue(any(endpoint.endswith("appcast-x64.xml") for endpoint in uploads))
+        self.assertEqual(calls[-1][2], {"draft": False, "prerelease": False, "make_latest": "true"})
+
+    def test_online_release_signing_failure_cannot_publish_or_leak_secret(self):
+        tag = TAG.replace("preview", "sparkle")
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            for name in release.asset_names(tag):
+                if name.endswith(".zip"): (root / name).write_bytes(b"fixture")
+            with patch.object(release, "api") as api, patch.object(
+                    release.subprocess, "check_output", side_effect=["false", "42"]), patch.object(
+                    release.subprocess, "run", return_value=release.subprocess.CompletedProcess([], 1, stderr=b"secret")):
+                with self.assertRaises(RuntimeError) as caught: release.publish(tag, SHA, root)
+                self.assertNotIn("secret", str(caught.exception))
+                api.assert_not_called()
+
+    def test_release_key_is_only_available_to_publish_and_native_update_is_tested(self):
+        workflow = yaml.load((release.ROOT / ".github/workflows/desktop-release.yml").read_text(), Loader=yaml.BaseLoader)
+        jobs = workflow["jobs"]
+        self.assertEqual(jobs["publish"]["environment"], "desktop-updates")
+        for name, job in jobs.items():
+            self.assertEqual(job["steps"][0]["with"]["fetch-depth"], "0")
+            self.assertEqual("secrets.SILING_UPDATE_PRIVATE_KEY" in str(job), name == "publish")
+        self.assertIn("npm run test:update --prefix apps/desktop", [s.get("run") for s in jobs["build"]["steps"]])

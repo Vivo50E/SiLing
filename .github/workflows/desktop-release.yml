@@ -1,4 +1,4 @@
-name: Desktop preview release
+name: Desktop online update release
 
 on:
   schedule:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: desktop-preview-release
+  group: desktop-online-release
   cancel-in-progress: false
 
 jobs:
@@ -24,6 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-python@v6
@@ -33,7 +34,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_SHA: ${{ github.sha }}
-        run: python tools/desktop_release.py plan --sha "$RELEASE_SHA" >> "$GITHUB_OUTPUT"
+        run: python tools/desktop_release.py plan --channel sparkle --sha "$RELEASE_SHA" >> "$GITHUB_OUTPUT"
 
   verify:
     needs: plan
@@ -47,6 +48,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
       - uses: actions/setup-python@v6
@@ -76,6 +78,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
       - uses: actions/setup-node@v6
@@ -92,6 +95,7 @@ jobs:
       - run: npm run test:integration --prefix apps/desktop
       - run: npm run package:mac --prefix apps/desktop
       - run: npm run test:packaged --prefix apps/desktop
+      - run: npm run test:update --prefix apps/desktop
       - name: Archive verified application (preserve executable bits and symlinks)
         env:
           RELEASE_TAG: ${{ needs.plan.outputs.tag }}
@@ -110,6 +114,7 @@ jobs:
           retention-days: 14
 
   publish:
+    environment: desktop-updates
     needs: [plan, verify, build]
     if: needs.plan.outputs.build == 'true'
     runs-on: ubuntu-latest
@@ -119,6 +124,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
       - uses: actions/setup-python@v6
@@ -129,8 +135,12 @@ jobs:
           pattern: desktop-*
           path: dist/release
           merge-multiple: true
-      - name: Publish complete prerelease (never mark as Latest)
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Publish verified online update as Latest
         env:
           GH_TOKEN: ${{ github.token }}
+          SILING_UPDATE_PRIVATE_KEY: ${{ secrets.SILING_UPDATE_PRIVATE_KEY }}
           RELEASE_SHA: ${{ needs.plan.outputs.sha }}
-        run: python tools/desktop_release.py publish --sha "$RELEASE_SHA" --artifacts dist/release
+        run: python tools/desktop_release.py publish --channel sparkle --sha "$RELEASE_SHA" --artifacts dist/release
