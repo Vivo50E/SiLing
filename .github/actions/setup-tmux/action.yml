@@ -1,0 +1,26 @@
+name: Set up test tmux
+description: Build checksum-pinned tmux with copy-pipe -CP support on Linux runners
+runs:
+  using: composite
+  steps:
+    - name: Install build dependencies
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libevent-dev libncurses-dev bison pkg-config
+    - name: Build tmux 3.7c in runner temporary storage
+      shell: bash
+      run: |
+        set -euo pipefail
+        tmux_build_dir=$(mktemp -d "$RUNNER_TEMP/siling-tmux.XXXXXX")
+        cd "$tmux_build_dir"
+        curl --fail --location --retry 3 --output tmux.tar.gz \
+          https://github.com/tmux/tmux/releases/download/3.7c/tmux-3.7c.tar.gz
+        printf '%s  tmux.tar.gz\n' 7c60cae9a0e25288e2e24750aafc9e8800fc7fd4555e447e1b29ee4201cfb3bf | sha256sum --check
+        tar -xzf tmux.tar.gz
+        cd tmux-3.7c
+        ./configure --prefix="$tmux_build_dir/install"
+        make -j2
+        make install
+        "$tmux_build_dir/install/bin/tmux" -V
+        printf '%s\n' "$tmux_build_dir/install/bin" >> "$GITHUB_PATH"

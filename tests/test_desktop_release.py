@@ -20,6 +20,25 @@ TAG = "desktop-v0.3.0-preview." + SHA[:12]
 
 
 class DesktopReleaseTests(unittest.TestCase):
+    def test_ci_provisions_copy_capable_tmux_before_full_tests(self):
+        for file, job_name in (("ci.yml", "test"), ("desktop-release.yml", "verify")):
+            workflow = yaml.load((release.ROOT / ".github/workflows" / file).read_text(),
+                                 Loader=yaml.BaseLoader)
+            steps = workflow["jobs"][job_name]["steps"]
+            setup = next(i for i, step in enumerate(steps)
+                         if step.get("uses") == "./.github/actions/setup-tmux")
+            verify = next(i for i, step in enumerate(steps)
+                          if step.get("run") == "make verify PYTHON=python")
+            self.assertLess(setup, verify)
+            self.assertEqual(workflow["jobs"][job_name]["strategy"]["fail-fast"], "false")
+        action = yaml.load((release.ROOT / ".github/actions/setup-tmux/action.yml").read_text(),
+                           Loader=yaml.BaseLoader)
+        self.assertEqual(action["runs"]["using"], "composite")
+        for step in action["runs"]["steps"]:
+            result = release.subprocess.run(["bash", "-n"], input=step["run"], text=True,
+                                            capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_identity_binds_base_version_to_exact_checkout(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

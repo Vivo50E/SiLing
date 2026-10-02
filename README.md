@@ -144,7 +144,8 @@ In Terminal, Codex and Cursor panes, drag to select text and keep holding the mo
 scrolling the wheel to extend the selection across screens, directly in the pane.
 Release the mouse, then press ⌘C (macOS) or Ctrl+Shift+C to copy the complete
 selection. Typing returns to live input. Option-drag retains xterm's screen-local
-selection. This uses tmux's `copy-pipe-no-clear -CP` support for clipboard transfer.
+selection. This uses tmux's `copy-pipe-no-clear -CP` support for clipboard transfer;
+tmux 3.7c is the CI-tested version (older distro packages may lack these flags).
 Ended Terminal panes offer **Reopen terminal** to start a new shell in the same pane with the original name, working directory, theme, and linked files. The old log remains available; SSH connections and shell processes are not restored.
 
 Terminal selection highlights exclude leading spaces while you drag, without moving

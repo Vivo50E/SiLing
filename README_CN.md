@@ -218,7 +218,8 @@ Terminal、Codex 和 Cursor pane 可直接拖选文本，按住鼠标时滚动�
 终端选区在拖动过程中实时排除前导空格的高亮，不移动拖选起点。多行选区去掉非空行共有的前导空格，
 保留代码相对缩进和空行；存在无缩进行、Tab 缩进、矩形选区或无法准确对应的软换行时保持原样。
 Option+拖选保留 xterm 当前屏幕内的选择方式。复制依赖 tmux 的 `copy-pipe-no-clear -CP`
-支持。Ctrl+拖选可向终端程序
+支持，CI 验证版本为 tmux 3.7c（发行版自带的旧版本可能没有这些参数）。
+Ctrl+拖选可向终端程序
 传递鼠标操作。其他 Agent pane 保留原有鼠标行为，macOS 可用 Option+拖选选择文本。
 新建或恢复的 Codex session 使用 inline 模式保留终端滚动历史；已有 alternate-screen
 session 需要恢复后才使用新启动参数，未存入终端缓冲区的内容无法通过滚动补回。

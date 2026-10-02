@@ -49,6 +49,9 @@ pipeline for `Vivo50E/SiLing`'s `main`. It pins one commit, skips already-publis
 previews, runs `make verify` on Python 3.10/3.13, then requires native arm64/x64
 Electron integration and packaged-app tests before publication. Only the publish
 job has `contents: write`; no personal token or signing secrets are needed.
+Both workflows provision checksum-pinned tmux 3.7c on Linux: the older distro
+binary lacks the `copy-pipe-no-clear -CP` flags used by selection tests. Builds
+and desktop integration run on pinned macOS 15 images, not a moving `latest` OS.
 
 The desktop base version is `apps/desktop/package.json` (also update its lockfile
 when bumping). Release tags add `-preview.<commit>`; these are prereleases, not

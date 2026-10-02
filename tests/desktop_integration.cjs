@@ -25,6 +25,17 @@ const wait = async (check, label) => {
   throw Error('Timed out: ' + label);
 };
 const evaluate = source => window.webContents.executeJavaScript(source, true);
+async function sendInput(contents, event) {
+  // sendInputEvent requires the containing BrowserWindow to be focused.
+  // A DOM input.focus() alone does not activate a background CI/test window.
+  window.show();
+  app.focus({ steal: true });
+  window.focus();
+  await wait(() => window.isFocused(), 'fixture window focus');
+  contents.focus();
+  await wait(() => contents.isFocused(), 'native input focus');
+  contents.sendInputEvent(event);
+}
 
 async function run() {
   await app.whenReady();
@@ -112,13 +123,13 @@ async function run() {
   await web.executeJavaScript(`location.hash='fixture-hash'`, true);
   await wait(() => evaluate(`document.querySelector('.browser-address').value.endsWith('#fixture-hash')`), 'in-page address updates');
   await web.executeJavaScript(`document.querySelector('input').focus()`);
-  web.sendInputEvent({ type: 'char', keyCode: 'x' });
+  await sendInput(web, { type: 'char', keyCode: 'x' });
   await wait(() => web.executeJavaScript(`document.querySelector('input').value==='x'`), 'direct typing');
   await evaluate(`document.querySelector('[data-browser-action="zoom"]').click()`);
   await wait(() => pane.view.getBounds().width > 700, 'native zoom bounds');
-  web.sendInputEvent({ type: 'keyDown', keyCode: 'ESC' });
+  await sendInput(web, { type: 'keyDown', keyCode: 'ESC' });
   await wait(() => evaluate(`!document.querySelector('.browser-card').classList.contains('zoomed-pane')`), 'Escape leaves native pane zoom');
-  web.sendInputEvent({ type: 'keyDown', keyCode: 'l', modifiers: ['meta'] });
+  await sendInput(web, { type: 'keyDown', keyCode: 'l', modifiers: ['meta'] });
   await wait(() => evaluate(`document.activeElement.classList.contains('browser-address')`), 'Cmd+L focuses address');
   await evaluate(`document.querySelector('#btn-settings').click()`);
   await wait(() => !pane.view.getVisible(), 'settings obscures native view');
