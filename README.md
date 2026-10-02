@@ -423,6 +423,10 @@ and use a separate login profile. Build a branded **SiLing.app** on macOS with
 on first launch, paste your Dashboard URL into the connection window. The build
 is locally ad-hoc signed, not Apple-notarized, and does not install or update the
 Dashboard. See the desktop guide for installation and separate update steps.
+CI also checks `main` daily at 10:17 UTC and publishes tested Apple Silicon/Intel
+[desktop previews](https://github.com/Vivo50E/SiLing/releases) only for new commits.
+These are ad-hoc signed, **not notarized**; macOS may block downloaded builds.
+See [preview build details](docs/desktop-browser.md#automated-preview-releases).
 This is not an upgrade to the existing PWA; popup login, downloads, site permissions,
 project assignment and phone browser panes are not included in this first version.
 

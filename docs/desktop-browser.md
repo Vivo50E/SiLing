@@ -24,7 +24,7 @@ bundle identity, branded helper processes, and the desktop package version.
 
 Builds use local ad-hoc signing with strict signature verification, not a
 Developer ID certificate or Apple notarization. No personal certificate is read.
-They are for local use, not a public signed release; do not disable Gatekeeper,
+They are not a Developer ID-signed release; do not disable Gatekeeper,
 remove quarantine flags or bypass HTTPS certificate checks to distribute them.
 A distributable signed/notarized installer remains a separate release task.
 
@@ -51,9 +51,44 @@ explicitly supplied at process launch, overrides the saved URL for that launch
 only. Remote connections require HTTPS with a certificate trusted by this Mac.
 
 The Dashboard must already be running. Desktop builds do not start or restart
-it. Desktop updates require rebuilding and explicitly replacing the app after
+it. Desktop updates require obtaining a new build and explicitly replacing the app after
 quitting it; Dashboard **Update** updates the server, not this app bundle.
 There is no desktop auto-updater or DMG in this increment.
+
+## Automated preview releases
+
+[Desktop preview release](https://github.com/Vivo50E/SiLing/actions/workflows/desktop-release.yml)
+checks `main` daily at **10:17 UTC** (03:17 Pacific daylight time, 02:17 standard
+time). Maintainers can also choose **Run workflow → main**. GitHub schedules may
+be delayed and are disabled after 60 days of inactivity in a public repository;
+check the Actions page if daily checks stop.
+
+A successful preview for the same commit skips all builds. Otherwise CI runs the
+full Python suite on 3.10/3.13 and native Electron integration, packaging and
+packaged-app smoke tests on both Apple Silicon and Intel Macs. All jobs use the
+same pinned `main` commit. Only after every check passes does CI publish a
+[prerelease](https://github.com/Vivo50E/SiLing/releases), never a stable Latest
+release. Tags contain the desktop base version and 12-character source commit,
+for example `desktop-v0.3.0-preview.0123456789ab`; the full SHA is in release notes.
+The native About dialog still shows the base package version, not the preview tag.
+
+Download the `mac-arm64.zip` (Apple Silicon) or `mac-x64.zip` (Intel) asset. The ZIP
+contains **SiLing.app**, preserving executable permissions and symlinks. Download
+both ZIPs and `SHA256SUMS.txt` to verify with `shasum -a 256 -c SHA256SUMS.txt`, or
+compare `shasum -a 256 <your-zip>` against the matching line in that file.
+
+**These previews are ad-hoc signed, not Apple-notarized.** Gatekeeper may block
+internet-downloaded builds; this pipeline is not yet a frictionless public
+installer. Do not disable security checks; use the local source-build path above
+if needed. A Developer ID certificate, notarization and secure signing-secret
+configuration are a separate release increment.
+
+Failures leave no public partial release. An interrupted upload may leave a draft;
+rerun the workflow to rebuild and finish that commit's draft. Published assets and
+tags are never overwritten. Intermediate Actions artifacts expire after 14 days;
+published releases remain until a maintainer removes them. To pause periodic
+publishing, disable this workflow in Actions. Nothing is installed on your Mac,
+and no Dashboard, Agent session or desktop connection settings are changed.
 
 ## Start from source
 

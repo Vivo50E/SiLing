@@ -1,0 +1,134 @@
+name: Desktop preview release
+
+on:
+  schedule:
+    - cron: '17 10 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-preview-release
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    if: github.repository == 'Vivo50E/SiLing' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+      sha: ${{ github.sha }}
+      tag: ${{ steps.plan.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: python tools/desktop_release.py plan --sha "$RELEASE_SHA" >> "$GITHUB_OUTPUT"
+
+  verify:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.13']
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - run: python -m pip install -r requirements.txt
+      - run: make verify PYTHON=python
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Verify native architecture
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: node -e 'if (process.arch !== process.env.EXPECTED_ARCH) process.exit(1)'
+      - run: npm ci --prefix apps/desktop
+      - run: npm test --prefix apps/desktop
+      - run: npm run test:integration --prefix apps/desktop
+      - run: npm run package:mac --prefix apps/desktop
+      - run: npm run test:packaged --prefix apps/desktop
+      - name: Archive verified application (preserve executable bits and symlinks)
+        env:
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+          RELEASE_ARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p dist/release
+          ditto -c -k --sequesterRsrc --keepParent \
+            "dist/desktop/SiLing-darwin-$RELEASE_ARCH/SiLing.app" \
+            "dist/release/SiLing-$RELEASE_TAG-mac-$RELEASE_ARCH.zip"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ matrix.arch }}
+          path: dist/release/*.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  publish:
+    needs: [plan, verify, build]
+    if: needs.plan.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: desktop-*
+          path: dist/release
+          merge-multiple: true
+      - name: Publish complete prerelease (never mark as Latest)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ needs.plan.outputs.sha }}
+        run: python tools/desktop_release.py publish --sha "$RELEASE_SHA" --artifacts dist/release

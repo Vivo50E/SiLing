@@ -41,3 +41,24 @@ release.
 
 Publishing, rewriting a public branch, and changing repository visibility each
 require an explicit maintainer review.
+
+## Automated desktop previews
+
+`.github/workflows/desktop-release.yml` is the approved daily/manual preview
+pipeline for `Vivo50E/SiLing`'s `main`. It pins one commit, skips already-published
+previews, runs `make verify` on Python 3.10/3.13, then requires native arm64/x64
+Electron integration and packaged-app tests before publication. Only the publish
+job has `contents: write`; no personal token or signing secrets are needed.
+
+The desktop base version is `apps/desktop/package.json` (also update its lockfile
+when bumping). Release tags add `-preview.<commit>`; these are prereleases, not
+stable Latest releases. ZIPs use ad-hoc signing only, with no Apple notarization,
+automatic app update or backend deployment. `SHA256SUMS.txt` accompanies both
+architecture assets. See [desktop preview operations](docs/desktop-browser.md#automated-preview-releases)
+for scheduling, manual triggering, download limitations and recovery.
+
+`tools/desktop_release.py` fails closed on API errors and conflicting tags,
+creates a draft first, and publishes only after every asset upload completes.
+Retries may replace assets only in that commit's matching unpublished draft;
+published previews are never overwritten. An incomplete public preview or tag
+conflict needs maintainer review instead of automatic deletion or retagging.
