@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>SiLing · 司令</title>
+<style>
+:root{color-scheme:dark light;font:15px system-ui;color:#e6edf3;background:#0d1117}
+body{margin:0;padding:32px}h1{margin:0 0 8px;font-size:28px}p{line-height:1.55;color:#aeb8c4}
+label{display:block;margin:24px 0 8px}input,button{box-sizing:border-box;font:inherit;border-radius:8px}
+input{width:100%;padding:12px;border:1px solid #607086;background:#161b22;color:#e6edf3}
+input:focus-visible,button:focus-visible{outline:3px solid #79c0ff;outline-offset:3px}
+button{padding:11px 24px;border:0;background:#1f6feb;color:#fff;cursor:pointer}button:disabled{opacity:.6}
+#status{min-height:24px;color:#ffb4ab}small{display:block;margin-top:18px;line-height:1.5;color:#aeb8c4}
+@media(prefers-color-scheme:light){:root{background:#f6f8fa;color:#1f2328}p,small{color:#4b5563}input{background:#fff;color:#1f2328}#status{color:#a71919}}
+</style></head><body>
+<h1>SiLing · 司令</h1><p id="intro">Connect to your running Dashboard. This app does not start or restart Agents.</p>
+<form><label id="label" for="url">Dashboard URL</label><input id="url" type="password" autocomplete="off" spellcheck="false" required aria-describedby="privacy status">
+<p id="status" role="status" aria-live="polite"></p><button id="connect" type="submit">Save and connect</button></form>
+<small id="privacy">Paste the root URL from “siling url”, including its token if needed. It is saved only in this Mac user’s app profile; it is not encrypted. Remote connections require HTTPS and a trusted certificate.</small>
+<script src="connection.js"></script></body></html>

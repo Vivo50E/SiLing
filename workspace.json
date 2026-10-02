@@ -6,8 +6,8 @@
     "desktop": {
       "root": "apps/desktop",
       "role": "Optional Electron shell and isolated native browser panes; never starts or updates the Dashboard",
-      "entrypoints": ["apps/desktop/main.cjs", "apps/desktop/preload.cjs"],
-      "tests": ["tests/test_desktop.py", "tests/desktop_policy.cjs", "tests/desktop_integration.cjs"],
+      "entrypoints": ["apps/desktop/main.cjs", "apps/desktop/preload.cjs", "apps/desktop/package-mac.cjs"],
+      "tests": ["tests/test_desktop.py", "tests/desktop_policy.cjs", "tests/desktop_package.cjs", "tests/desktop_integration.cjs", "tests/desktop_packaged.cjs"],
       "guide": "docs/desktop-browser.md"
     },
     "backend": {
@@ -86,7 +86,7 @@
   "checks": {
     "python": ["*.py", "agent_orchestrator/**/*.py", "scripts/**/*.py", "launchd/**/*.py", "tools/**/*.py", "tests/**/*.py", "siling"],
     "shell": ["scripts/**/*.sh", "launchd/**/*.sh"],
-    "javascript": ["static/**/*.js", "tests/**/*.mjs", "tests/**/*.cjs", "apps/desktop/*.cjs"],
+    "javascript": ["static/**/*.js", "tests/**/*.mjs", "tests/**/*.cjs", "apps/desktop/*.cjs", "apps/desktop/*.js"],
     "json": ["workspace.json", "examples/*.json", "static/*.webmanifest", "apps/desktop/package*.json"],
     "inline_script": "static/index.html"
   }

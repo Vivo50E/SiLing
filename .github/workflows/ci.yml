@@ -36,3 +36,5 @@ jobs:
       - run: npm ci --prefix apps/desktop
       - run: npm test --prefix apps/desktop
       - run: npm run test:integration --prefix apps/desktop
+      - run: npm run package:mac --prefix apps/desktop
+      - run: npm run test:packaged --prefix apps/desktop

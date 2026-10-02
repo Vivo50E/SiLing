@@ -337,7 +337,10 @@ CLI 优先从服务 PATH 查找，再检查 `~/.local/bin`；后台启动使用�
 [Electron 桌面客户端](docs/desktop-browser.md) 支持在 Agent 旁边使用真正的 Chromium
 浏览器面板：在空网格点击 **打开浏览器面板**，输入网址即可。支持前进/后退、刷新、
 移动/交换、放大以及本机地址恢复，不会重启 Agent。网页没有终端控制接口，登录信息
-使用独立 profile。这是单独启动的源码客户端，不是现有 PWA 的自动升级；第一版暂不
+使用独立 profile。在 macOS 执行 `npm ci --prefix apps/desktop` 和
+`npm run package:mac --prefix apps/desktop` 可生成带名称、图标和版本的 **SiLing.app**；
+首次双击启动时粘贴 Dashboard 地址即可。构建采用本地临时签名，未经 Apple 公证，
+不会安装或更新 Dashboard。安装与独立更新步骤见桌面指南。这不是现有 PWA 的自动升级；第一版暂不
 包含弹窗登录、下载、网站权限、项目分组归属或手机浏览器面板。
 
 ### Dashboard 安装

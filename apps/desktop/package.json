@@ -8,8 +8,10 @@
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
-    "test": "node --test ../../tests/desktop_policy.cjs",
-    "test:integration": "electron ../../tests/desktop_integration.cjs"
+    "test": "node --test ../../tests/desktop_policy.cjs ../../tests/desktop_package.cjs",
+    "test:integration": "electron ../../tests/desktop_integration.cjs",
+    "package:mac": "node package-mac.cjs",
+    "test:packaged": "node ../../tests/desktop_packaged.cjs"
   },
-  "devDependencies": { "electron": "44.5.1" }
+  "devDependencies": { "@electron/packager": "20.3.0", "electron": "44.5.1" }
 }
