@@ -120,6 +120,37 @@ class LinkJobTests(unittest.TestCase):
         self.assertEqual(len(job['errors']), 2)
         self.assertNotIn('secret', json.dumps(job))
 
+    def test_queued_cancellation_and_shutdown_do_not_call_extractor(self):
+        gates = [threading.Event(), threading.Event()]
+        started = [threading.Event(), threading.Event()]
+        for i in range(2):
+            def extract(text, cancel, index=i):
+                started[index].set()
+                while not cancel.wait(.01) and not gates[index].is_set():
+                    pass
+                return []
+            self.submit(extract, run=str(i))
+        for event in started:
+            self.assertTrue(event.wait(1))
+        called = []
+        job = self.submit(lambda *args: called.append(True) or [], run='queued')
+        self.manager.cancel('queued', job['id'])
+        self.stop()
+        self.assertEqual(called, [])
+        self.assertTrue(all(not thread.is_alive() for thread in self.manager.threads))
+        self.assertEqual(self.manager.jobs[job['id']]['status'], 'cancelled')
+
+    def test_real_cli_deadline_kills_worker_and_reports_timeout(self):
+        script = self.root / 'fake-claude'
+        script.write_text('#!/usr/bin/env python3\nimport time\ntime.sleep(30)\n')
+        script.chmod(0o700)
+        start = time.monotonic()
+        with patch.object(terminal_files, 'resolve_agent_cli', return_value=str(script)), \
+                patch.object(terminal_files, 'MODEL_TIMEOUT_S', .1):
+            with self.assertRaisesRegex(ValueError, 'timed out'):
+                terminal_files.model_paths('report.md', threading.Event())
+        self.assertLess(time.monotonic() - start, 3)
+
     def test_crashed_jobs_become_interrupted_without_execution(self):
         self.manager.directory.mkdir()
         (self.manager.directory / 'jobs.json').write_text(json.dumps({'old': {'id':'old', 'run_id':'pane', 'status':'running'}}))

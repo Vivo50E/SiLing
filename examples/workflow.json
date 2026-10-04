@@ -1,0 +1,27 @@
+{
+  "name": "Implement → test → review → approval",
+  "max_concurrent": 2,
+  "nodes": [
+    {
+      "id": "implement",
+      "agent": "codex",
+      "cwd": "/absolute/worktrees/implement",
+      "prompt": "Implement the agreed change. Produce a patch as a deliverable. Do not merge or deploy."
+    },
+    {
+      "id": "test",
+      "agent": "codex",
+      "cwd": "/absolute/worktrees/test",
+      "depends_on": ["implement"],
+      "prompt": "Apply the input patch in this isolated worktree. Run the required checks. Register the test report as a deliverable. Report failure if checks fail."
+    },
+    {
+      "id": "review",
+      "agent": "claude",
+      "cwd": "/absolute/worktrees/review",
+      "depends_on": ["implement", "test"],
+      "prompt": "Review the input patch and test evidence. Register a review report as a deliverable. Report failure if changes are required. Do not merge or deploy."
+    },
+    {"id": "approval", "kind": "approval", "depends_on": ["review"]}
+  ]
+}

@@ -175,6 +175,9 @@ def extract_paths(text: str) -> list[str]:
     return list(dict.fromkeys(match.group() for match in _PATH.finditer(clean)))[:24]
 
 
+MODEL_TIMEOUT_S = 45
+
+
 def model_paths(text: str, cancel=None) -> list[str]:
     """Explicit-only model call. The model has no filesystem or shell tools."""
     if not isinstance(text, str) or not text.strip() or len(text) > 16000:
@@ -197,12 +200,12 @@ def model_paths(text: str, cancel=None) -> list[str]:
         try:
             if cancel is None:
                 result = subprocess.run(argv, input=text, text=True, capture_output=True,
-                                        cwd=cwd, env=env, timeout=45, check=False)
+                                        cwd=cwd, env=env, timeout=MODEL_TIMEOUT_S, check=False)
             else:
                 with subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                       stderr=subprocess.PIPE, text=True, cwd=cwd, env=env,
                                       start_new_session=True) as proc:
-                    deadline = time.monotonic() + 45
+                    deadline = time.monotonic() + MODEL_TIMEOUT_S
                     first = True
                     try:
                         while True:

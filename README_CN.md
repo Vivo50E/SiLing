@@ -229,6 +229,37 @@ Terminal、Codex 和 Cursor pane 在浏览 tmux 历史时，开始打字或粘�
 
 已结束的 pane 会保留历史日志并标注“只读”。有原生恢复信息时，可直接点击 **恢复会话**，在原 pane 位置继续；失败时保留日志并可重试。
 
+## 产物与显式工作流
+
+**Files** 可将关联项标为“参考资料”或“交付物”，并显示验证状态、来源会话和主机。
+预览按会话内的产物 ID 解析；SSH 预览明确标为快照，URL 关联不代表网址已验证可达。
+旧的关联记录保持兼容。登记交付物可以执行：
+
+```bash
+siling link-file /absolute/report.md --purpose deliverable --description "验证证据"
+```
+
+命令会输出产物 ID；也可以在 Files 中修改角色。
+
+打开 **Workspace → 工作流**，展开“新建工作流”，编辑明确的
+`implement → test → review → approval` 依赖图，先校验，再启动。
+每个 Agent 需要事先准备独立工作目录或 worktree；前一步须明确报告结果并登记可访问的
+交付物，后一步才会启动。测试和审查节点通过明确的 patch/报告消费上游成果，
+不会自动复制代码。审批只记录决定，不会合并或部署。
+
+工作流面板提供批准、取消节点、重试节点、核对执行状态和继续就绪节点。
+取消会正常停止该节点自己的子会话；重试前须结束旧子会话。
+重启后读取列表不会重放命令；需要时点击“核对执行状态”或“继续就绪节点”。
+单个图最多 16 个节点、并发 1–4 个，全局最多 4 个启动中/运行中节点，保留最多 100 条记录。
+首版执行本地显式图，不自动规划 DAG，也不自动递归委派。
+详见 [使用指南](docs/workflows.md) 和 [JSON 示例](examples/workflow.json)。
+CLI 同样支持 `siling workflow validate/start/list/report/approve/cancel/retry/reconcile/advance`。
+
+会话状态提示会分别显示执行状态、连接状态、观测来源和时间，以及逻辑会话和每次执行的 ID。
+恢复会保留前后执行关系；远程断线显示“执行未知”，不沿用旧 working 状态。
+重连显示只恢复界面，恢复 Agent 创建新的原生会话执行；重新打开终端创建新 shell，
+均不会自动重放历史命令。
+
 ## 每个 task 都有自己的 Linked Items
 
 ![Linked Items 展示 task workspace、文件树和 Markdown 状态报告](docs/assets/linked-items.webp)

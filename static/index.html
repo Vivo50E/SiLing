@@ -3299,7 +3299,23 @@
         <button id="btn-sort-panes" title="Fill panes from all active sessions by flag priority, then sustained activity" data-ui-title=Fill%20panes%20from%20all%20active%20sessions%20by%20flag%20priority%2C%20then%20sustained%20activity><span data-ui-message=sort%20panes>sort panes</span></button>
       </div>
       <button id="btn-clear-pins" title="Clear all pinned panes; sessions keep running" data-ui-title=Clear%20all%20pinned%20panes%3B%20sessions%20keep%20running><span data-ui-message=Close%20all%20panes%20(keep%20sessions)>Close all panes (keep sessions)</span></button>
+      <button id="btn-workflows" data-ui-message=Workflows>Workflows</button>
       <button id="btn-open-notes" title="Open daily report (⌘D)" data-ui-title=Open%20daily%20report%20(%E2%8C%98D)><span data-ui-message=Daily%20report>Daily report</span></button>
+      </div>
+    </dialog>
+
+    <dialog class="ui-dialog" id="workflow-modal" aria-labelledby="workflow-title" style="width:min(860px,94vw);max-height:88vh;overflow:auto">
+      <div class="modal-head"><h2 id="workflow-title" data-ui-message=Workflows>Workflows</h2><button data-dialog-close aria-label="Close" data-ui-label=Close>×</button></div>
+      <div class="modal-body">
+        <p data-ui-message=Review%20an%20explicit%20graph%20before%20starting.%20Each%20agent%20needs%20a%20separate%20workspace.%20Approval%20records%20a%20decision%20only.>Review an explicit graph before starting. Each agent needs a separate workspace. Approval records a decision only.</p>
+        <details><summary data-ui-message=New%20workflow>New workflow</summary>
+          <label for="workflow-spec" data-ui-message=Workflow%20JSON>Workflow JSON</label>
+          <textarea id="workflow-spec" spellcheck="false" rows="14" style="width:100%;box-sizing:border-box;font-family:monospace" aria-label="Workflow JSON"></textarea>
+          <div class="panel-actions"><button id="workflow-validate" data-ui-message=Validate>Validate</button><button id="workflow-start" disabled data-ui-message=Start%20reviewed%20workflow>Start reviewed workflow</button></div>
+        </details>
+        <p id="workflow-message" role="status" style="overflow-wrap:anywhere"></p>
+        <button id="workflow-refresh" data-ui-message=Refresh>Refresh</button>
+        <div id="workflow-list" style="overflow-wrap:anywhere"></div>
       </div>
     </dialog>
 
@@ -6340,7 +6356,7 @@
   }
 
   function sessionActivityMode(s) {
-    if (!s || !s.alive || s.agent_exited === true) return "";
+    if (!s || !s.alive || s.agent_exited === true || (s.remote && s.node_online === false)) return "";
     const nativeState = String(s.native_activity?.state || "").toLowerCase();
     if (nativeState === "working") return "foreground";
     if (nativeState === "background_working") return "background";
@@ -6464,8 +6480,23 @@
     if (!dot) return;
     const presentation = sessionDotPresentation(s);
     dot.className = `dot ${presentation.classes}`;
-    dot.title = presentation.title;
-    dot.setAttribute("aria-label", presentation.title);
+    const lifecycle = s?.lifecycle;
+    const native = s?.native_activity;
+    const source = lifecycle?.source || native?.source;
+    const stamp = lifecycle?.observed_at ?? native?.updated_at;
+    const date = stamp ? new Date(typeof stamp === "number" ? stamp * 1000 : stamp) : null;
+    const detail = lifecycle ? [
+      `${ui.message("Execution")}: ${lifecycle.execution}`,
+      `${ui.message("Connection")}: ${lifecycle.connection}`,
+      `${ui.message("Observation")}: ${source || "unknown"}${date && !isNaN(date) ? " · " + date.toLocaleString() : ""}`,
+      `${ui.message("Session")}: ${lifecycle.logical_session_id}`,
+      `${ui.message("Attempt")}: ${lifecycle.execution_id}`,
+      lifecycle.previous_execution_id ? `${ui.message("Previous attempt")}: ${lifecycle.previous_execution_id}` : "",
+      lifecycle.native_resume_id ? `Native ID: ${lifecycle.native_resume_id}` : "",
+    ].filter(Boolean).join("\n") : "";
+    dot.title = [presentation.title, detail].filter(Boolean).join("\n");
+    dot.setAttribute("aria-label", dot.title);
+    if (lifecycle) dot.tabIndex = 0;
   }
 
   function updatePaneHeader(ctrl, fresh) {
@@ -9290,6 +9321,86 @@
   }
   const closeNotesModal = () => { notesModal.hidden = true; };
   $("btn-open-notes").addEventListener("click", openNotesModal);
+  let reviewedWorkflow = "";
+  let workflowRequestId = "";
+  let workflowBusy = false;
+  $("workflow-spec").value = JSON.stringify({name: "Implement → test → review", max_concurrent: 2, nodes: [
+    {id: "implement", agent: "codex", cwd: "/absolute/worktrees/implement", prompt: "Implement the agreed change. Produce a patch as a deliverable."},
+    {id: "test", agent: "codex", cwd: "/absolute/worktrees/test", depends_on: ["implement"], prompt: "Apply the input patch in this isolated worktree. Run tests and deliver the test report."},
+    {id: "review", agent: "claude", cwd: "/absolute/worktrees/review", depends_on: ["implement", "test"], prompt: "Review the patch and test report. Deliver a review report; report failure if changes are required."},
+    {id: "approval", kind: "approval", depends_on: ["review"]}
+  ]}, null, 2);
+  $("workflow-spec").addEventListener("input", () => {
+    reviewedWorkflow = "";
+    workflowRequestId = "";
+    $("workflow-start").disabled = true;
+  });
+  async function refreshWorkflows() {
+    const result = await api("/api/workflows");
+    $("workflow-list").innerHTML = (result.workflows || []).slice().reverse().map(run => `
+      <article style="border-top:1px solid var(--border);margin-top:16px;padding-top:12px">
+        <strong>${escapeHtml(run.name)}</strong> · <span data-ui-message="${encodeURIComponent(run.status)}">${escapeHtml(ui.message(run.status))}</span>
+        <div class="modal-hint">${escapeHtml(run.id)}</div>
+        ${run.status === "running" ? `<button data-workflow="${escapeHtml(run.id)}" data-node="" data-workflow-action="advance" data-ui-message="Continue%20ready%20nodes">${escapeHtml(ui.message("Continue ready nodes"))}</button>` : ""}
+        ${Object.entries(run.nodes).map(([id, node]) => {
+          const actions = node.status === "awaiting_approval" ? ["approve", "cancel"]
+            : ["failed", "cancelled"].includes(node.status) ? ["retry"]
+            : node.status === "starting" ? ["reconcile"]
+            : node.status === "running" ? ["reconcile", "cancel"]
+            : node.status === "pending" ? ["cancel"] : [];
+          const labels = {approve:"Approve", cancel:"Cancel node", retry:"Retry node", reconcile:"Reconcile execution"};
+          return `<div style="margin:12px 0"><strong>${escapeHtml(id)}</strong> · <span data-ui-message="${encodeURIComponent(node.status)}">${escapeHtml(ui.message(node.status))}</span>
+            <div class="modal-hint">${escapeHtml(node.spec.depends_on.join(" → "))}</div>
+            <div class="modal-hint">${escapeHtml(node.run_id || "")}</div>
+            ${node.error ? `<p>${escapeHtml(node.error)}</p>` : ""}
+            ${node.outputs.length ? `<div>${node.outputs.map(ref => escapeHtml(ref.artifact_id)).join("<br>")}</div>` : ""}
+            <div class="panel-actions">${actions.map(action => `<button data-workflow="${escapeHtml(run.id)}" data-node="${escapeHtml(id)}" data-workflow-action="${action}" data-ui-message="${encodeURIComponent(labels[action])}">${escapeHtml(ui.message(labels[action]))}</button>`).join("")}</div>
+          </div>`;
+        }).join("")}
+      </article>`).join("") || `<p>${escapeHtml(ui.message("No workflows yet"))}</p>`;
+  }
+  async function workflowOperation(operation) {
+    if (workflowBusy) return;
+    workflowBusy = true;
+    $("workflow-message").textContent = ui.message("Working…");
+    try {
+      await operation();
+      $("workflow-message").textContent = ui.message("Saved");
+    } catch (error) {
+      $("workflow-message").textContent = error.message;
+    } finally { workflowBusy = false; }
+  }
+  ui.wireDialog($("workflow-modal"), $("btn-workflows"), () => {
+    $("workspace-menu").close();
+    workflowOperation(refreshWorkflows);
+  });
+  $("workflow-refresh").addEventListener("click", () => workflowOperation(refreshWorkflows));
+  $("workflow-validate").addEventListener("click", () => workflowOperation(async () => {
+    const text = $("workflow-spec").value;
+    await api("/api/workflows/validate", {method:"POST", body:JSON.parse(text)});
+    if ($("workflow-spec").value !== text) return;
+    reviewedWorkflow = text;
+    workflowRequestId ||= crypto.randomUUID();
+    $("workflow-start").disabled = false;
+  }));
+  $("workflow-start").addEventListener("click", () => workflowOperation(async () => {
+    if (!reviewedWorkflow || reviewedWorkflow !== $("workflow-spec").value) throw Error(ui.message("Validate the current graph first"));
+    await api("/api/workflows", {method:"POST", body:{spec:JSON.parse(reviewedWorkflow),request_id:workflowRequestId}});
+    $("workflow-start").disabled = true;
+    await refreshWorkflows();
+    refreshList();
+  }));
+  $("workflow-list").addEventListener("click", event => {
+    const button = event.target.closest("[data-workflow-action]");
+    if (!button) return;
+    workflowOperation(async () => {
+      const {workflow, node, workflowAction} = button.dataset;
+      await api(`/api/workflows/${encodeURIComponent(workflow)}/${node ? encodeURIComponent(node) + "/" : ""}${workflowAction}`, {method:"POST",body:{}});
+      await refreshWorkflows();
+      refreshList();
+    });
+  });
+
   $("notes-modal-close").addEventListener("click", closeNotesModal);
   $("notes-modal-close-2").addEventListener("click", closeNotesModal);
   $("notes-modal-reload").addEventListener("click", () => {
@@ -9682,6 +9793,7 @@
     if (ev.target === projectsBrowserModal) closeProjectsBrowserModal();
   });
   function handleProjectsBrowserModalKeydown(ev) {
+    if (document.querySelector("dialog[open]")) return;
     if (projectsBrowserModal.hidden || ev.key !== "Escape") return;
     ev.preventDefault();
     ev.stopPropagation();
@@ -10707,7 +10819,7 @@
     try {
       const r = await api(`/api/sessions/${encodeURIComponent(folderModalState.runId)}/folders/tag`, {
         method: "POST",
-        body: { folder: folder.path, rel, color },
+        body: { folder: folder.artifact_id || folder.path, rel, color },
       });
       if (!rel) applyFinderTagMeta(folder, r.meta || {});
       const entry = (folder.entries || []).find(e => (e.rel || "") === rel);
@@ -10796,7 +10908,7 @@
   }
 
   function rawFileUrl(folder, rel, entry = null) {
-    const qs = new URLSearchParams({ folder: folder.path, rel });
+    const qs = new URLSearchParams({ folder: folder.artifact_id || folder.path, rel });
     const version = previewVersionForEntry(entry);
     if (version) qs.set("v", version);
     const nonce = currentPreviewNonce();
@@ -10897,7 +11009,7 @@
     if (folder._loadingDirs.has(rel)) return;
     folder._loadingDirs.add(rel);
     try {
-      const qs = new URLSearchParams({ folder: folder.path, rel });
+      const qs = new URLSearchParams({ folder: folder.artifact_id || folder.path, rel });
       const r = await api(`/api/sessions/${encodeURIComponent(folderModalState.runId)}/folders/children?${qs}`);
       mergeFolderChildren(folder, r.rel || rel, r.entries || [], !!r.omitted);
     } finally {
@@ -11785,7 +11897,7 @@
     let file = folderModalState.fileCache.get(cacheKey);
     if (!file) {
       preview.innerHTML = `<div class="folder-empty">Loading ${escapeHtml(entry.rel)}…</div>`;
-      const qs = new URLSearchParams({ folder: folder.path, rel: entry.rel });
+      const qs = new URLSearchParams({ folder: folder.artifact_id || folder.path, rel: entry.rel });
       file = await api(`/api/sessions/${encodeURIComponent(folderModalState.runId)}/folders/file?${qs}`);
       folderModalState.fileCache.set(cacheKey, file);
     }
@@ -11797,7 +11909,7 @@
     setPreviewHeader(file.name || entry.name, file.path || filePathFor(folder, entry.rel), file.kind || entry.kind || "text");
     previewCopyTarget = {
       text: file.content || "", truncated: !!file.truncated,
-      url: `/api/sessions/${encodeURIComponent(folderModalState.runId)}/folders/file/raw?${new URLSearchParams({folder:folder.path, rel:entry.rel})}`,
+      url: `/api/sessions/${encodeURIComponent(folderModalState.runId)}/folders/file/raw?${new URLSearchParams({folder:folder.artifact_id || folder.path, rel:entry.rel})}`,
     };
     $("folder-copy-all").disabled = false;
     if (isCsvFile(entry)) {
@@ -11961,11 +12073,26 @@
         <span class="folder-item-main">
           <span class="name">${escapeHtml(f.label || f.path || "(folder)")}</span>
           <span class="path">${escapeHtml(f.path || "")}</span>
+          ${f.artifact ? `<span class="path" title="${escapeHtml([f.artifact.source_run_id, f.artifact.description, f.checked_at].filter(Boolean).join(' · '))}">${escapeHtml((f.artifact.purpose === 'deliverable' ? ui.message('Deliverable') : ui.message('Reference')) + ' · ' + ui.message(f.availability === 'verified' ? (f.snapshot ? 'Verified snapshot' : 'Verified file') : f.availability === 'candidate' ? 'Unverified URL' : 'Unavailable') + ' · ' + f.artifact.host)}</span>` : ''}
+
         </span>
+        ${f.artifact_id ? `<select class="artifact-purpose" data-idx="${i}" aria-label="${escapeHtml(ui.message('Artifact role'))}"><option value="reference" ${f.artifact.purpose==='reference'?'selected':''}>${ui.message('Reference')}</option><option value="deliverable" ${f.artifact.purpose==='deliverable'?'selected':''}>${ui.message('Deliverable')}</option></select>` : ''}
         ${tagDotHtml(f, "folder-tag")}
         <button class="folder-remove" data-idx="${i}" type="button" title="Remove from Linked Folders" data-ui-title=Remove%20from%20Linked%20Folders>×</button>
       </div>`;
     }).join("");
+    list.querySelectorAll('.artifact-purpose').forEach(select => {
+      select.addEventListener('click', event => event.stopPropagation());
+      select.addEventListener('keydown', event => event.stopPropagation());
+      select.addEventListener('change', async event => {
+        event.stopPropagation(); const item=folders[Number(select.dataset.idx)]; select.disabled=true;
+        try {
+          await api(`/api/sessions/${encodeURIComponent(folderModalState.runId)}/artifacts/${item.artifact_id}`, {method:'PATCH',body:{purpose:select.value}});
+          item.artifact.purpose=select.value; renderFolderModal();
+        } catch(error) {select.value=item.artifact.purpose;alert(error.message);}
+        finally {select.disabled=false;}
+      });
+    });
     list.querySelectorAll(".folder-item").forEach(node => {
       const selectFolder = () => {
         folderModalState.idx = Number(node.dataset.idx || 0);
@@ -12156,7 +12283,7 @@
       } else if (entry && entry.type === "file") {
         await api(`/api/sessions/${encodeURIComponent(folderModalState.runId)}/folders/file/open`, {
           method: "POST",
-          body: { folder: f.path, rel: entry.rel },
+          body: { folder: f.artifact_id || f.path, rel: entry.rel },
         });
       } else {
         await api(`/api/sessions/${encodeURIComponent(folderModalState.runId)}/folders/open`, {
@@ -12176,7 +12303,7 @@
     try {
       await api(`/api/sessions/${encodeURIComponent(folderModalState.runId)}/folders/file/quicklook`, {
         method: "POST",
-        body: { folder: f.path, rel: entry.rel },
+        body: { folder: f.artifact_id || f.path, rel: entry.rel },
       });
     } catch (e) {
       alert(ui.message("Quick Look failed:\n") + e.message);

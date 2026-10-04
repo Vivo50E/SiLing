@@ -60,6 +60,8 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Optional
 from urllib.parse import quote, urlparse
 
+from . import artifacts, session_lifecycle
+from .workflows import DispatchRejected, Workflows, validate as validate_workflow
 from .agent_cli import resolve_agent_cli
 from .browser_open import open_system_browser, system_browser_available, validate_web_url
 from . import terminal_files
@@ -1875,6 +1877,8 @@ def _normalize_linked_folders(raw: Any) -> list[dict[str, str]]:
         }
         if created_at:
             rec["created_at"] = created_at
+        if isinstance(item, dict) and isinstance(item.get("artifact"), dict):
+            rec["artifact"] = artifacts.metadata({**rec, "artifact": item["artifact"]})
         out.append(rec)
     return out
 
@@ -2855,7 +2859,7 @@ def _persist_linked_folder(r: dict[str, Any], folder: Path,
 
 
 def _persist_linked_path(r: dict[str, Any], linked_path: Path,
-                         label: str, item_type: str) -> bool:
+                         label: str, item_type: str, *, artifact: dict | None = None) -> bool:
     run_dir = r.get("run_dir")
     if not run_dir:
         raise HTTPException(400, "session has no run directory")
@@ -2868,16 +2872,20 @@ def _persist_linked_path(r: dict[str, Any], linked_path: Path,
             changed = _add_linked_path(
                 data[task], linked_path, label, item_type
             )
+            artifacts.stamp(data[task], str(linked_path), r, **({"discovery":"manual", **(artifact or {})}))
         return changed
     path = Path(run_dir) / "session.json"
     if r.get("kind") == "orphan":
         path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         with edit_json(path, create=True) as data:
-            return _add_linked_path(data, linked_path, label, item_type)
+            changed = _add_linked_path(data, linked_path, label, item_type)
+            artifacts.stamp(data, str(linked_path), r, **({"discovery":"manual", **(artifact or {})}))
+            return changed
     if not path.exists():
         raise HTTPException(400, "session.json not found")
     with edit_json(path) as data:
         changed = _add_linked_path(data, linked_path, label, item_type)
+        artifacts.stamp(data, str(linked_path), r, **({"discovery":"manual", **(artifact or {})}))
     return changed
 
 
@@ -2893,12 +2901,14 @@ def _persist_linked_url(r: dict[str, Any], url: str, label: str) -> bool:
             if task not in data or not isinstance(data[task], dict):
                 raise HTTPException(404, "task not found in state.json")
             changed = _add_linked_url(data[task], url, label)
+            artifacts.stamp(data[task], url, r, discovery="manual")
         return changed
     path = Path(run_dir) / "session.json"
     if not path.exists():
         raise HTTPException(400, "session.json not found")
     with edit_json(path) as data:
         changed = _add_linked_url(data, url, label)
+        artifacts.stamp(data, url, r, discovery="manual")
     return changed
 
 
@@ -2950,6 +2960,8 @@ def _copy_linked_folders_to_spawned_run(
     timeout_s: float = 3.0,
 ) -> dict[str, Any]:
     folders = _normalize_linked_folders(src.get("linked_folders"))
+    for folder in folders:
+        folder["artifact"] = artifacts.metadata(folder, src)
     if not folders:
         return {"copied": 0, "run_dir": "", "warning": ""}
 
@@ -3014,6 +3026,12 @@ def _resolve_linked_folder_for_run(r: dict[str, Any], raw: str) -> Path:
 
 
 def _resolve_linked_path_for_run(r: dict[str, Any], raw: str) -> Path:
+    if raw.startswith("artifact-"):
+        record = next((rec for rec in _normalize_linked_folders(r.get("linked_folders"))
+                       if artifacts.metadata(rec, r)["id"] == raw), None)
+        if not record:
+            raise HTTPException(404, "artifact is not linked to this session")
+        raw = record["path"]
     linked_path = _resolve_linked_path(raw)
     if str(linked_path) not in _linked_folder_paths(r):
         raise HTTPException(400, "path is not linked to this session")
@@ -3287,6 +3305,8 @@ def _saved_resume_meta(data: dict[str, Any]) -> dict[str, str]:
 
 
 def _add_resume_fields(row: dict[str, Any], data: dict[str, Any]) -> None:
+    row["logical_session_id"] = data.get("logical_session_id", "")
+    row["resumed_from_run_id"] = data.get("resumed_from_run_id", "")
     meta = _saved_resume_meta(data)
     row["resume"] = {
         "agent": meta.get("resume_agent", ""),
@@ -4636,6 +4656,7 @@ def _session_handoff_metadata(
         "handoff": {
             "schema_version": 1,
             "created_at": recorded_at,
+            "logical_session_id": session_lifecycle.identity(r)["logical_session_id"],
             "source_run_id": str(r.get("run_id") or ""),
             "source_session_alive": bool(r.get("alive")),
             "project_paths": list(job.get("scope_paths") or []),
@@ -8459,6 +8480,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         completion_callback=publish_session_handoff,
     )
     link_jobs = LinkJobs(outputs_dir / ".link-jobs")
+    workflows = Workflows(outputs_dir)
     dashboard_instance_id = uuid.uuid4().hex
     remote_http_client = httpx.AsyncClient(
         timeout=httpx.Timeout(connect=3.0, read=30.0, write=30.0, pool=3.0),
@@ -9598,6 +9620,8 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             *native_activity.apply(snapshot["sessions"]),
             *remote_nodes.sessions(),
         ]
+        for row in sessions:
+            row["lifecycle"] = session_lifecycle.project(row, snapshot.get("updated_at"))
         try:
             group_view = pane_groups.view(sessions)
         except (OSError, ValueError, TypeError):
@@ -9907,10 +9931,31 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         if not r:
             raise HTTPException(404, "run not found")
         folders = [
-            _linked_folder_summary(rec)
+            artifacts.describe(_linked_folder_summary(rec), r)
             for rec in _normalize_linked_folders(r.get("linked_folders"))
         ]
         return {"run_id": run_id, "folders": folders}
+
+    @app.patch("/api/sessions/{run_id}/artifacts/{artifact_id}")
+    def update_artifact_role(run_id: str, artifact_id: str, body: dict):
+        run = _lookup_run_light(outputs_dir, run_id)
+        if not run:
+            raise HTTPException(404, "run not found")
+        purpose = body.get("purpose")
+        if purpose not in {"reference", "deliverable"}:
+            raise HTTPException(400, "purpose must be reference or deliverable")
+        meta_path = Path(_run_metadata_path(run))
+        with edit_json(meta_path) as stored:
+            container = stored.get(run.get("task")) if run.get("kind") == "task" else stored
+            if not isinstance(container, dict):
+                raise HTTPException(404, "task not found")
+            records = _normalize_linked_folders(container.get("linked_folders"))
+            record = next((rec for rec in records if artifacts.metadata(rec, run)["id"] == artifact_id), None)
+            if not record:
+                raise HTTPException(404, "artifact is not linked to this session")
+            record["artifact"] = artifacts.metadata(record, run, purpose=purpose)
+            container["linked_folders"] = records
+        return {"ok": True, "artifact": record["artifact"]}
 
     @app.get("/api/sessions/{run_id}/folders/search")
     def search_session_folders(run_id: str, q: str = Query(""),
@@ -10009,15 +10054,15 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         except ValueError as exc:
             raise HTTPException(400, str(exc))
 
-    def terminal_file_result(run_id: str, run: dict, ctx: dict, raw: str):
+    def terminal_file_result(run_id: str, run: dict, ctx: dict, raw: str, discovery: str = "terminal"):
         path = terminal_files.resolve_path(raw, ctx)
         if ctx.get("host"):
-            result = post_session_ssh_file(run_id, {"host": ctx["host"], "path": path})
+            result = post_session_ssh_file(run_id, {"host": ctx["host"], "path": path, "discovery": discovery})
             return {"raw": raw, "source_path": path, "context_id": ctx["id"], **result}
         linked = _resolve_linked_path(path)
         if not linked.is_file():
             raise ValueError("Only regular files can be discovered")
-        _persist_linked_path(run, linked, linked.name, "file")
+        _persist_linked_path(run, linked, linked.name, "file", artifact={"discovery": discovery})
         return {"ok": True, "raw": raw, "source_path": str(linked), "context_id": ctx["id"],
                 "folder": _linked_folder_summary({"path": str(linked), "label": linked.name,
                                                   "type": "file", "created_at": _iso_now()})}
@@ -10047,7 +10092,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             # Capture source and context now; later focus/cwd changes cannot redirect results.
             return link_jobs.submit(run_id, ctx, body.get("text"), body.get("request_id"),
                                     terminal_files.model_paths,
-                                    lambda raw: terminal_file_result(run_id, run, ctx, raw))
+                                    lambda raw: terminal_file_result(run_id, run, ctx, raw, "claude-worker"))
         except ValueError as exc:
             raise HTTPException(400, str(exc))
 
@@ -10122,7 +10167,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             raise HTTPException(400, str(exc))
         cached = _resolve_linked_path(str(cached))
         label = f"{host}:{remote_path} (snapshot)"
-        _persist_linked_path(r, cached, label, "file")
+        _persist_linked_path(r, cached, label, "file", artifact={"host":host, "source_path":remote_path, "discovery":str(body.get("discovery") or "ssh")})
         return {"ok": True, "folder": _linked_folder_summary({
             "path": str(cached), "label": label, "type": "file",
             "created_at": _iso_now(),
@@ -11016,6 +11061,9 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                     "delegation_id": delegation_id,
                     "delegated_at": delegated_at,
                     "delegation_prompt_status": "pending",
+                    "workflow_id": str(body.get("workflow_id") or ""),
+                    "workflow_node": str(body.get("workflow_node") or ""),
+                    "workflow_attempt": str(body.get("workflow_attempt") or ""),
                 })
                 if priority:
                     data["panel_state"] = priority
@@ -11109,6 +11157,107 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             effort=effort,
             terminal_theme=terminal_theme,
         )
+
+    def spawn_workflow_child(body):
+        try:
+            return _spawn_delegated_session(body)
+        except HTTPException as exc:
+            if exc.status_code in {400, 404, 409, 413}:
+                raise DispatchRejected(str(exc.detail)) from exc
+            raise
+
+    def workflow_artifact(ref: dict, deliverable: bool) -> dict:
+        run = _lookup_run_light(outputs_dir, str(ref.get("session_id") or ""))
+        if not run:
+            raise ValueError("Artifact source session was not found")
+        record = next((rec for rec in _normalize_linked_folders(run.get("linked_folders"))
+                       if artifacts.metadata(rec, run)["id"] == ref.get("artifact_id")), None)
+        if not record:
+            raise ValueError("Artifact is not linked to the source session")
+        view = artifacts.describe(_linked_folder_summary(record), run)
+        if view["availability"] != "verified":
+            raise ValueError("Workflow inputs/results must be accessible verified files or folders")
+        if deliverable and (view["artifact"]["purpose"] != "deliverable"
+                            or view["artifact"]["execution_id"] != run["run_id"]):
+            raise ValueError("Result must be a deliverable produced by this execution, not an inherited reference")
+        return {**ref, "path": record["path"], "title": record.get("label", ""),
+                "host": view["artifact"]["host"], "snapshot": view["snapshot"],
+                "description": view["artifact"]["description"]}
+
+    def find_workflow_attempt(workflow_id, node_id, attempt):
+        matches = []
+        for path in outputs_dir.glob("*/session.json"):
+            meta = _safe_read_json(path) or {}
+            if all(meta.get(key) == value for key, value in (
+                ("workflow_id", workflow_id), ("workflow_node", node_id), ("workflow_attempt", attempt)
+            )):
+                run_id = f"{path.parent.name}::{meta.get('name') or path.parent.name}"
+                row = _lookup_run_light(outputs_dir, run_id)
+                if row:
+                    matches.append(row)
+        return matches[0] if len(matches) == 1 else None
+
+    def stop_workflow_child(run_id, workflow_id, node_id, attempt):
+        run = _lookup_run_light(outputs_dir, run_id)
+        if not run or run.get("remote"):
+            return False
+        meta = _safe_read_json(Path(_run_metadata_path(run))) or {}
+        if any(meta.get(key) != value for key, value in (
+            ("workflow_id", workflow_id), ("workflow_node", node_id), ("workflow_attempt", attempt)
+        )):
+            return False
+        return bool(post_stop(run_id, timeout=12.0).get("ok"))
+
+    @app.get("/api/workflows")
+    def list_workflows():
+        try:
+            return {"workflows": workflows.list()}
+        except (OSError, ValueError) as exc:
+            raise HTTPException(503, "Workflow storage unavailable") from exc
+
+    @app.post("/api/workflows/validate")
+    def check_workflow(body: dict):
+        try:
+            spec = validate_workflow(body)
+            for node in spec["nodes"]:
+                for ref in node["inputs"]:
+                    workflow_artifact(ref, False)
+            return {"ok": True, "spec": spec}
+        except (ValueError, KeyError, OSError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @app.post("/api/workflows")
+    async def start_workflow(body: dict):
+        try:
+            return workflows.start(body.get("spec"), body.get("request_id"),
+                                   spawn_workflow_child, workflow_artifact)
+        except (ValueError, KeyError, OSError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @app.post("/api/workflows/{workflow_id}/advance")
+    async def advance_workflow(workflow_id: str):
+        try:
+            return workflows.advance(workflow_id, spawn_workflow_child, workflow_artifact)
+        except (ValueError, KeyError, OSError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @app.post("/api/workflows/{workflow_id}/{node_id}/report")
+    async def report_workflow(workflow_id: str, node_id: str, body: dict):
+        try:
+            return workflows.report(workflow_id, node_id, body,
+                                    spawn_workflow_child, workflow_artifact)
+        except (ValueError, KeyError, OSError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @app.post("/api/workflows/{workflow_id}/{node_id}/{action}")
+    async def action_workflow(workflow_id: str, node_id: str, action: str):
+        try:
+            return workflows.action(workflow_id, node_id, action,
+                                    spawn_workflow_child, workflow_artifact,
+                                    lambda rid: _lookup_run_light(outputs_dir, rid), stop_workflow_child,
+                                    find_workflow_attempt)
+        except (ValueError, KeyError, OSError) as exc:
+            raise HTTPException(400, str(exc)) from exc
 
     @app.post("/api/delegate")
     async def post_delegate(request: Request):
@@ -11540,7 +11689,9 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                 outputs_dir, src, result, exclude_run_id=source_run_id,
                 resume_id=resume_id, label=label)
             ui_copy = _copy_snapshot_ui_metadata_to_spawned_run(result, entry)
+            lineage_warning = session_lifecycle.record_resume(entry, result)
             out = {
+                "lineage_warning": lineage_warning,
                 **result,
                 "source_run_id": source_run_id,
                 "resume_id": resume_id,
@@ -11660,8 +11811,10 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             outputs_dir, src, result, exclude_run_id=run_id,
             resume_id=resume_id, label=label)
         ui_copy = _copy_snapshot_ui_metadata_to_spawned_run(result, src)
+        lineage_warning = session_lifecycle.record_resume(src, result)
         return {
             **result,
+            "lineage_warning": lineage_warning,
             "resumed_from": run_id,
             "reopened_terminal": terminal,
             "resume_id": resume_id,

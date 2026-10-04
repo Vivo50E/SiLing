@@ -27,6 +27,8 @@ const sentPrompts = [];
 const fileDiscoveries = [];
 const linkJobs = new Map();
 const linkSubmissions = [];
+let delayLinkRun = "";
+let delayedLinkReply;
 let frameLoads = 0;
 let pendingCreation;
 let pendingRestart;
@@ -40,6 +42,9 @@ let versionMode = 'ok';
 let versionCommit = 'a'.repeat(40);
 const systemBrowserOpens = [];
 const linkedFixtures = new Map();
+const workflowFixtures = [];
+const workflowSubmissions = [];
+const artifactPreviewRequests = [];
 const previewSource = '# Readable Markdown\n\nAn isolated preview fixture.';
 const completeSource = previewSource + '\n' + 'Full source line\n'.repeat(18000) + 'END OF FILE';
 let truncatePreview = false;
@@ -51,6 +56,28 @@ const server = http.createServer((req, res) => {
     res.setHeader('Content-Type', 'text/html');
     return res.end('<!doctype html><body style="background:#151b24;color:#d9e2ef;font:14px monospace"><pre>Isolated terminal fixture\nNo live session or credentials loaded.</pre><textarea aria-label="Terminal input"></textarea></body>');
   }
+  if (url.pathname.startsWith('/api/workflows')) {
+    res.setHeader('Content-Type','application/json');
+    if(req.method==='GET') return res.end(JSON.stringify({workflows:workflowFixtures}));
+    assert.equal(req.headers['content-type'],'application/json');
+    let text='';req.on('data',chunk=>text+=chunk);req.on('end',()=>{
+      const body=JSON.parse(text || '{}');
+      if(url.pathname.endsWith('/validate')) return res.end(JSON.stringify({ok:true,spec:body}));
+      if(url.pathname==='/api/workflows') {
+        workflowSubmissions.push(body);
+        const run={id:'workflow-fixture',name:body.spec.name,status:'running',nodes:{approval:{spec:{depends_on:[]},status:'awaiting_approval',run_id:'',outputs:[]}}};
+        workflowFixtures.push(run);return res.end(JSON.stringify(run));
+      }
+      const run=workflowFixtures[0];run.status='succeeded';run.nodes.approval.status='succeeded';res.end(JSON.stringify(run));
+    });return;
+  }
+  if(url.pathname.includes('/artifacts/')) {
+    let text='';req.on('data',chunk=>text+=chunk);req.on('end',()=>{
+      const folder=linkedFixtures.get(url.pathname.split('/')[3])[0];
+      folder.artifact.purpose=JSON.parse(text).purpose;
+      res.setHeader('Content-Type','application/json');res.end(JSON.stringify({ok:true,artifact:folder.artifact}));
+    });return;
+  }
   if (url.pathname.endsWith('/file-context')) {
     const reply=()=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({configured:true,current:{id:'fixture-context',host:'fixture-ssh',cwd:'/remote/work'},settings:{mode:'auto',auto_discover:true},contexts:[{id:'fixture-context',host:'fixture-ssh',cwd:'/remote/work'}]}));};
     if(req.method==='PUT') {req.resume();req.on('end',reply);} else reply();
@@ -60,7 +87,11 @@ const server = http.createServer((req, res) => {
     res.setHeader('Content-Type','application/json');
     const source=url.pathname.split('/')[3];
     if(url.pathname.endsWith('/cancel')) {const job=linkJobs.get(source);job.status='cancelled';res.end(JSON.stringify(job));return;}
-    if(req.method==='GET') {res.end(JSON.stringify({jobs:linkJobs.has(source)?[linkJobs.get(source)]:[]}));return;}
+    if(req.method==='GET') {
+      const payload={jobs:linkJobs.has(source)?[linkJobs.get(source)]:[]};
+      if(source===delayLinkRun) {delayLinkRun='';delayedLinkReply=()=>res.end(JSON.stringify(payload));return;}
+      res.end(JSON.stringify(payload));return;
+    }
     let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{
       const input=JSON.parse(body);linkSubmissions.push({source,...input});
       const job={id:'fixture-job',run_id:source,status:'running',context:{host:'fixture-ssh',cwd:'/remote/work'},files:[],errors:[],error:''};
@@ -97,6 +128,7 @@ const server = http.createServer((req, res) => {
     return res.end(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64'));
   }
   if (url.pathname.endsWith('/folders/file')) {
+    artifactPreviewRequests.push(url.searchParams.get('folder'));
     res.setHeader('Content-Type','application/json');
     return res.end(JSON.stringify({ok:true,kind:'markdown',name:'report.md',path:'/fixture/report.md',content:previewSource,truncated:truncatePreview}));
   }
@@ -808,6 +840,76 @@ try {
   }
   assert.equal(frameLoads,beforeFileContextFrames,'Background Link preserves terminal frames');
   console.log('PASS: background Link submission, source binding, reconnect, cancellation, bilingual UI and no terminal injection');
+  await viewport(390,844);
+  await evaluate(`document.querySelector('[data-run-id="fixture-2"] .btn-link-folder').click()`);
+  await waitFor(`!!document.querySelector('dialog[open] [data-jobs] button')`);
+  await screenshot('background-link-narrow');
+  await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+  await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+  await waitFor(`!document.querySelector('dialog[open] [data-jobs]')`);
+  delayLinkRun='fixture-2';
+  await evaluate(`document.querySelector('[data-run-id="fixture-2"] .btn-link-folder').click()`);
+  for(let i=0;i<40&&!delayedLinkReply;i++) await pause(25);
+  assert.ok(delayedLinkReply);
+  await evaluate(`document.querySelector('dialog[open] [data-close]').click();document.querySelector('[data-run-id="fixture-0"] .btn-link-folder').click()`);
+  await waitFor(`!!document.querySelector('dialog[open] [data-jobs]')`);
+  delayedLinkReply();await pause(150);
+  assert.equal(await evaluate(`document.querySelector('dialog[open] [data-jobs]').children.length`),0,'Late response from closed source cannot populate a different pane dialog');
+  await evaluate(`document.querySelector('dialog[open] [data-close]').click()`);
+  await viewport(1280,800);
+  console.log('PASS: narrow Link, keyboard dismissal and stale response isolation');
+  // Resource IDs, editable roles, explicit workflows, and keyboard/narrow layouts.
+  const artifact = linkedFixtures.get('fixture-0')[0];
+  Object.assign(artifact, {artifact_id:'artifact-fixture',availability:'verified',snapshot:false,checked_at:'2026-01-01T00:00:00Z',
+    artifact:{id:'artifact-fixture',purpose:'reference',host:'local',source_run_id:'original-attempt',description:'Fixture evidence'}});
+  await evaluate(`document.querySelector('[data-run-id="fixture-0"] .btn-folders').click()`);
+  await waitFor(`!!document.querySelector('.artifact-purpose')`);
+  assert.ok(artifactPreviewRequests.includes('artifact-fixture'),'Preview requests use a resource ID');
+  assert.ok(await evaluate(`document.querySelector('#folder-modal-list').textContent.includes('Verified file')`));
+  await evaluate(`{const select=document.querySelector('.artifact-purpose');select.value='deliverable';select.dispatchEvent(new Event('change'));}`);
+  await waitFor(`document.querySelector('.artifact-purpose').value==='deliverable'`);await pause(100);
+  assert.equal(artifact.artifact.purpose,'deliverable');
+  await screenshot('artifact-provenance');
+  await evaluate(`document.querySelector('#folder-modal-close').click();document.querySelector('#btn-workflows').click()`);
+  await waitFor(`document.querySelector('#workflow-list').textContent.includes('No workflows')`);
+  assert.equal(await evaluate(`document.querySelector('#workflow-start').disabled`),true);
+  await evaluate(`document.querySelector('#workflow-modal details').open=true;document.querySelector('#workflow-validate').click()`);
+  await waitFor(`!document.querySelector('#workflow-start').disabled`);
+  await evaluate(`document.querySelector('#workflow-spec').dispatchEvent(new Event('input'))`);
+  assert.equal(await evaluate(`document.querySelector('#workflow-start').disabled`),true,'Editing invalidates reviewed graph');
+  await evaluate(`document.querySelector('#workflow-validate').click()`);
+  await waitFor(`!document.querySelector('#workflow-start').disabled`);
+  await evaluate(`document.querySelector('#workflow-start').click();document.querySelector('#workflow-start').click()`);
+  await waitFor(`!!document.querySelector('[data-workflow-action="approve"]')`);
+  assert.equal(workflowSubmissions.length,1,'Double click cannot submit two workflow starts');
+  assert.ok(workflowSubmissions[0].request_id);
+  for (const language of ['zh','en']) {
+    await viewport(390,844);
+    await evaluate(`{const c=document.querySelector('[data-appearance="language"]');c.value=${JSON.stringify(language)};c.dispatchEvent(new Event('change'));}`);
+    assert.equal(await evaluate(`document.querySelector('#workflow-title').textContent`),language==='zh'?'工作流':'Workflows');
+    assert.equal(await evaluate(`document.querySelector('[data-workflow-action="approve"]').textContent`),language==='zh'?'批准':'Approve');
+    await screenshot('workflow-narrow-'+language);
+    assert.ok(await evaluate(`document.querySelector('#workflow-modal').getBoundingClientRect().width<=390`));
+  }
+  await evaluate(`document.querySelector('[data-workflow-action="approve"]').click()`);
+  await waitFor(`document.querySelector('#workflow-list').textContent.includes('succeeded')`);
+  await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+  await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+  await waitFor(`!document.querySelector('#workflow-modal').open`);
+  assert.equal(await evaluate(`document.querySelector('#workflow-modal').open`),false,'Escape closes the keyboard-accessible workflow dialog');
+  await viewport(1280,800);
+  assert.equal(frameLoads,beforeFileContextFrames,'Workflow controls preserve terminal frames');
+  console.log('PASS: artifact resource IDs, role persistence, workflow review/start/approval, narrow bilingual UI and Escape');
+  sessions[0].lifecycle={execution:'waiting_user',connection:'available',source:'claude-hook',observed_at:1735689600,
+    logical_session_id:'session-fixture',execution_id:'fixture-0',previous_execution_id:'fixture-previous',native_resume_id:'native-fixture'};
+  await evaluate(`document.querySelector('#btn-refresh').click()`);
+  await waitFor(`document.querySelector('[data-run-id="fixture-0"] .dot').title.includes('session-fixture')`);
+  const lifecycleTitle=await evaluate(`document.querySelector('[data-run-id="fixture-0"] .dot').title`);
+  for(const fragment of ['Execution: waiting_user','Connection: available','claude-hook','fixture-previous','native-fixture']) assert.ok(lifecycleTitle.includes(fragment));
+  assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-0"] .dot').tabIndex`),0);
+  console.log('PASS: lifecycle source/time, connection/execution and attempt lineage are exposed to keyboard and assistive technology');
+
+
   await evaluate(`document.querySelector('#projects-browser-modal-close').click()`);
   const ended=sessions.find(s=>s.run_id==='fixture-2');
   ended.alive=false;ended.agent='codex';ended.resume_id='fixture-native-resume';

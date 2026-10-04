@@ -243,7 +243,12 @@ finally:
     await cdp('Input.dispatchMouseEvent',{type:'mousePressed',...point(start),button:'left',buttons:1,clickCount:1,modifiers});
     await cdp('Input.dispatchMouseEvent',{type:'mouseMoved',...point(end,endRow),button:'left',buttons:1,modifiers});
     await pause(100);
-    if(whileHeld) await whileHeld();
+    if(whileHeld) {
+      // Selection masks are painted on animation frames. Wait for that render
+      // boundary while the mouse is still held, including on a busy CI host.
+      await evaluate(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+      await whileHeld();
+    }
     await cdp('Input.dispatchMouseEvent',{type:'mouseReleased',...point(end,endRow),button:'left',buttons:0,clickCount:1,modifiers});
     await pause(500);
   };

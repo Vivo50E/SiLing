@@ -18,7 +18,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
-from . import notifier
+from . import notifier, artifacts
 from .config import ProjectConfig, load_config
 from .dashboard_network import (
     build_access_url,
@@ -546,6 +546,8 @@ def _normalize_linked_folders(raw) -> list[dict]:
         rec = {"path": path, "label": label or Path(path).name, "type": item_type}
         if created_at:
             rec["created_at"] = created_at
+        if isinstance(item, dict) and isinstance(item.get("artifact"), dict):
+            rec["artifact"] = artifacts.metadata({**rec, "artifact": item["artifact"]})
         out.append(rec)
     return out
 
@@ -770,6 +772,10 @@ def cmd_link_folder(args):
         else:
             changed = _add_linked_folder(data, folder, label)
             context = _link_context(meta_path, kind, task, data)
+        target = data[task] if kind == "task" else data
+        artifacts.stamp(target, str(folder), _link_context(meta_path, kind, task, target),
+                        discovery="cli", purpose=getattr(args, "purpose", None),
+                        description=getattr(args, "description", None))
     task_meta_path = None
     warning = ""
     if _should_write_folder_task_metadata(folder):
@@ -777,6 +783,9 @@ def cmd_link_folder(args):
     status = "linked" if changed else "already linked"
     print(f"{status}: {folder}")
     print(f"metadata: {meta_path}")
+    for record in target.get("linked_folders", []):
+        if record.get("artifact") and record.get("path") == str(folder):
+            print(f"artifact: {record['artifact']['id']}")
     if task_meta_path is not None:
         print(f"task metadata: {task_meta_path}")
     else:
@@ -796,9 +805,42 @@ def cmd_link_file(args):
             changed = _add_linked_file(data[task], file_path, label)
         else:
             changed = _add_linked_file(data, file_path, label)
+        target = data[task] if kind == "task" else data
+        artifacts.stamp(target, str(file_path), _link_context(meta_path, kind, task, target),
+                        discovery="cli", purpose=getattr(args, "purpose", None),
+                        description=getattr(args, "description", None))
     status = "linked" if changed else "already linked"
     print(f"{status}: {file_path}")
     print(f"metadata: {meta_path}")
+    for record in target.get("linked_folders", []):
+        if record.get("artifact") and record.get("path") == str(file_path):
+            print(f"artifact: {record['artifact']['id']}")
+
+
+def cmd_workflow(args):
+    action = args.workflow_action
+    if action in {"validate", "start"}:
+        try:
+            spec = json.loads(Path(args.file).read_text())
+        except (OSError, ValueError) as exc:
+            raise SystemExit(f"Cannot read workflow: {exc}") from exc
+        body = spec if action == "validate" else {"spec": spec, "request_id": args.request_id}
+        path = "/api/workflows/validate" if action == "validate" else "/api/workflows"
+        result = _dashboard_api_request(args, path, method="POST", body=body)
+    elif action == "list":
+        result = _dashboard_api_request(args, "/api/workflows")
+    elif action == "advance":
+        from urllib.parse import quote
+        result = _dashboard_api_request(args, f"/api/workflows/{quote(args.workflow_id, safe='')}/advance", method="POST", body={})
+    else:
+        from urllib.parse import quote
+        path = f"/api/workflows/{quote(args.workflow_id, safe='')}/{quote(args.node_id, safe='')}/{action}"
+        body = {}
+        if action == "report":
+            body = {"run_id": args.run_id or os.environ.get("ORCH_RUN_ID", ""),
+                    "artifacts": args.artifact, "failed": args.failed, "reason": args.reason}
+        result = _dashboard_api_request(args, path, method="POST", body=body)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 def cmd_link_url(args):
@@ -815,9 +857,16 @@ def cmd_link_url(args):
             changed = _add_linked_url(data[task], url, label)
         else:
             changed = _add_linked_url(data, url, label)
+        target = data[task] if kind == "task" else data
+        artifacts.stamp(target, str(url), _link_context(meta_path, kind, task, target),
+                        discovery="cli", purpose=getattr(args, "purpose", None),
+                        description=getattr(args, "description", None))
     status = "linked" if changed else "already linked"
     print(f"{status}: {url}")
     print(f"metadata: {meta_path}")
+    for record in target.get("linked_folders", []):
+        if record.get("artifact") and record.get("path") == str(url):
+            print(f"artifact: {record['artifact']['id']}")
 
 
 def _dashboard_api_base(explicit: str = "") -> str:
@@ -1476,6 +1525,26 @@ def main():
                          help="Output directory name to keep even if it looks prunable")
     p_prune.set_defaults(func=cmd_prune)
 
+    p_workflow = sub.add_parser("workflow", help="Run an explicit reviewed dependency graph")
+    workflow_sub = p_workflow.add_subparsers(dest="workflow_action", required=True)
+    for action in ("validate", "start", "list", "advance", "report", "approve", "retry", "cancel", "reconcile"):
+        child = workflow_sub.add_parser(action)
+        if action in {"validate", "start"}:
+            child.add_argument("file", help="Explicit workflow JSON file")
+        if action == "start":
+            child.add_argument("--request-id", required=True, help="Stable idempotency key; reuse when retrying a request")
+        if action not in {"validate", "start", "list"}:
+            child.add_argument("workflow_id")
+            if action != "advance":
+                child.add_argument("node_id")
+        if action == "report":
+            child.add_argument("--run-id", default="", help="Current execution ID (default: ORCH_RUN_ID)")
+            child.add_argument("--artifact", action="append", default=[], help="Verified deliverable artifact ID")
+            child.add_argument("--failed", action="store_true")
+            child.add_argument("--reason", default="")
+        _add_dashboard_client_args(child)
+        child.set_defaults(func=cmd_workflow)
+
     p_link = sub.add_parser("link-folder", help="Link a project, worktree, or task folder to the current session")
     p_link.add_argument("folder", help="Project/worktree/task folder to show in the dashboard")
     p_link.add_argument("--label", default="", help="Display label (default: folder name)")
@@ -1485,6 +1554,8 @@ def main():
     p_link.add_argument("--outputs", default=str(_configured_outputs_root()),
                         help="outputs directory to scan when inferring by tmux session "
                              "(default: $ORCH_OUTPUTS_DIR or <orch>/outputs)")
+    p_link.add_argument("--purpose", choices=("reference", "deliverable"), default=None)
+    p_link.add_argument("--description", default=None, help="Artifact description")
     p_link.set_defaults(func=cmd_link_folder)
 
     p_link_file = sub.add_parser("link-file", help="Link a file to the current session")
@@ -1496,6 +1567,8 @@ def main():
     p_link_file.add_argument("--outputs", default=str(_configured_outputs_root()),
                              help="outputs directory to scan when inferring by tmux session "
                                   "(default: $ORCH_OUTPUTS_DIR or <orch>/outputs)")
+    p_link_file.add_argument("--purpose", choices=("reference", "deliverable"), default=None)
+    p_link_file.add_argument("--description", default=None, help="Artifact description")
     p_link_file.set_defaults(func=cmd_link_file)
 
     p_link_url = sub.add_parser("link-url", help="Link a URL to the current session")
@@ -1507,6 +1580,8 @@ def main():
     p_link_url.add_argument("--outputs", default=str(_configured_outputs_root()),
                             help="outputs directory to scan when inferring by tmux session "
                                  "(default: $ORCH_OUTPUTS_DIR or <orch>/outputs)")
+    p_link_url.add_argument("--purpose", choices=("reference", "deliverable"), default=None)
+    p_link_url.add_argument("--description", default=None, help="Artifact description")
     p_link_url.set_defaults(func=cmd_link_url)
 
     p_dash = sub.add_parser("dashboard", help="Launch the web dashboard (view/control sessions from browser)")

@@ -221,6 +221,28 @@ Pane borders, priority pills, and terminal status lines work together: you can
 scan red, yellow, blue, and green across the grid, then open only the task that
 actually needs attention.
 
+## Artifacts and explicit workflows
+
+**Files** now distinguishes references from deliverables and shows verification,
+source session and host. Preview requests use session-scoped artifact IDs. SSH
+previews are labelled snapshots; URL registration does not claim reachability.
+Legacy linked items remain readable. Use `siling link-file /absolute/report.md
+--purpose deliverable --description "Validation evidence"` to register a result;
+the command prints its artifact ID. Roles can also be changed in Files.
+
+**Workspace → Workflows** accepts a reviewed `implement → test → review → approval`
+graph. Validate the JSON, then start it. Each agent needs its own prepared workspace;
+results require explicit reports and verified deliverables. The dialog supports
+approval, graceful cancellation, local retry and execution reconciliation. See
+[the workflow guide](docs/workflows.md) and [example](examples/workflow.json).
+Approval records a decision; it does not deploy or merge.
+
+Session status tooltips show execution and connection separately, observation
+source/time, logical session ID and execution attempt. Resume retains lineage and
+native resume IDs; an offline remote node has unknown execution state. Reconnect
+only restores the display, resume opens a new native attempt, and reopening a shell
+starts a fresh shell without replaying old commands.
+
 ## Native lifecycle signals and useful notifications
 
 Terminal output is a useful activity signal, but it cannot always distinguish
