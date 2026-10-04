@@ -18,13 +18,15 @@ const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'siling-ui-test-'));
 const baseline = process.env.UI_BASELINE === '1';
 const sessions = ['claude', 'codex', 'terminal', 'cursor', 'custom-agent'].map((agent, i) => ({
   run_id: `fixture-${i}`, kind: 'task', agent, task: `Task ${i + 1} — a long title for narrow panes`,
-  display_name: `Task ${i + 1} — a long title for narrow panes`, alive: true,
+  display_name: `Task ${i + 1} — a long title for narrow panes${i === 0 ? " (resume) (resume)" : ""}`, alive: true,
   tmux_session: `fixture-${i}`, terminal_theme: 'soft-dark', panel_state: i === 0 ? 'p0' : '',
   remote: i === 4, node_id: i === 4 ? 'fixture-remote' : '', node_online: i !== 4,
 }));
 const requests = [];
 const sentPrompts = [];
 const fileDiscoveries = [];
+const linkJobs = new Map();
+const linkSubmissions = [];
 let frameLoads = 0;
 let pendingCreation;
 let pendingRestart;
@@ -53,6 +55,17 @@ const server = http.createServer((req, res) => {
     const reply=()=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({configured:true,current:{id:'fixture-context',host:'fixture-ssh',cwd:'/remote/work'},settings:{mode:'auto',auto_discover:true},contexts:[{id:'fixture-context',host:'fixture-ssh',cwd:'/remote/work'}]}));};
     if(req.method==='PUT') {req.resume();req.on('end',reply);} else reply();
     return;
+  }
+  if (url.pathname.includes('/link-jobs')) {
+    res.setHeader('Content-Type','application/json');
+    const source=url.pathname.split('/')[3];
+    if(url.pathname.endsWith('/cancel')) {const job=linkJobs.get(source);job.status='cancelled';res.end(JSON.stringify(job));return;}
+    if(req.method==='GET') {res.end(JSON.stringify({jobs:linkJobs.has(source)?[linkJobs.get(source)]:[]}));return;}
+    let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{
+      const input=JSON.parse(body);linkSubmissions.push({source,...input});
+      const job={id:'fixture-job',run_id:source,status:'running',context:{host:'fixture-ssh',cwd:'/remote/work'},files:[],errors:[],error:''};
+      linkJobs.set(source,job);res.end(JSON.stringify(job));
+    });return;
   }
   if (url.pathname.endsWith('/discover-files')) {
     let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{
@@ -424,7 +437,21 @@ try {
     console.log('PASS: Files Markdown contrast in dark, light and both system themes; plaintext fallback');
   }
 
+  assert.ok(await evaluate(`document.querySelectorAll('.pane-drag-region .title').length > 0`));
+  assert.ok(await evaluate(`Array.from(document.querySelectorAll('.pane-drag-region .title')).every(el => !el.textContent.includes('(resume)') && !el.title.includes('(resume)'))`));
   await screenshot('desktop-before-interaction');
+  // Compare status accents without changing sessions or remounting terminal frames.
+  await evaluate(`window.statusStyleFixture = Array.from(document.querySelectorAll('.pane-card')).slice(0,4).map(el => ({el, classes:el.className})); window.statusFixtureTheme=document.documentElement.getAttribute('data-app-theme');`);
+  for (const theme of ['dark', 'light']) {
+    await evaluate(`document.documentElement.setAttribute('data-app-theme', ${JSON.stringify(theme)}); window.statusStyleFixture.forEach(({el},i)=>{el.classList.remove('focused','busy','background-working','attention-ready','attention-reminder','attention-needs-input','attention-blocked');el.classList.add(['busy','attention-needs-input','attention-ready','attention-blocked'][i]);});`);
+    assert.ok(await evaluate(`window.statusStyleFixture.every(({el})=>getComputedStyle(el).animationName==='none')`), 'Status borders do not pulse');
+    assert.ok(await evaluate(`window.statusStyleFixture.every(({el})=>getComputedStyle(el.querySelector('.pane-head')).boxShadow!=='none')`), 'Status accent stays in header');
+    await screenshot('pane-status-' + theme);
+  }
+  await evaluate(`window.statusStyleFixture[0].el.classList.add('focused');`);
+  assert.equal(await evaluate(`getComputedStyle(window.statusStyleFixture[0].el).borderTopColor`), await evaluate(`(()=>{const el=document.createElement('span');el.style.color='var(--accent)';document.body.append(el);const color=getComputedStyle(el).color;el.remove();return color;})()`), 'Focus border remains distinct from activity');
+  await evaluate(`window.statusStyleFixture.forEach(({el,classes})=>el.className=classes);document.documentElement.setAttribute('data-app-theme',window.statusFixtureTheme);delete window.statusStyleFixture;delete window.statusFixtureTheme;`);
+
   if (baseline) {
     await evaluate(`document.querySelector('#btn-settings').click()`);
     await screenshot('settings-baseline');
@@ -472,6 +499,9 @@ try {
   assert.equal(await evaluate(`document.querySelectorAll('.session-item').length`), 5);
   await evaluate(`document.querySelector('.pane-input textarea').value='preserved draft';document.querySelector('#btn-settings').click();`);
   assert.equal(await evaluate(`document.querySelector('#settings-modal').open`), true);
+  await clickIcon('[data-settings-section="connections"]');
+  assert.match(await evaluate(`document.querySelector('#dashboard-update-help').innerText`), /Dashboard service and web interface.*Electron desktop client/);
+  await screenshot('settings-dashboard-update-en');
   await clickIcon('[data-settings-section="terminal"]');
   assert.equal(await evaluate(`document.querySelector('#settings-section-terminal').hidden`),false);
   await clickIcon('[data-settings-section="appearance"]');
@@ -491,6 +521,10 @@ try {
   assert.equal(await evaluate(`document.querySelectorAll('.settings-nav svg').length`),6,'Applying appearance keeps navigation icons');
   await evaluate(`{const c=document.querySelector('[data-appearance="language"]');c.value='zh';c.dispatchEvent(new Event('change'));}`);
   assert.equal(await evaluate(`document.querySelector('[data-settings-section="appearance"] span').textContent`),'外观');
+  await clickIcon('[data-settings-section="connections"]');
+  assert.match(await evaluate(`document.querySelector('#dashboard-update-help').innerText`), /Dashboard 服务端和网页界面.*不会更新 Electron 桌面客户端/);
+  await screenshot('settings-dashboard-update-zh');
+  await clickIcon('[data-settings-section="appearance"]');
   assert.equal(await evaluate(`document.querySelectorAll('.settings-nav svg').length`),6,'Translation keeps icons');
   assert.equal(await evaluate(`document.querySelector('#settings-panel-opacity').closest('label').querySelector('.settings-row-title').textContent`),'面板不透明度');
   assert.equal(await evaluate(`document.querySelector('#btn-apply-global-theme').textContent`),'应用到已打开面板');
@@ -736,8 +770,10 @@ try {
   for(let i=0;i<50;i++){if(await evaluate(`document.querySelector('dialog[open] [data-results]')?.children.length===1`))break;await pause(50);}
   assert.equal(await evaluate(`document.querySelector('dialog[open] [data-results] button').textContent`),'/remote/work/reports/test.md');
   await evaluate(`document.querySelector('dialog[open] [data-model]').click()`);
-  for(let i=0;i<50;i++){if(fileDiscoveries.some(r=>r.intelligent===true))break;await pause(50);}
-  assert.ok(fileDiscoveries.some(r=>r.intelligent===true && r.text==='reports/test.md'),'Explicit Claude action sends reviewed valid text');
+  for(let i=0;i<50;i++){if(linkSubmissions.length)break;await pause(50);}
+  assert.equal(linkSubmissions[0].text,'reports/test.md');
+  assert.equal(linkSubmissions[0].source,'fixture-2');
+  assert.equal(linkSubmissions[0].context_id,'fixture-context');
   assert.equal(frameLoads,beforeFileContextFrames,'File context dialog preserves terminal frames');
   await screenshot('terminal-file-context');
   await evaluate(`document.querySelector('dialog[open] [data-save]').click()`);await pause(150);
@@ -757,17 +793,21 @@ try {
   assert.ok(await evaluate(`document.querySelector('dialog[open] [data-status]').textContent.includes('16000')`),'Truncation is explicit');
   await evaluate(`document.querySelector('dialog[open] [data-close]').click()`);
   console.log('PASS: ordinary Terminal file context, selected relative file discovery, persistence UI and frame preservation');
-  for(const [language,opening] of [['zh','请将当前会话'],['en','Please link resources']]) {
+  const promptsBeforeLink=sentPrompts.length;
+  for(const language of ['zh','en']) {
     await evaluate(`{const c=document.querySelector('[data-appearance="language"]');c.value=${JSON.stringify(language)};c.dispatchEvent(new Event('change'));document.querySelector('[data-run-id="fixture-2"] .btn-link-folder').click();}`);
-    for(let i=0;i<50 && sentPrompts.length===0;i++)await pause(50);
-    const sent=sentPrompts.shift();
-    assert.equal(sent?.path,'/api/sessions/fixture-2/send','Link sends only to its own pane');
-    assert.ok(sent.text.startsWith(opening),'Link prompt follows the selected language');
-    assert.equal(sent.enter,true);assert.equal(sent.literal,true);
-    assert.ok(sent.text.includes('--run-dir'),'Ambiguous target requires explicit session verification');
-    assert.ok(!sent.text.includes('projects-dir-layout'),'Link no longer asks for directory reorganization');
+    await waitFor(`!!document.querySelector('dialog[open] [data-jobs] button')`);
+    assert.equal(sentPrompts.length,promptsBeforeLink,'Link never sends input to the source agent');
+    assert.ok(await evaluate(`document.querySelector('dialog[open] [data-jobs]').textContent.includes('/remote/work')`),'Reopened dialog recovers source-bound job');
+    await screenshot('background-link-' + language);
+    if(language==='en') {
+      await evaluate(`document.querySelector('dialog[open] [data-jobs] button').click()`);
+      await waitFor(`document.querySelector('dialog[open] [data-jobs]').textContent.includes('Cancelled')`);
+    }
+    await evaluate(`document.querySelector('dialog[open] [data-close]').click()`);
   }
-  console.log('PASS: Link prompt language, session routing and submission');
+  assert.equal(frameLoads,beforeFileContextFrames,'Background Link preserves terminal frames');
+  console.log('PASS: background Link submission, source binding, reconnect, cancellation, bilingual UI and no terminal injection');
   await evaluate(`document.querySelector('#projects-browser-modal-close').click()`);
   const ended=sessions.find(s=>s.run_id==='fixture-2');
   ended.alive=false;ended.agent='codex';ended.resume_id='fixture-native-resume';

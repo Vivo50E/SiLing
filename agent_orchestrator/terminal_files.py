@@ -10,6 +10,8 @@ import re
 import shlex
 import subprocess
 import tempfile
+import signal
+import time
 
 from .agent_cli import resolve_agent_cli
 from .json_store import edit_json
@@ -173,7 +175,7 @@ def extract_paths(text: str) -> list[str]:
     return list(dict.fromkeys(match.group() for match in _PATH.finditer(clean)))[:24]
 
 
-def model_paths(text: str) -> list[str]:
+def model_paths(text: str, cancel=None) -> list[str]:
     """Explicit-only model call. The model has no filesystem or shell tools."""
     if not isinstance(text, str) or not text.strip() or len(text) > 16000:
         raise ValueError('Select 1–16000 characters to identify files')
@@ -193,8 +195,31 @@ def model_paths(text: str) -> list[str]:
     env.pop('CLAUDECODE', None)
     with tempfile.TemporaryDirectory(prefix='siling-file-extract-') as cwd:
         try:
-            result = subprocess.run(argv, input=text, text=True, capture_output=True,
-                                    cwd=cwd, env=env, timeout=45, check=False)
+            if cancel is None:
+                result = subprocess.run(argv, input=text, text=True, capture_output=True,
+                                        cwd=cwd, env=env, timeout=45, check=False)
+            else:
+                with subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                      stderr=subprocess.PIPE, text=True, cwd=cwd, env=env,
+                                      start_new_session=True) as proc:
+                    deadline = time.monotonic() + 45
+                    first = True
+                    try:
+                        while True:
+                            if cancel.is_set():
+                                raise ValueError('Link identification cancelled')
+                            if time.monotonic() >= deadline:
+                                raise ValueError('Intelligent identification timed out; retry with less text')
+                            try:
+                                stdout, stderr = proc.communicate(input=text if first else None, timeout=.2)
+                                result = subprocess.CompletedProcess(argv, proc.returncode, stdout, stderr)
+                                break
+                            except subprocess.TimeoutExpired:
+                                first = False
+                    finally:
+                        if proc.poll() is None:
+                            os.killpg(proc.pid, signal.SIGKILL)
+                            proc.communicate()
         except subprocess.TimeoutExpired as exc:
             raise ValueError('Intelligent identification timed out; ordinary path discovery is still available') from exc
     if result.returncode:

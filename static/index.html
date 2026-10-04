@@ -679,30 +679,28 @@
     outline: 2px solid var(--accent);
     outline-offset: -2px;
   }
-  /* Pane borders answer one question only: does this session need attention?
-     Priority remains visible in the Lead/P0/P1/P2 badge and never owns the border. */
-  .pane-card.busy {
-    border-color: var(--ok);
-    animation: pane-busy-pulse 1.4s ease-in-out infinite;
+  /* Activity and attention share restrained accents; priority stays in its badge.
+     Animate only the small activity icon, never the whole terminal card. */
+  .pane-card.busy { --pane-state-color: var(--ok); }
+  .pane-card.background-working { --pane-state-color: #56bfa0; }
+  .pane-card.attention-ready { --pane-state-color: #c69b36; }
+  .pane-card.attention-reminder { --pane-state-color: #dc8944; }
+  .pane-card.attention-needs-input { --pane-state-color: #e77373; }
+  .pane-card.attention-blocked { --pane-state-color: #a88ad8; }
+  .pane-card:is(.busy, .background-working, .attention-ready,
+      .attention-reminder, .attention-needs-input, .attention-blocked) {
+    border-color: color-mix(in srgb, var(--pane-state-color) 64%, var(--border));
   }
-  .pane-card.background-working {
-    border-color: #56d3a4;
-    animation: pane-background-pulse 2s ease-in-out infinite;
+  .pane-card:is(.busy, .background-working) > .pane-head {
+    background: linear-gradient(110deg,
+      color-mix(in srgb, var(--pane-state-color) 9%, var(--bg-elev)), var(--bg-elev) 70%);
   }
-  .pane-card.attention-ready {
-    border-color: #e3b341;
+  .pane-card:is(.busy, .background-working, .attention-ready,
+      .attention-reminder, .attention-needs-input, .attention-blocked) > .pane-head {
+    box-shadow: inset 0 2px var(--pane-state-color);
   }
-  .pane-card.attention-reminder {
-    border-color: #f0883e;
-    box-shadow: 0 0 0 2px rgba(240,136,62,.20);
-  }
-  .pane-card.attention-needs-input {
-    border-color: #ff7b72;
-    box-shadow: 0 0 0 2px rgba(255,123,114,.22);
-  }
-  .pane-card.attention-blocked {
-    border-color: #bc8cff;
-    box-shadow: 0 0 0 2px rgba(188,140,255,.20);
+  .pane-card.focused {
+    border-color: var(--accent);
   }
   @keyframes pane-busy-pulse {
     0%, 100% { box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.00); }
@@ -755,8 +753,7 @@
     font-size: 12px;
     min-width: 0;
   }
-  /* Unread state lives in the header, not the pane border: Lead/P0/P1/Blocked
-     keep exclusive ownership of border color. */
+  /* Unread header tint clears on inspection; persistent attention keeps its accent. */
   .pane-head.unread-ready {
     background: linear-gradient(90deg, rgba(227,179,65,.18), var(--bg-elev) 52%);
     box-shadow: inset 0 -1px rgba(227,179,65,.52);
@@ -2755,7 +2752,7 @@
 <script src="/static/ui-foundation.js?v=9"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=2" />
 <script src="/static/pane-groups.js?v=3"></script>
-<script src="/static/terminal-files.js?v=2"></script>
+<script src="/static/terminal-files.js?v=3"></script>
 <script src="/static/terminal-keys.js?v=1"></script>
 <link rel="stylesheet" href="/static/browser-panes.css?v=1" />
 <script src="/static/browser-panes.js?v=1"></script>
@@ -3011,7 +3008,8 @@
           <div class="url-bar" id="url-bar" role="button" tabindex="0" aria-label="Copy Dashboard login link" data-ui-label=Copy%20Dashboard%20login%20link>
             <span class="url-label"><span data-ui-message=Link>Link</span></span><span class="url-value" id="url-bar-value">…</span><span class="url-alts" id="url-bar-alts"></span>
           </div>
-          <p class="ui-secondary"><span data-ui-message=Update%20checks%20and%20actions%20affect%20the%20Dashboard%20service%2C%20not%20just%20this%20browser.%20Applying%20an%20update%20may%20restart%20the%20service%20after%20verification.>Update checks and actions affect the Dashboard service, not just this browser. Applying an update may restart the service after verification.</span></p>
+          <h2 data-ui-message="Dashboard%20updates">Dashboard updates</h2>
+          <p class="ui-secondary" id="dashboard-update-help"><span data-ui-message=Updates%20here%20include%20the%20Dashboard%20service%20and%20web%20interface.%20They%20do%20not%20update%20the%20Electron%20desktop%20client.%20For%20desktop%20client%20updates%2C%20use%20the%20macOS%20menu%3A%20SiLing%20%E2%86%92%20Check%20for%20Desktop%20Updates%E2%80%A6.%20Applying%20a%20Dashboard%20update%20restarts%20the%20service%20after%20verification%20and%20approval%3B%20Agent%20sessions%20keep%20running.>Updates here include the Dashboard service and web interface. They do not update the Electron desktop client. For desktop client updates, use the macOS menu: SiLing → Check for Desktop Updates…. Applying a Dashboard update restarts the service after verification and approval; Agent sessions keep running.</span></p>
           <div class="settings-inline-actions"><button id="btn-sync-status" title="Read-only workspace sync status" data-ui-title=Read-only%20workspace%20sync%20status hidden><span data-ui-message=sync%3A%20%E2%80%A6>sync: …</span></button><button id="btn-self-update" title="Check, test, and apply updates" data-ui-title=Check%2C%20test%2C%20and%20apply%20updates><span data-ui-message=apply%20update>apply update</span></button></div>
         </section>
         </div>
@@ -6403,6 +6401,11 @@
     return sessionPersistentAttentionState(s) || sessionVisibleUnreadState(s);
   }
 
+  function sessionTitle(s) {
+    const title = String(s.display_name || s.task || s.run_name || "");
+    return title.replace(/(?:\s+\(resume\))+$/, "").trimEnd();
+  }
+
   function sessionIsTerminal(s) {
     return String(s?.agent || "").trim().toLowerCase() === "terminal";
   }
@@ -6479,7 +6482,7 @@
     updatePaneInstantActivityClass(ctrl, s);
     const title = card.querySelector(".pane-drag-region .title");
     if (title) {
-      const display = s.display_name || s.task || s.run_name || "";
+      const display = sessionTitle(s);
       title.textContent = display;
       title.title = display;
     }
@@ -6565,7 +6568,7 @@
     const active = idx >= 0 ? "active" : "";
     const mark = idx >= 0 ? `<span class="slot-mark">${SLOT_MARKS[idx] || (idx+1)}</span>` : "";
     const canLabel = s.kind === "task" || s.kind === "run" || s.kind === "orphan";
-    const display = s.display_name || s.task || s.run_name;
+    const display = sessionTitle(s);
     const state = sidebarGroupKey(s.panel_state);
     const stateLabel = panelStateLabel(s.panel_state);
     const stateBadge = stateLabel
@@ -6767,7 +6770,7 @@
         const s2 = sessions.find(x => x.run_id === id);
         if (s2 && ctrl) {
           const t = ctrl.cardEl.querySelector(".title");
-          if (t) t.textContent = s2.display_name || s2.task;
+          if (t) t.textContent = sessionTitle(s2);
         }
       }
     } catch (e) { alert(ui.message("rename failed: ") + e.message); }
@@ -7600,7 +7603,7 @@
           <span class="slot-badge" draggable="true" title="Drag to move to another slot" data-ui-title=Drag%20to%20move%20to%20another%20slot>${SLOT_MARKS[slotIdx] || (slotIdx+1)}</span>
           <span class="dot ${sessionDotPresentation(s).classes}" title="${sessionDotPresentation(s).title}"></span>
           ${ui.agentBadge(s.agent)}
-          <span class="title" title="${escapeHtml(s.display_name || s.task)}">${escapeHtml(s.display_name || s.task || s.run_name)}</span>
+          <span class="title" title="${escapeHtml(sessionTitle(s))}">${escapeHtml(sessionTitle(s))}</span>
           ${s.remote ? `<span class="pane-node-badge ${s.node_online === false ? "offline" : ""}" title="${escapeHtml(s.node_online === false ? (s.node_error || "Remote node offline") : `Running on ${s.node_label || s.node_id}`)}">${escapeHtml(s.node_label || s.node_id || "remote")}</span>` : ""}
           <span class="pill pane-round">${s.max_rounds ? `${s.round || 0}/${s.max_rounds}` : ""}</span>
           <span class="pane-idle" data-mode="idle" title="Sustained idle time" data-ui-title=Sustained%20idle%20time><span data-ui-message=idle>idle</span></span>
@@ -7627,7 +7630,7 @@
           <button class="btn-sync-project" ${s.remote ? "hidden" : ""} title="Sync this session's project and publish a remote resume handoff when idle (Shift-click: sync safe items now)" data-ui-title=Sync%20this%20session%27s%20project%20and%20publish%20a%20remote%20resume%20handoff%20when%20idle%20(Shift-click%3A%20sync%20safe%20items%20now)><span data-ui-message=Sync>Sync</span></button>
       </div>
       <dialog class="ui-dialog pane-menu" id="pane-menu-${++paneMenuSerial}" aria-label="Pane actions" data-ui-label=Pane%20actions>
-        <div class="modal-head"><h2>${ui.agentBadge(s.agent)} ${escapeHtml(s.display_name || s.task || s.run_name)}</h2><button class="ui-icon-button" data-dialog-close aria-label="Close" data-ui-label=Close>${ui.icon("close")}</button></div>
+        <div class="modal-head"><h2>${ui.agentBadge(s.agent)} ${escapeHtml(sessionTitle(s))}</h2><button class="ui-icon-button" data-dialog-close aria-label="Close" data-ui-label=Close>${ui.icon("close")}</button></div>
         <div class="modal-body">
           <div class="ui-menu-group">
             <label><span data-i18n="terminalTheme">Terminal theme</span><select class="pane-theme-select" data-theme="${escapeHtml(terminalThemeValue(s.terminal_theme))}">${terminalThemeOptionsHtml(s.terminal_theme)}</select></label>
@@ -7905,7 +7908,7 @@
     btnProgress.addEventListener("click", () => sendText(runId, ui.message("How is the task progressing?"), true));
     btnMonitor.addEventListener("click", () => sendText(runId, ui.message("Monitor with a five-minute heartbeat: each wait must return a status within five minutes, or earlier when a result arrives. On each return, recheck and re-arm monitoring so a stuck task is noticed within five minutes."), true));
     btnLinkFolder.addEventListener("click", () => {
-      sendText(runId, ui.message("Please link resources relevant to the current session to this session’s Dashboard Files.\n\nPrioritize the current project root, this task’s reports/results, and related web pages.\nOnly link resources directly related to this task whose existence you have verified. Do not move, copy, or create files for this purpose, or link credentials or other sensitive files.\n\nUse:\n- Folders: `siling link-folder <absolute-folder-path>`\n- Files: `siling link-file <absolute-file-path>`\n- Web pages: `siling link-url <https-url>`\n\nConfirm the current session first. If the target is ambiguous, explicitly specify a verified `--run-dir` to avoid linking to another session.\nCheck existing Files to avoid duplicates. When done, briefly list newly linked resources. Explain any failures without claiming success."), true);
+      void terminalFileController().configure(runId).catch(error => alert(error.message));
     });
     btnSyncProject.addEventListener("click", event => {
       if (btnSyncProject.dataset.action === "cancel") {
@@ -12700,7 +12703,7 @@
     const s = resumableSessions.find(x => x.run_id === rid);
     if (s && s.cwd) $("new-cwd").value = s.cwd;
     if (s && !$("new-label").value.trim()) {
-      $("new-label").placeholder = `${s.display_name || s.task || "session"} (resume)`;
+      $("new-label").placeholder = sessionTitle(s) || "session";
     }
   }
 

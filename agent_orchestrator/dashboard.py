@@ -63,6 +63,7 @@ from urllib.parse import quote, urlparse
 from .agent_cli import resolve_agent_cli
 from .browser_open import open_system_browser, system_browser_available, validate_web_url
 from . import terminal_files
+from .link_jobs import LinkJobs
 from .conversation_metrics import TranscriptMetricsCache
 from .dashboard_network import build_access_url, list_local_ipv4, pick_best_ip
 from .json_store import edit_json, write_json
@@ -8457,6 +8458,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         sync_settings, busy_sync_paths,
         completion_callback=publish_session_handoff,
     )
+    link_jobs = LinkJobs(outputs_dir / ".link-jobs")
     dashboard_instance_id = uuid.uuid4().hex
     remote_http_client = httpx.AsyncClient(
         timeout=httpx.Timeout(connect=3.0, read=30.0, write=30.0, pool=3.0),
@@ -8527,6 +8529,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                 thread.join(timeout=2)
             app.state.active_snapshot_autosave_stop = None
             app.state.active_snapshot_autosave_thread = None
+            link_jobs.close()
             session_snapshots.stop(timeout=3)
             native_activity.stop(timeout=2)
             _flush_activity_timeline(outputs_dir)
@@ -10028,6 +10031,36 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         except (ValueError, OSError) as exc:
             raise HTTPException(400, str(exc))
 
+    @app.get("/api/sessions/{run_id}/link-jobs")
+    def list_link_jobs(run_id: str):
+        terminal_file_run(run_id)
+        try:
+            return {"jobs": link_jobs.list(run_id)}
+        except ValueError as exc:
+            raise HTTPException(409, str(exc))
+
+    @app.post("/api/sessions/{run_id}/link-jobs")
+    def start_link_job(run_id: str, body: dict):
+        run, directory = terminal_file_run(run_id)
+        try:
+            ctx = dict(terminal_files.get_context(directory, str(body.get("context_id") or "")))
+            # Capture source and context now; later focus/cwd changes cannot redirect results.
+            return link_jobs.submit(run_id, ctx, body.get("text"), body.get("request_id"),
+                                    terminal_files.model_paths,
+                                    lambda raw: terminal_file_result(run_id, run, ctx, raw))
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+
+    @app.post("/api/sessions/{run_id}/link-jobs/{job_id}/cancel")
+    def cancel_link_job(run_id: str, job_id: str):
+        terminal_file_run(run_id)
+        try:
+            return link_jobs.cancel(run_id, job_id)
+        except KeyError:
+            raise HTTPException(404, "Link job not found")
+        except ValueError as exc:
+            raise HTTPException(409, str(exc))
+
     @app.post("/api/sessions/{run_id}/discover-files")
     def discover_terminal_files(run_id: str, body: dict):
         run, directory = terminal_file_run(run_id)
@@ -10040,10 +10073,9 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             state = terminal_files.read_state(directory)
             if automatic and not state.get("settings", {}).get("auto_discover", True):
                 return {"files": [], "errors": []}
-            if automatic and body.get("intelligent"):
-                raise ValueError("Model identification requires an explicit selection action")
-            paths = (terminal_files.model_paths(text) if body.get("intelligent")
-                     else terminal_files.extract_paths(text))
+            if body.get("intelligent"):
+                raise ValueError("Use a background Link task for Claude identification; refresh the Dashboard")
+            paths = terminal_files.extract_paths(text)
         except (ValueError, OSError) as exc:
             raise HTTPException(400, str(exc))
         files, errors = [], []
@@ -11616,7 +11648,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         label = (body.get("label") or "").strip()
         if not label:
             base = src.get("display_name") or src.get("task") or "resumed"
-            label = str(src.get("label") or base)[:80] if terminal else f"{base} (resume)"[:80]
+            label = str(src.get("label") or base)[:80] if terminal else re.sub(r"(?:\s+\(resume\))+$", "", str(base)).strip()[:80]
         inherited_resume = None if terminal else _build_inherited_resume_meta(src, agent, resume_id)
         result = _spawn_session(agent, model, label, cwd, mode,
                                 resume_id=resume_id,

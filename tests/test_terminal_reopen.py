@@ -64,3 +64,33 @@ class TerminalReopenTests(unittest.TestCase):
                 with patch.object(dashboard.subprocess, 'run', return_value=subprocess.CompletedProcess([], 1, '', 'fixture failure')):
                     self.assertEqual(client.post('/api/resume', json={'run_id': 'old::shell'}).status_code, 500)
                 self.assertEqual((source_dir / 'history.log').read_text(), 'old history\n')
+
+    def test_agent_resume_keeps_name_and_native_resume_id(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = dict(agent='claude', alive=False, run_id='old::agent',
+                          display_name='Example (resume) (resume)', cwd=temp,
+                          resume_id='native-fixture-id')
+            calls = []
+            def spawn(args, **kwargs):
+                if '--run-name' not in args:
+                    return subprocess.CompletedProcess(args, 0, '', '')
+                calls.append(args)
+                run_dir = root / args[args.index('--run-name') + 1]
+                run_dir.mkdir(exist_ok=True)
+                (run_dir / 'session.json').write_text('{}')
+                return subprocess.CompletedProcess(args, 0, f'Session: fixture\nOutput: {run_dir}\n', '')
+            with patch.object(dashboard.TtydManager, '_sweep_orphans', return_value=0):
+                app = dashboard.create_app(root, ttyd_enabled=False, remote_nodes_enabled=False)
+            with TestClient(app) as client, \
+                    patch.object(dashboard, '_lookup_run', return_value=source), \
+                    patch.object(dashboard, '_schedule_native_resume_capture'), \
+                    patch.object(dashboard, '_run_with_native_model_effort', side_effect=lambda row: row), \
+                    patch.object(dashboard.subprocess, 'run', side_effect=spawn):
+                for explicit in ('', 'Custom name'):
+                    response = client.post('/api/resume', json={'run_id': 'old::agent', 'label': explicit})
+                    self.assertEqual(response.status_code, 200, response.text)
+                    args = calls[-1]
+                    self.assertEqual(args[args.index('--label') + 1], explicit or 'Example')
+                    self.assertEqual(args[args.index('--resume-id') + 1], 'native-fixture-id')
+                self.assertEqual(source['display_name'], 'Example (resume) (resume)')

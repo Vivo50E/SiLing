@@ -282,10 +282,19 @@ A task is more than its terminal transcript. It usually has a project folder,
 plans, test evidence, result tables, screenshots, and a few reference pages.
 Linked Items attaches that context directly to the session.
 
-The **Link** button asks the current agent to attach relevant projects, existing
-outputs, and web pages to this session’s Files, checking the target session and
-existing links first. It does not request file reorganization or automatically
-delegate to a subagent.
+The **Link** button opens file discovery for the source pane, including ordinary
+Terminal and SSH sessions. Review selected text or load the current screen, confirm
+the host/directory, then choose **Identify with Claude**. A separate background
+worker extracts file paths without sending input to the pane or using model tools.
+Tasks are persisted, deduplicated, cancellable, and visible when you reopen Link;
+interrupted tasks require an explicit retry after a Dashboard restart. Already
+linked files remain when cancelled. Identification is limited to 45 seconds and
+$0.10 per call; up to eight files are checked, with two workers and eight active
+or queued tasks globally. The last 128 tasks are retained (20 shown per pane).
+Only the reviewed text is sent to the configured Claude model, not full history.
+This first worker handles files, not project-wide scans, directories or web pages;
+existing manual folder/URL linking remains available. **Find files** uses ordinary
+path matching without a model.
 
 For a spec or report, run `siling link-file /absolute/path/spec.md --label "Spec"`.
 The user can then open it from the pane's **Files** panel without copying a

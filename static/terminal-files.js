@@ -142,6 +142,7 @@
             <div style="display:flex;gap:12px;align-items:center"><button class="ui-button" data-load>${tr('Read current terminal output','读取当前终端输出')}</button><span class="ui-secondary" data-count></span></div>
             <p class="ui-secondary">${tr('Intelligent identification sends only this text to your local Claude CLI’s configured model. It cannot run tools.','智能识别仅将这里的文字发送给本机 Claude CLI 配置的模型，不允许执行工具。')}</p>
             <div><button class="ui-button" data-scan>${tr('Find files','识别路径')}</button> <button class="ui-button" data-model>${tr('Identify with Claude','用 Claude 智能识别')}</button></div>
+            <p class="ui-secondary">${tr("Claude runs in a separate background worker; your pane keeps working. Closing this dialog does not cancel it. Up to 8 files, 45 seconds of identification and a $0.10 model budget per task.","Claude 在独立后台 worker 中运行，不占用当前 pane。关闭此窗口不会取消任务。每次最多关联 8 个文件，识别限时 45 秒，模型预算上限 $0.10。")}</p><section data-jobs aria-label="${tr("Background Link tasks","后台 Link 任务")}"></section>
             <p role="status" data-status style="margin:0;white-space:pre-wrap"></p><div data-results style="display:grid;gap:8px"></div>
           </div>`;
         document.body.appendChild(dialog);
@@ -212,6 +213,37 @@
             el('status').textContent=tr('Saved. Existing output retains its original context.','已保存。历史输出保留原来的上下文。');
           } catch(error) {el('status').textContent=error.message;}
         };
+        let pollTimer, lastJobs = '', pollStopped = false;
+        const statusName = value => ({queued:tr('Queued','排队中'),running:tr('Running','运行中'),cancelling:tr('Cancelling','正在取消'),cancelled:tr('Cancelled','已取消'),completed:tr('Completed','已完成'),failed:tr('Failed','失败'),interrupted:tr('Interrupted','已中断')})[value] || value;
+        const pollJobs = async () => {
+          try {
+            const {jobs} = await api(endpoint(id,'link-jobs'));
+            if(pollStopped) return;
+            const active=jobs.some(job=>['queued','running','cancelling'].includes(job.status));
+            el('model').disabled=active;
+            const serialized=JSON.stringify(jobs);
+            if(serialized!==lastJobs) {
+              lastJobs=serialized;el('jobs').replaceChildren();
+              for(const job of jobs) {
+                const row=document.createElement('div');row.style.cssText='border:1px solid var(--border);border-radius:8px;padding:10px;margin:8px 0;overflow-wrap:anywhere';
+                const title=document.createElement('div');title.textContent=`${statusName(job.status)} · ${job.files.length} ${tr('files linked','个文件已关联')} · ${job.context.host||tr('Local','本机')} · ${job.context.cwd||'?'}`;row.append(title);
+                if(job.error || job.errors.length) {const error=document.createElement('p');error.textContent=job.error || tr('Some files could not be linked. Review the text and retry.','部分文件关联失败，请检查文字后重试。');row.append(error);}
+                if(job.limited) {const note=document.createElement('p');note.textContent=tr('Only the first 8 candidates were checked. Narrow the text for more.','本次仅检查前 8 个候选，请缩小文字范围后继续。');row.append(note);}
+                for(const item of job.files) {const button=document.createElement('button');button.className='ui-button';button.textContent=item.source_path;button.onclick=()=>void openViewer(id,item.folder.path);row.append(button);}
+                if(['queued','running','cancelling'].includes(job.status)) {
+                  const button=document.createElement('button');button.className='ui-button';button.textContent=tr('Cancel task','取消任务');button.disabled=job.status==='cancelling';
+                  button.onclick=async()=>{button.disabled=true;try{await api(endpoint(id,`link-jobs/${job.id}/cancel`),{method:'POST'});lastJobs='';}catch(error){el('status').textContent=error.message;button.disabled=false;}};row.append(button);
+                } else if(['failed','cancelled','interrupted'].includes(job.status)) {
+                  const retry=document.createElement('button');retry.className='ui-button';retry.textContent=tr('Review text and retry','检查文字并重试');
+                  retry.onclick=()=>{el('text').focus();el('status').textContent=tr('Review or reload the text, then choose Identify with Claude. Already linked files are kept.','检查或重新载入文字，再点击“用 Claude 智能识别”。已关联文件会保留。');};row.append(retry);
+                }
+                el('jobs').append(row);
+              }
+            }
+          } catch(error) {if(!pollStopped) el('status').textContent=error.message;}
+          finally {if(!pollStopped) pollTimer=setTimeout(pollJobs,1500);}
+        };
+        dialog.addEventListener('close',()=>{pollStopped=true;clearTimeout(pollTimer);},{once:true});
         const identify = async intelligent => {
           const text=el('text').value;
           updateCount();
@@ -225,7 +257,16 @@
           el('status').textContent=tr('Checking files…','正在检查文件…');
           el('results').replaceChildren();
           try {
-            const result=await api(endpoint(id,'discover-files'),{method:'POST',body:{text,context_id:el('context').value,intelligent}});
+            if(intelligent) {
+              const context_id=el('context').value;
+              const signature=JSON.stringify([text,context_id]);
+              if(state.request?.signature!==signature) state.request={signature,id:crypto.randomUUID()};
+              await api(endpoint(id,'link-jobs'),{method:'POST',body:{text,context_id,request_id:state.request.id}});
+              state.request=null;lastJobs='';
+              el('status').textContent=tr('Background Link task submitted. You can close this window.','后台 Link 任务已提交，可以关闭窗口。');
+              return;
+            }
+            const result=await api(endpoint(id,'discover-files'),{method:'POST',body:{text,context_id:el('context').value,intelligent:false}});
             for(const item of result.files) {
               const button=document.createElement('button');button.className='ui-button';
               button.textContent=item.source_path;button.style.overflowWrap='anywhere';
@@ -237,6 +278,7 @@
         };
         el('scan').onclick=()=>void identify(false);el('model').onclick=()=>void identify(true);
         dialog.showModal();
+        void pollJobs();
       };
       return {attach, openPath, configure, states};
     },
