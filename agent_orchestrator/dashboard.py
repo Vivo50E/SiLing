@@ -8213,7 +8213,9 @@ class TtydManager:
                         "-i", "127.0.0.1",     # only expose locally; dashboard proxies it
                         "-W",                   # writable (allow input)
                         *client_options,
-                        "tmux", "attach", "-t", shadow,
+                        # Scoped to this browser client. The injected ttyd
+                        # compatibility layer handles synchronized paint.
+                        "tmux", "-T", "sync", "attach", "-t", shadow,
                     ],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,

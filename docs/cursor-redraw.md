@@ -21,3 +21,30 @@ Validation uses an isolated Node fixture and a real 35 × 10 tmux client, withou
 需要 tmux 3.7+。更新 SiLing 后，新建／恢复的 Cursor 会话自动启用；**当前已运行的 Cursor 必须在任务完成或暂停后重启／恢复，单纯刷新网页不能生效**。现有会话不会被自动重启。该修复针对已复现的完整清屏重绘，仍需用真实任务确认更新后的表现。
 
 窗口缩小时 Ink 还会擦除旧内容并重新排版。新增测试覆盖此前漏掉的局部重绘路径，但不承诺消除尺寸切换本身的一次正常重排，也不能替代实际 Working 和放大／还原操作的验收。跨多次写入的原生同步块、ANSI 控制序列和 UTF-8 字符均保留原始字节。
+
+## Browser paint boundary
+
+Application synchronization and browser painting are separate boundaries. A real
+Cursor capture showed synchronized application frames while its ttyd tmux client
+had no `sync` terminal feature. ttyd 1.7.x's bundled xterm also ignored DEC 2026,
+so a completed tmux screen could still become visible in pieces over WebSocket.
+
+SiLing now advertises `sync` only for its ttyd tmux clients (`tmux -T sync`). The
+injected browser compatibility layer defers xterm's render-service paint callback
+between DEC 2026 markers. Parsing and input continue; an end marker, terminal
+resize, or a one-second watchdog releases painting. This uses a guarded xterm
+internal render hook because that bundled version has no public synchronized
+render API; browser tests exercise the installed ttyd and compare visible pixels.
+Future ttyd/xterm upgrades must rerun those compatibility tests.
+
+After this browser-side update, reload the Dashboard/terminal iframe so both the
+new client feature and browser handler are active. An agent already using the
+Cursor output hook does **not** need another restart for this browser change.
+Normal content changes and resize reflow remain visible; synchronization prevents
+unfinished frames, not legitimate changes between complete frames.
+
+浏览器端是另一段显示链路：Cursor 的同步输出到达 tmux 后，浏览器仍可能分段绘制。
+现在只对 SiLing 的 ttyd 客户端启用 `sync`，并为 ttyd 内置的旧版 xterm 补上同步绘制支持。
+期间输入和解析继续进行；结束标记、终端尺寸变化或一秒超时均会释放绘制。
+这部分更新后需要刷新 Dashboard／终端 iframe；已加载 Cursor 输出补丁的 Agent 无需再次重启。
+正常内容更新和尺寸重排仍会发生，补丁针对未完成画面的闪烁，不隐藏真正的内容变化。

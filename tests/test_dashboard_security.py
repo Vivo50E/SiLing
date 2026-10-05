@@ -1554,6 +1554,8 @@ class TtydRecoveryTests(unittest.TestCase):
 
         self.assertEqual(port, 7801)
         command = popen.call_args.args[0]
+        self.assertEqual(command[command.index("tmux"):],
+                         ["tmux", "-T", "sync", "attach", "-t", "orch-themed-web"])
         theme_option = next(
             value for value in command
             if isinstance(value, str) and value.startswith("theme=")

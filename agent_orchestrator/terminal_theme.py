@@ -125,6 +125,41 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     if (!terminal || !screen || !mouse || !selection) return false;
     if (mouse.__orchInteractionPatch) return true;
 
+    // ttyd 1.7.x's bundled xterm lacks DEC 2026. tmux can synchronize its
+    // internal screen yet still send a client repaint over several WS chunks.
+    // Hold only paint, not parsing/input, until that client frame is complete.
+    const render = core._renderService;
+    if (render && typeof render._renderRows === "function" && terminal.parser) {
+      const renderRows = render._renderRows;
+      let synchronized = false;
+      let syncTimeout = null;
+      const finishSync = () => {
+        clearTimeout(syncTimeout);
+        syncTimeout = null;
+        if (!synchronized) return;
+        synchronized = false;
+        terminal.refresh(0, terminal.rows - 1);
+      };
+      render._renderRows = function (...args) {
+        if (!synchronized) return renderRows.apply(this, args);
+      };
+      terminal.parser.registerCsiHandler({prefix: "?", final: "h"}, params => {
+        if (params.includes(2026)) {
+          synchronized = true;
+          clearTimeout(syncTimeout);
+          syncTimeout = setTimeout(finishSync, 1000);
+        }
+        // Let xterm process any other DEC modes in the same command.
+        return false;
+      });
+      terminal.parser.registerCsiHandler({prefix: "?", final: "l"}, params => {
+        if (params.includes(2026)) finishSync();
+        return false;
+      });
+      terminal.onResize(finishSync);
+      window.addEventListener("pagehide", finishSync);
+    }
+
     // The iframe does not inherit Dashboard CSS. Keep its native scrollbar
     // aligned with xterm's actual palette, including late ttyd preferences.
     const scrollbarStyle = document.createElement("style");

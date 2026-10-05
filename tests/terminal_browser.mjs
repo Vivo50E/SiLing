@@ -34,7 +34,7 @@ const selectionServer=http.createServer((req,res)=>{
 });
 await new Promise(r=>selectionServer.listen(0,'127.0.0.1',r));
 const selectionPort=selectionServer.address().port;
-const ttyd=spawn('ttyd',['-i','127.0.0.1','-p',String(port),'-W','tmux','-S',socket,'attach','-t','check'],{stdio:'ignore'});
+const ttyd=spawn('ttyd',['-i','127.0.0.1','-p',String(port),'-W','tmux','-S',socket,'-T','sync','attach','-t','check'],{stdio:'ignore'});
 let browser, ws;
 const errors = [];
 try {
@@ -90,6 +90,34 @@ try {
   const injection=execFileSync(python,['-c',"from agent_orchestrator.terminal_theme import _TTYD_INTERACTION_SCRIPT as s;print(s.split('>',1)[1].rsplit('</script>',1)[0])"],{cwd:root,encoding:'utf8'});
   await evaluate(`Object.defineProperty(window,'frameElement',{value:{dataset:{inlineSelection:'true',nativeSelection:'true'}}});window.localMessages=[];Object.defineProperty(window,'parent',{value:{postMessage: message=>window.localMessages.push(message)}});void 0;`);
   await evaluate(injection);
+  // Browser rendering must remain frozen across split synchronized updates.
+  await evaluate(`new Promise(resolve => term.write('\\x1b[?1049hBASELINE\\x1b[?25l', resolve))`);
+  await pause(100);
+  const beforeSyncPaint=(await cdp('Page.captureScreenshot',{format:'png'})).data;
+  await evaluate(`window.syncRenders=0;window.syncObserver=term.onRender(()=>window.syncRenders++);new Promise(resolve=>term.write('\\x1b[?2026h\\x1b[2J\\x1b[HPARTIAL',resolve))`);
+  await pause(150);
+  assert.equal(await evaluate('window.syncRenders'),0,'Do not paint an unfinished synchronized frame');
+  assert.equal((await cdp('Page.captureScreenshot',{format:'png'})).data,beforeSyncPaint,'Visible pixels remain unchanged until the end marker');
+  assert.ok(await evaluate("term.buffer.active.getLine(0).translateToString(true).includes('PARTIAL')"),'Parsing continues while rendering is held');
+  await evaluate(`new Promise(resolve=>term.write('\\x1b[HFINAL-FRAME\\x1b[?2026l',resolve))`);
+  await pause(100);
+  assert.ok(await evaluate('window.syncRenders>0'),'End marker releases final rendering');
+  await evaluate(`window.syncRenders=0;new Promise(resolve=>term.write('\\x1b[?2026hWATCHDOG',resolve))`);
+  await pause(150);
+  assert.equal(await evaluate('window.syncRenders'),0);
+  await pause(1100);
+  assert.ok(await evaluate('window.syncRenders>0'),'A missing end marker cannot freeze the pane');
+  await evaluate(`window.syncObserver.dispose();new Promise(resolve=>term.write('\\x1b[?1049l',resolve))`);
+  await pause(100);
+  console.log('PASS: synchronized browser paint, incremental parsing and missing-end timeout');
+  await evaluate(`window.tmuxSyncStarts=0;window.tmuxSyncProbe=term.parser.registerCsiHandler({prefix:'?',final:'h'},params=>{if(params.includes(2026))window.tmuxSyncStarts++;return false;});`);
+  tmux('send-keys','-t','check','echo BROWSER_SYNC_ROUNDTRIP','Enter');
+  await pause(300);
+  assert.ok(await evaluate('window.tmuxSyncStarts>0'),'Real tmux client emits synchronized updates through ttyd');
+  await evaluate('window.tmuxSyncProbe.dispose()');
+  console.log('PASS: tmux to ttyd to browser synchronization negotiation');
+
+
   // Real xterm viewport: scrollbar colors must follow the terminal palette,
   // including palette changes after ttyd receives its WebSocket preferences.
   const palettes=JSON.parse(execFileSync(python,['-c',"import json;from agent_orchestrator.terminal_theme import _TTYD_THEME_PALETTES;print(json.dumps(_TTYD_THEME_PALETTES))"],{cwd:root,encoding:'utf8'}));
