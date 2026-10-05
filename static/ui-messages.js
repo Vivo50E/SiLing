@@ -465,7 +465,7 @@
     "Focus current pane's input": "聚焦当前面板输入框",
     "Resume this exited agent in a new session": "在新会话中恢复此已退出的 Agent",
     "New session · pane {pane}": "新建会话 · 面板 {pane}",
-    "{count} sessions · {time}": "{count} 个会话 · {time}",
+    "Alive {alive} · Ended {ended} · Total {total} · {time}": "存活 {alive} · 已结束 {ended} · 总计 {total} · {time}",
     "{used}/{total} panes": "{used}/{total} 个面板",
     "Active {count}": "活跃 {count}",
     "Unread {count}": "未读 {count}",

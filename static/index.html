@@ -6186,7 +6186,11 @@
         // for sessions that are done producing output and waiting on the
         // user. Runs on every poll (no-op when the user hasn't opted in).
         idleNotif.check(sessions);
-        ui.setMessage($("conn-status"), "{count} sessions · {time}", {count:sessions.length, time:new Date().toLocaleTimeString(document.documentElement.lang)});
+        const aliveCount = sessions.filter(session => session.alive).length;
+        ui.setMessage($("conn-status"), "Alive {alive} · Ended {ended} · Total {total} · {time}", {
+          alive: aliveCount, ended: sessions.length - aliveCount, total: sessions.length,
+          time: new Date().toLocaleTimeString(document.documentElement.lang),
+        });
 
         // Propagate poll-driven busy state to pane cards. The MutationObserver
         // on .pane-card[class] picks up the toggle and syncs rail + sidebar

@@ -255,6 +255,8 @@ siling link-file /absolute/report.md --purpose deliverable --description "验证
 详见 [使用指南](docs/workflows.md) 和 [JSON 示例](examples/workflow.json)。
 CLI 同样支持 `siling workflow validate/start/list/report/approve/cancel/retry/reconcile/advance`。
 
+左下角分别显示“存活、已结束、总计”会话记录数和最近刷新时间；该数字不是打开的 pane 数或正在工作的 Agent 数。
+
 会话状态提示会分别显示执行状态、连接状态、观测来源和时间，以及逻辑会话和每次执行的 ID。
 恢复会保留前后执行关系；远程断线显示“执行未知”，不沿用旧 working 状态。
 重连显示只恢复界面，恢复 Agent 创建新的原生会话执行；重新打开终端创建新 shell，

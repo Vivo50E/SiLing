@@ -237,6 +237,9 @@ approval, graceful cancellation, local retry and execution reconciliation. See
 [the workflow guide](docs/workflows.md) and [example](examples/workflow.json).
 Approval records a decision; it does not deploy or merge.
 
+The sidebar footer separates alive, ended and total session records and retains
+the last refresh time; these counts are not the number of open panes or busy agents.
+
 Session status tooltips show execution and connection separately, observation
 source/time, logical session ID and execution attempt. Resume retains lineage and
 native resume IDs; an offline remote node has unknown execution state. Reconnect

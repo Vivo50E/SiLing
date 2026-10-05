@@ -260,6 +260,7 @@ try {
   assert.equal(await evaluate(`document.querySelectorAll('.pane iframe').length`), 4, JSON.stringify(errors));
   assert.equal(await evaluate(`document.querySelectorAll('.new-browser-pane').length`), 0, 'Native browser panes are desktop-only');
   console.log('Dashboard booted with four isolated terminal frames');
+  if (!baseline) assert.match(await evaluate(`document.querySelector('#conn-status').textContent`), /^Alive 5 · Ended 0 · Total 5 · /);
   if (!baseline) {
     const groupFrames = frameLoads;
     const oldSlots = await evaluate(`localStorage.getItem('orch_slots')`);
@@ -914,6 +915,12 @@ try {
   const ended=sessions.find(s=>s.run_id==='fixture-2');
   ended.alive=false;ended.agent='codex';ended.resume_id='fixture-native-resume';
   await evaluate(`document.querySelector('#btn-refresh').click()`);await pause(250);
+  await waitFor(`document.querySelector('#conn-status').textContent.startsWith('Alive 3 · Ended 3 · Total 6 · ')`);
+  await evaluate(`{const c=document.querySelector('[data-appearance="language"]');c.value='zh';c.dispatchEvent(new Event('change'));}`);
+  assert.match(await evaluate(`document.querySelector('#conn-status').textContent`), /^存活 3 · 已结束 3 · 总计 6 · /);
+  await screenshot('session-counts-zh');
+  await evaluate(`{const c=document.querySelector('[data-appearance="language"]');c.value='en';c.dispatchEvent(new Event('change'));}`);
+  await screenshot('session-counts-en');
   const endedSlot=await evaluate(`JSON.parse(localStorage.getItem('orch_slots')).indexOf('fixture-2')`);
   assert.ok(endedSlot>=0,'Ended pane remains in its slot');
   assert.ok(await evaluate(`document.querySelector('[data-run-id="fixture-2"] .pane-ended-notice').textContent.includes('read-only')`));
