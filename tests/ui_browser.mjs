@@ -1146,6 +1146,33 @@ try {
   assert.equal(await evaluate(`JSON.parse(localStorage.getItem('orch_slots')).includes('${webPane}')`),false);
   console.log('PASS: explicit old-session choice, visible background relations, navigation, failed-stop warning and new web-pane routing');
 
+  // Reproduce a 16-pane viewport with Cursor in slot 14. No mouse drag is
+  // involved: terminal geometry must remain usable as status controls change.
+  await viewport(1280,800);
+  await evaluate(`localStorage.setItem('orch_layout','cols-4x4');const dense=Array(16).fill(null);dense[0]='fixture-0';dense[13]='fixture-3';localStorage.setItem('orch_slots',JSON.stringify(dense))`);
+  await cdp('Page.reload');
+  await waitFor(`!!document.querySelector('[data-run-id="fixture-3"] iframe')?.contentDocument?.querySelector('textarea')`);
+  await evaluate(`window.denseCard=document.querySelector('[data-run-id="fixture-3"]');window.denseFrame=denseCard.querySelector('iframe');denseCard.scrollIntoView({block:'center'})`);
+  const denseSize=await evaluate(`({height:denseFrame.getBoundingClientRect().height,width:denseFrame.getBoundingClientRect().width})`);
+  assert.ok(denseSize.height>=220, `Dense Cursor terminal must retain usable height: ${JSON.stringify(denseSize)}`);
+  assert.ok(await evaluate(`document.querySelector('#grid').scrollHeight>document.querySelector('#grid').clientHeight`),'Dense grid scrolls instead of crushing terminal rows');
+  await evaluate(`const badge=denseCard.querySelector('.btn-related-sessions');badge.hidden=false;badge.textContent='Background 123';denseCard.classList.add('busy');denseCard.querySelector('.pane-input textarea').style.height='100px'`);
+  await pause(200);
+  assert.ok(await evaluate(`denseFrame.getBoundingClientRect().height>=220`),'Extra controls and a longer draft preserve terminal height');
+  assert.ok(await evaluate(`denseCard.querySelector('.pane-actions').scrollWidth>denseCard.querySelector('.pane-actions').clientWidth`),'Narrow toolbar actions stay reachable by scrolling');
+  await screenshot('dense-cursor-pane-14');
+  await evaluate(`denseCard.querySelector('.btn-zoom').click()`);
+  await pause(200);
+  assert.ok(await evaluate(`denseFrame.getBoundingClientRect().height>=220`));
+  await evaluate(`denseCard.querySelector('.btn-zoom').click()`);
+  await pause(200);
+  assert.equal(await evaluate(`denseFrame===denseCard.querySelector('iframe')`),true,'Zoom preserves the terminal iframe');
+  assert.ok(await evaluate(`denseFrame.getBoundingClientRect().height>=220`),'Closing zoom preserves usable terminal height');
+  const stableHeights=[];
+  for(let i=0;i<5;i++){stableHeights.push(await evaluate(`denseFrame.getBoundingClientRect().height`));await pause(100);}
+  assert.equal(new Set(stableHeights).size,1,'Idle geometry does not oscillate');
+  console.log('PASS: dense Cursor pane 14 minimum height, scrolling toolbars/grid, long drafts and zoom stability');
+
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));
   }

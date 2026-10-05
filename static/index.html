@@ -571,31 +571,33 @@
     display: grid; gap: 6px; padding: 6px;
     min-height: 0; min-width: 0;
     height: 100%;
+    overflow: auto;
+    scrollbar-gutter: stable;
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1fr);
-    grid-auto-rows: minmax(0, 1fr);
+    grid-template-rows: minmax(min-content, 1fr);
+    grid-auto-rows: minmax(min-content, 1fr);
     align-items: stretch;
     align-content: stretch;
   }
   .grid.cols-2 { grid-template-columns: 1fr 1fr; }
   .grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
-  .grid.cols-2x2 { grid-template-columns: 1fr 1fr; grid-template-rows: repeat(2, minmax(0, 1fr)); }
-  .grid.cols-3x2 { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: repeat(2, minmax(0, 1fr)); }
-  .grid.cols-3x3 { grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, minmax(0, 1fr)); }
-  .grid.cols-4x2 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(2, minmax(0, 1fr)); }
-  .grid.cols-4x3 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(3, minmax(0, 1fr)); }
-  .grid.cols-4x4 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, minmax(0, 1fr)); }
-  .grid.cols-5x3 { grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(3, minmax(0, 1fr)); }
+  .grid.cols-2x2 { grid-template-columns: 1fr 1fr; grid-template-rows: repeat(2, minmax(min-content, 1fr)); }
+  .grid.cols-3x2 { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: repeat(2, minmax(min-content, 1fr)); }
+  .grid.cols-3x3 { grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, minmax(min-content, 1fr)); }
+  .grid.cols-4x2 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(2, minmax(min-content, 1fr)); }
+  .grid.cols-4x3 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(3, minmax(min-content, 1fr)); }
+  .grid.cols-4x4 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, minmax(min-content, 1fr)); }
+  .grid.cols-5x3 { grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(3, minmax(min-content, 1fr)); }
 
   .pane-card {
     background: var(--bg-soft);
     border: 1px solid var(--border);
     border-radius: 8px;
     display: grid;
-    /* head | body (flex 1fr, min 0 so it never pushes inputbar offscreen) | inputbar */
-    grid-template-rows: auto minmax(0, 1fr) auto;
-    min-width: 0; min-height: 0;
-    height: 100%;
+    /* Keep a usable terminal height; the outer grid scrolls when rows do not fit. */
+    grid-template-rows: auto minmax(220px, 1fr) auto;
+    min-width: 0; min-height: 340px;
+    height: auto;
     align-self: stretch;
     overflow: hidden;
     position: relative; /* anchor for .jump-bottom-btn */

@@ -94,7 +94,11 @@ button.primary, button.toggle-on { color: var(--on-accent); }
 .pane-card { border-radius: var(--radius-panel); }
 .pane-actions .pane-state-select { min-width: 76px; width: 76px; }
 .pane-head .pane-actions { flex-shrink: 0; }
-.pane-card.narrow .pane-actions { overflow: visible; flex-wrap: wrap; }
+/* Status changes must not add toolbar rows and resize the live terminal. */
+.pane-card.narrow .pane-actions { overflow-x: auto; overflow-y: hidden; flex-wrap: nowrap; }
+.pane-card.narrow .pane-head { padding: 4px 6px; gap: 4px; }
+.pane-card.narrow .pane-input { padding: 4px 6px; gap: 4px; overflow-x: auto; grid-template-columns: minmax(120px, 1fr) repeat(5, auto); }
+.pane-card.narrow.ended-session .pane-input { grid-template-columns: minmax(0, 1fr) auto; }
 .pane-menu .pane-theme-select { display: block !important; width: 100%; height: auto; min-height: 36px; }
 .pane-menu .modal-head h2 { min-width: 0; overflow-wrap: anywhere; }
 .pane-menu button, .pane-menu select { font-size: 13px; }
