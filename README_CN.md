@@ -48,7 +48,7 @@ Mission Control、远程节点和实验性工作区同步等核心能力继承�
 并非 SiLing 从零新增。
 
 **当前边界**：UI 改造按阶段推进，手机专用单会话工作流、服务端全局设置编辑器
-仍在计划中，详见 [UI/UX 实施状态](docs/uiux-implementation-status.md)。
+仍在计划中，详见 [UI/UX 当前规格与基线](docs/uiux-improvement-spec.md)。
 
 ## Dashboard 概览
 
@@ -359,8 +359,10 @@ CLI 优先从服务 PATH 查找，再检查 `~/.local/bin`；后台启动使用�
 「连接与更新」提供登录地址复制和已有的验证更新流程。地址显示会遮蔽凭据，复制出的
 登录链接仍可授予访问权限，只应分享给可信设备。
 
-本批实现范围、验证证据和剩余工作见[实施报告](docs/uiux-implementation-status.md)。
-手机单任务模式与服务端设置编辑尚未包含在本批中。
+[Spec Kit UI/UX 需求契约](specs/001-uiux-improvements/spec.md)和
+[当前实现基线](specs/001-uiux-improvements/baseline.md)区分需求、已有实现与待验收项。
+[首批实施报告](docs/uiux-implementation-status.md)保留为历史证据；手机单任务模式与
+服务端设置编辑仍在计划中。参与改进见 [Spec Kit 工作流](specs/README.md)。
 
 ### 查看司令版本
 

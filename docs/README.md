@@ -26,13 +26,16 @@ particular delivery, not necessarily the current complete feature set.
 规格不等于已实现，历史报告不等于当前版本的完整能力。
 
 - [UI/UX specification / UI/UX 规格](uiux-improvement-spec.md)
+- [Spec Kit workflow / Spec Kit 工作流](../specs/README.md)
+- [UI/UX baseline and traceability / 当前基线与需求追踪](../specs/001-uiux-improvements/baseline.md)
 - [UI/UX implementation status / 实施记录](uiux-implementation-status.md)
 - [Visual polish / 视觉改进](uiux-visual-polish.md)
 - [Wrapped web links / 换行链接](hard-wrapped-web-links.md)
 - [Markdown contrast / Markdown 可读性](markdown-preview-contrast.md)
 - [Roadmap / 路线图](https://github.com/Vivo50E/SiLing/issues/1)
 
-Keep new architecture decisions under `docs/architecture/`. Add user guides and
+Keep new architecture decisions under `docs/architecture/` and living feature
+contracts under `specs/<number>-<feature>/spec.md`. Add user guides and dated
 design evidence here and link them in this index. Screenshots belong in
 `docs/assets/` only after review for private information; local test artifacts,
 transcripts and credentials do not belong in published documentation.

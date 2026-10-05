@@ -59,7 +59,7 @@ experimental workspace sync. Those capabilities are credited to Agent Orchestrat
 
 **Scope:** the UI work is incremental. A dedicated mobile single-session workflow
 and service-wide Settings editor are still planned; see the
-[UI/UX implementation status](docs/uiux-implementation-status.md) for boundaries.
+[UI/UX specification and current baseline](docs/uiux-improvement-spec.md) for boundaries.
 
 ## Dashboard at a glance
 
@@ -427,9 +427,11 @@ terminal scrollbars follow each pane's palette, including dark and light variant
 login-link copy action and verified-update controls. Displayed login links mask
 credentials, but the copied link grants access: share it only with trusted devices.
 
-The first UI/UX implementation increment and its remaining work are tracked in
-[the implementation report](docs/uiux-implementation-status.md). Mobile single-task
-navigation and service-wide settings editing are not included in this increment.
+The [Spec Kit UI/UX contract](specs/001-uiux-improvements/spec.md) and
+[current baseline](specs/001-uiux-improvements/baseline.md) separate requirements
+from implemented or unverified behavior. The [first implementation report](docs/uiux-implementation-status.md)
+is historical evidence. Mobile single-task navigation and service-wide settings
+editing remain planned. See [the Spec Kit workflow](specs/README.md) to contribute.
 
 ### Check the SiLing version
 
