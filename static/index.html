@@ -572,32 +572,31 @@
     min-height: 0; min-width: 0;
     height: 100%;
     overflow: auto;
-    scrollbar-gutter: stable;
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(min-content, 1fr);
-    grid-auto-rows: minmax(min-content, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    grid-auto-rows: minmax(0, 1fr);
     align-items: stretch;
     align-content: stretch;
   }
   .grid.cols-2 { grid-template-columns: 1fr 1fr; }
   .grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
-  .grid.cols-2x2 { grid-template-columns: 1fr 1fr; grid-template-rows: repeat(2, minmax(min-content, 1fr)); }
-  .grid.cols-3x2 { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: repeat(2, minmax(min-content, 1fr)); }
-  .grid.cols-3x3 { grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, minmax(min-content, 1fr)); }
-  .grid.cols-4x2 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(2, minmax(min-content, 1fr)); }
-  .grid.cols-4x3 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(3, minmax(min-content, 1fr)); }
-  .grid.cols-4x4 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, minmax(min-content, 1fr)); }
-  .grid.cols-5x3 { grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(3, minmax(min-content, 1fr)); }
+  .grid.cols-2x2 { grid-template-columns: 1fr 1fr; grid-template-rows: repeat(2, minmax(0, 1fr)); }
+  .grid.cols-3x2 { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: repeat(2, minmax(0, 1fr)); }
+  .grid.cols-3x3 { grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, minmax(0, 1fr)); }
+  .grid.cols-4x2 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+  .grid.cols-4x3 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(3, minmax(0, 1fr)); }
+  .grid.cols-4x4 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, minmax(0, 1fr)); }
+  .grid.cols-5x3 { grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(3, minmax(0, 1fr)); }
 
   .pane-card {
     background: var(--bg-soft);
     border: 1px solid var(--border);
     border-radius: 8px;
     display: grid;
-    /* Keep a usable terminal height; the outer grid scrolls when rows do not fit. */
-    grid-template-rows: auto minmax(220px, 1fr) auto;
-    min-width: 0; min-height: 340px;
-    height: auto;
+    /* Dense panes keep their grid allocation and compact their controls. */
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    min-width: 0; min-height: 0;
+    height: 100%;
     align-self: stretch;
     overflow: hidden;
     position: relative; /* anchor for .jump-bottom-btn */
@@ -6699,6 +6698,9 @@
     button.hidden = !relatives.length;
     button.classList.toggle("has-background", background > 0);
     ui.setMessage(button, background ? "Background {count}" : "Related {count}", {count: background || relatives.length});
+    button.dataset.relatedCount = String(background || relatives.length);
+    button.title = button.textContent;
+    button.setAttribute("aria-label", button.textContent);
     if (ctrl.cardEl.querySelector(".pane-related-menu")?.open && !ctrl.cardEl.querySelector(".related-session-list").contains(document.activeElement)) renderRelatedSessions(ctrl.cardEl, ctrl.runId);
   }
   function updatePaneHeader(ctrl, fresh) {
@@ -7880,6 +7882,9 @@
       <dialog class="ui-dialog pane-menu" id="pane-menu-${++paneMenuSerial}" aria-label="Pane actions" data-ui-label=Pane%20actions>
         <div class="modal-head"><h2>${ui.agentBadge(s.agent)} ${escapeHtml(sessionTitle(s))}</h2><button class="ui-icon-button" data-dialog-close aria-label="Close" data-ui-label=Close>${ui.icon("close")}</button></div>
         <div class="modal-body">
+          <div class="ui-menu-group compact-pane-tools" hidden>
+            <button class="btn-compact-compose" data-dialog-close data-ui-message="Write%20a%20message">Write a message</button>
+          </div>
           <div class="ui-menu-group">
             <label><span data-i18n="terminalTheme">Terminal theme</span><select class="pane-theme-select" data-theme="${escapeHtml(terminalThemeValue(s.terminal_theme))}">${terminalThemeOptionsHtml(s.terminal_theme)}</select></label>
             <label ${s.remote ? "hidden" : ""}><span data-i18n="sshFileHost">SSH file host</span>
@@ -7960,11 +7965,36 @@
       paneMenu.close();
     });
 
-    // At constrained widths, put actions below the title to keep them reachable.
+    // Compact based on the allocated card height, never the terminal's height:
+    // moving controls must not feed back into the resize threshold.
+    const compactTools = card.querySelector(".compact-pane-tools");
+    compactTools.addEventListener("click", event => {
+      if (event.target.closest("button")) paneMenu.close();
+    }, true);
+    const compactControls = Array.from(card.querySelectorAll(".pane-state-select, .btn-folders, .btn-progress, .btn-monitor, .btn-link-folder, .btn-sync-project, .btn-resume-ended")).map(control => {
+      const marker = document.createComment("pane control position");
+      control.before(marker);
+      return { control, marker };
+    });
+    card.querySelector(".btn-compact-compose").onclick = () => {
+      // The dialog's close handler restores focus to More. Focus the draft
+      // afterwards, once its normal toolbar has returned from compact mode.
+      paneMenu.addEventListener("close", () => requestAnimationFrame(() => {
+        if (paneZoomState?.card === card) card.querySelector(".pane-input textarea").focus();
+      }), { once: true });
+      if (paneZoomState?.card !== card) card.querySelector(".btn-zoom").click();
+    };
     const ro = new ResizeObserver((entries) => {
       for (const e of entries) {
-        const w = e.contentRect.width;
-        card.classList.toggle("narrow", w < 760);
+        card.classList.toggle("narrow", e.contentRect.width < 760);
+        const compact = e.contentRect.height < 300 && !card.classList.contains("zoomed-pane");
+        if (card.classList.contains("compact-pane") === compact) continue;
+        card.classList.toggle("compact-pane", compact);
+        compactTools.hidden = !compact;
+        for (const {control, marker} of compactControls) {
+          if (compact) compactTools.append(control);
+          else marker.after(control);
+        }
       }
     });
     ro.observe(card);

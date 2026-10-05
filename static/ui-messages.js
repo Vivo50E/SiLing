@@ -1,6 +1,7 @@
 /* Authored Dashboard copy only. Never translate terminal output or user data. */
 (() => {
   const zh = {
+    "Write a message": "编写消息",
     "This address cannot be opened in a web pane.": "该地址无法在网页面板内打开。",
     "Original session": "旧会话",
     "Choose what happens to the original session": "请选择如何处理旧会话",

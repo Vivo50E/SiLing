@@ -737,4 +737,4 @@ Pane **⋯ → Disconnect SSH** recovers a stalled foreground SSH client while k
 
 Choose **Settings → Browsing & files → Default web link destination** to open links in an internal iframe, a new web pane, or an external browser. [Browser behavior](docs/desktop-browser.md#default-web-link-destination).
 
-Dense pane layouts scroll vertically when space is limited, keeping at least 220 px of terminal height. Narrow pane toolbars scroll horizontally instead of wrapping and resizing a working agent.
+Dense desktop layouts fit the viewport. Short panes keep the terminal visible and move secondary controls into **⋯**; choose **Write a message** to expand the pane and use its preserved draft. Zoom restores the full toolbars. Mobile layouts continue to scroll vertically.

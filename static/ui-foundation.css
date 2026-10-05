@@ -188,3 +188,16 @@ html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-mo
 .browser-surface iframe { display: block; width: 100%; height: 100%; border: 0; background: white; }
 
 .btn-related-sessions[hidden] { display: none !important; }
+
+/* Dense desktop grids fit the viewport. Keep just identity and inspection
+   controls above the terminal; original actions move into the More dialog. */
+.pane-card.compact-pane:not(.zoomed-pane) > .pane-head { display: flex; padding: 3px 5px; gap: 4px; }
+.pane-card.compact-pane:not(.zoomed-pane) > .pane-head .pane-actions { width: auto; overflow: hidden; flex: 0 0 auto; gap: 3px; }
+.pane-card.compact-pane:not(.zoomed-pane) > .pane-head .agent-name { display: none; }
+.pane-card.compact-pane:not(.zoomed-pane) > .pane-input { display: none; }
+.pane-card.compact-pane:not(.zoomed-pane) { grid-template-rows: auto minmax(0, 1fr); }
+.pane-card.compact-pane .btn-related-sessions { font-size: 0; gap: 0; }
+.pane-card.compact-pane .btn-related-sessions::after { content: "↳ " attr(data-related-count); font-size: 11px; }
+.app.mobile .grid { grid-auto-rows: minmax(340px, 1fr); }
+
+.pane-card.ended-session .btn-compact-compose { display: none; }

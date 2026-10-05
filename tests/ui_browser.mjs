@@ -1146,32 +1146,37 @@ try {
   assert.equal(await evaluate(`JSON.parse(localStorage.getItem('orch_slots')).includes('${webPane}')`),false);
   console.log('PASS: explicit old-session choice, visible background relations, navigation, failed-stop warning and new web-pane routing');
 
-  // Reproduce a 16-pane viewport with Cursor in slot 14. No mouse drag is
-  // involved: terminal geometry must remain usable as status controls change.
+  // Short desktop panes preserve the grid boundary, terminal and drafts.
+  // Exercise Cursor in the last row at both 4x3 and 4x4, without mouse dragging.
   await viewport(1280,800);
-  await evaluate(`localStorage.setItem('orch_layout','cols-4x4');const dense=Array(16).fill(null);dense[0]='fixture-0';dense[13]='fixture-3';localStorage.setItem('orch_slots',JSON.stringify(dense))`);
-  await cdp('Page.reload');
-  await waitFor(`!!document.querySelector('[data-run-id="fixture-3"] iframe')?.contentDocument?.querySelector('textarea')`);
-  await evaluate(`window.denseCard=document.querySelector('[data-run-id="fixture-3"]');window.denseFrame=denseCard.querySelector('iframe');denseCard.scrollIntoView({block:'center'})`);
-  const denseSize=await evaluate(`({height:denseFrame.getBoundingClientRect().height,width:denseFrame.getBoundingClientRect().width})`);
-  assert.ok(denseSize.height>=220, `Dense Cursor terminal must retain usable height: ${JSON.stringify(denseSize)}`);
-  assert.ok(await evaluate(`document.querySelector('#grid').scrollHeight>document.querySelector('#grid').clientHeight`),'Dense grid scrolls instead of crushing terminal rows');
-  await evaluate(`const badge=denseCard.querySelector('.btn-related-sessions');badge.hidden=false;badge.textContent='Background 123';denseCard.classList.add('busy');denseCard.querySelector('.pane-input textarea').style.height='100px'`);
-  await pause(200);
-  assert.ok(await evaluate(`denseFrame.getBoundingClientRect().height>=220`),'Extra controls and a longer draft preserve terminal height');
-  assert.ok(await evaluate(`denseCard.querySelector('.pane-actions').scrollWidth>denseCard.querySelector('.pane-actions').clientWidth`),'Narrow toolbar actions stay reachable by scrolling');
-  await screenshot('dense-cursor-pane-14');
-  await evaluate(`denseCard.querySelector('.btn-zoom').click()`);
-  await pause(200);
-  assert.ok(await evaluate(`denseFrame.getBoundingClientRect().height>=220`));
-  await evaluate(`denseCard.querySelector('.btn-zoom').click()`);
-  await pause(200);
-  assert.equal(await evaluate(`denseFrame===denseCard.querySelector('iframe')`),true,'Zoom preserves the terminal iframe');
-  assert.ok(await evaluate(`denseFrame.getBoundingClientRect().height>=220`),'Closing zoom preserves usable terminal height');
-  const stableHeights=[];
-  for(let i=0;i<5;i++){stableHeights.push(await evaluate(`denseFrame.getBoundingClientRect().height`));await pause(100);}
-  assert.equal(new Set(stableHeights).size,1,'Idle geometry does not oscillate');
-  console.log('PASS: dense Cursor pane 14 minimum height, scrolling toolbars/grid, long drafts and zoom stability');
+  for (const [name,count,slot,minHeight] of [['cols-4x3',12,9,160],['cols-4x4',16,13,110]]) {
+    await evaluate(`localStorage.setItem('orch_layout','${name}');const dense=Array(${count}).fill(null);dense[0]='fixture-0';dense[${slot}]='fixture-3';localStorage.setItem('orch_slots',JSON.stringify(dense))`);
+    await cdp('Page.reload');
+    await waitFor(`!!document.querySelector('[data-run-id="fixture-3"] iframe')?.contentDocument?.querySelector('textarea')`);
+    await waitFor(`document.querySelector('[data-run-id="fixture-3"]').classList.contains('compact-pane')`);
+    await evaluate(`window.denseCard=document.querySelector('[data-run-id="fixture-3"]');window.denseFrame=denseCard.querySelector('iframe');denseCard.querySelector('.pane-input textarea').value='preserved draft';denseCard.querySelector('.pane-input textarea').style.height='100px'`);
+    assert.ok(await evaluate(`denseFrame.getBoundingClientRect().height>=${minHeight}`),'Compact controls reserve terminal space');
+    assert.ok(await evaluate(`Array.from(document.querySelectorAll('#grid > .pane-card')).every(c=>c.getBoundingClientRect().bottom<=innerHeight+1)`),'Every row fits the desktop viewport');
+    assert.ok(await evaluate(`document.querySelector('#grid').scrollHeight<=document.querySelector('#grid').clientHeight+1`),'Desktop grid needs no vertical scrolling');
+    await evaluate(`denseCard.querySelector('.btn-related-sessions').hidden=false;denseCard.querySelector('.btn-related-sessions').textContent='Background 123';denseCard.classList.add('busy')`);
+    const stableHeights=[];
+    for(let i=0;i<5;i++){stableHeights.push(await evaluate(`denseFrame.getBoundingClientRect().height`));await pause(100);}
+    assert.equal(new Set(stableHeights).size,1,'Status changes do not cause resize oscillation');
+    await screenshot('dense-cursor-'+name);
+    await evaluate(`denseCard.querySelector('.btn-pane-more').click()`);
+    assert.ok(await evaluate(`denseCard.querySelector('.compact-pane-tools .btn-folders')!==null`),'Files remains reachable in the compact menu');
+    assert.ok(await evaluate(`denseCard.querySelector('.compact-pane-tools .btn-link-folder')!==null`),'Link remains reachable in the compact menu');
+    await evaluate(`denseCard.querySelector('.btn-compact-compose').click()`);
+    await waitFor(`denseCard.classList.contains('zoomed-pane')&&!denseCard.classList.contains('compact-pane')`);
+    assert.equal(await evaluate(`denseCard.querySelector('.pane-input textarea').value`),'preserved draft');
+    assert.equal(await evaluate(`document.activeElement===denseCard.querySelector('.pane-input textarea')`),true);
+    assert.ok(await evaluate(`denseCard.querySelector('.pane-actions .btn-folders')!==null`),'Zoom restores the original controls');
+    await evaluate(`denseCard.querySelector('.btn-zoom').click()`);
+    await waitFor(`denseCard.classList.contains('compact-pane')`);
+    assert.equal(await evaluate(`denseFrame===denseCard.querySelector('iframe')`),true,'Zoom preserves the terminal iframe');
+    assert.ok(await evaluate(`denseFrame.getBoundingClientRect().height>=${minHeight}`),'Closing zoom preserves terminal space');
+  }
+  console.log('PASS: 4x3/4x4 fit the viewport, compact controls, preserved drafts and stable terminal geometry');
 
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));
