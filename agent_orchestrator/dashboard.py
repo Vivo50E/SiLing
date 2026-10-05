@@ -65,7 +65,7 @@ from .plugins import Plugins
 from .workflows import DispatchRejected, Workflows, validate as validate_workflow
 from .agent_cli import resolve_agent_cli
 from .browser_open import open_system_browser, system_browser_available, validate_web_url
-from . import terminal_files
+from . import terminal_files, terminal_control
 from .link_jobs import LinkJobs
 from .conversation_metrics import TranscriptMetricsCache
 from .dashboard_network import build_access_url, list_local_ipv4, pick_best_ip
@@ -8678,7 +8678,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             ]
         if (isinstance(value, str)
                 and parent_key in {
-                    "source_run_id", "resumed_from", "restarted_from", "parent_run_id",
+                    "source_run_id", "resumed_from", "restarted_from", "parent_run_id", "switched_from",
                 }
                 and value and not parse_qualified_run_id(value)):
             return qualify_run_id(node_id, value)
@@ -10040,6 +10040,31 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             raise HTTPException(404, "run not found")
         return run, terminal_files.state_dir(outputs_dir, run_id)
 
+    @app.get("/api/sessions/{run_id}/ssh-control")
+    @app.post("/api/sessions/{run_id}/ssh-control")
+    async def control_terminal_ssh(run_id: str, request: Request):
+        run = _lookup_run_light(outputs_dir, run_id)
+        if not run:
+            raise HTTPException(404, "session not found")
+        if _norm_agent(run.get("agent", "")) != "terminal":
+            raise HTTPException(409, "SSH recovery is available only for Terminal sessions")
+        session = str(run.get("tmux_session") or "")
+        if not session:
+            raise HTTPException(409, "session has no terminal")
+        pane, error = await asyncio.to_thread(_tmux_target_pane, session)
+        if not pane:
+            raise HTTPException(409, error)
+        try:
+            if request.method == "GET":
+                current = await asyncio.to_thread(terminal_control.inspect_ssh, pane)
+                return {"token": current["token"]}
+            body = await request.json()
+            if not isinstance(body, dict) or not isinstance(body.get("token"), str):
+                raise ValueError("An inspected SSH token is required")
+            return await asyncio.to_thread(terminal_control.disconnect_ssh, pane, body["token"])
+        except (ValueError, OSError, subprocess.SubprocessError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
     @app.get("/api/sessions/{run_id}/file-context")
     def get_terminal_file_context(run_id: str):
         run, directory = terminal_file_run(run_id)
@@ -11158,6 +11183,64 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             effort=effort,
             terminal_theme=terminal_theme,
         )
+
+    @app.post("/api/sessions/{run_id}/switch-type")
+    async def switch_pane_type(run_id: str, request: Request):
+        raw = await request.body()
+        if len(raw) > 20000:
+            raise HTTPException(413, "Switch request is too large")
+        try:
+            body = json.loads(raw)
+            if not isinstance(body, dict):
+                raise ValueError("JSON body must be an object")
+            agent = body.get("agent")
+            if agent not in ("claude", "codex", "cursor", "terminal"):
+                raise ValueError("Choose Claude, Codex, Cursor or Terminal")
+            key = body.get("request_id")
+            if not isinstance(key, str) or not 1 <= len(key) <= 240:
+                raise ValueError("A switch request_id is required")
+            for name in ("cwd", "label", "model", "effort"):
+                if name in body and not isinstance(body[name], str):
+                    raise ValueError(f"{name} must be text")
+            if len(body.get("label", "")) > 160:
+                raise ValueError("Label must be at most 160 characters")
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        source = _lookup_run_light(outputs_dir, run_id)
+        if not source:
+            raise HTTPException(404, "source session not found")
+        if _norm_agent(source.get("agent", "")) == agent:
+            raise HTTPException(400, "Choose a different pane type")
+        cwd = _resolve_session_cwd(body.get("cwd") or source.get("cwd") or "")
+        label = body.get("label") or source.get("display_name") or source.get("task") or agent
+        theme = _normalize_terminal_theme(str(body.get("terminal_theme") or source.get("terminal_theme") or ""))
+        material = {"source": run_id, "agent": agent, "cwd": cwd, "label": label,
+                    "model": body.get("model", ""), "effort": body.get("effort", ""), "theme": theme}
+        digest = hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
+        receipt = hashlib.sha256((run_id + "\0" + key).encode()).hexdigest()
+        path = outputs_dir / ".pane-switches.json"
+        outputs_dir.mkdir(parents=True, exist_ok=True)
+        with edit_json(path, create=True) as data:
+            previous = data.get(receipt)
+            if previous:
+                if previous["digest"] != digest:
+                    raise HTTPException(409, "Switch request changed; reopen the switch form")
+                if previous.get("result"):
+                    return {**previous["result"], "replayed": True}
+                raise HTTPException(409, "Previous switch may have started; check Sessions before reopening the switch form")
+            data[receipt] = {"digest": digest, "status": "starting"}
+        # Preserve the source process. A pane slot changes, never the process identity.
+        result = _spawn_session(agent, material["model"], str(label), cwd, "background",
+                                effort=material["effort"], terminal_theme=theme)
+        linked = _copy_linked_folders_to_spawned_run(
+            outputs_dir, source, result, exclude_run_id=run_id, label=str(label))
+        result = {**result, "switched_from": run_id, "source_preserved": True,
+                  "linked_folders_copied": linked.get("copied", 0),
+                  "linked_folders_warning": linked.get("warning", "")}
+        with edit_json(path, create=True) as data:
+            data[receipt].update(status="started", result=result)
+        session_snapshots.request_refresh()
+        return {**result, "replayed": False}
 
     def spawn_workflow_child(body):
         try:

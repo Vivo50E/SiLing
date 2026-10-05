@@ -730,3 +730,5 @@ SiLing is released under the [MIT License](LICENSE).
 ## Optional Spec Kit plugin
 
 Open **Settings → Plugins → Spec Kit**, enable the plugin, and enter a local project directory. Preview and launch Setup or a single specification stage in a separate Claude, Codex, or Cursor session. Review each result before proceeding. [Usage and limitations](docs/spec-kit-plugin.md).
+
+Pane **⋯ → Disconnect SSH** recovers a stalled foreground SSH client while keeping the local shell. **⋯ → Switch pane type** opens Terminal, Claude, Codex or Cursor in the same pane and retains the previous session in the background. [Details](docs/pane-types-and-ssh.md).

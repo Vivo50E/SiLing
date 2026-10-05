@@ -175,3 +175,5 @@ html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-mo
 #speckit-form .speckit-path { grid-template-columns: minmax(0, 1fr); }
 #speckit-cwd { width: 100%; min-width: 0; box-sizing: border-box; }
 #speckit-stage { max-width: 100%; }
+
+#new-switch-help, #new-switch-host-help { margin: 0; }

@@ -2814,6 +2814,8 @@
         <button class="modal-close" id="new-close" title="Close" data-ui-title=Close>×</button>
       </div>
       <div class="modal-body">
+        <p id="new-switch-help" class="ui-secondary" hidden data-ui-message="The%20original%20session%20stays%20in%20the%20background.%20A%20new%20session%20replaces%20it%20in%20this%20pane%3B%20open%20the%20original%20from%20Sessions.">The original session stays in the background. A new session replaces it in this pane; open the original from Sessions.</p>
+        <p id="new-switch-host-help" class="ui-secondary" hidden data-ui-message="The%20new%20session%20runs%20on%20the%20selected%20Dashboard%20node%2C%20not%20inside%20an%20SSH%20connection.">The new session runs on the selected Dashboard node, not inside an SSH connection.</p>
         <label class="fld" id="new-node-field" hidden>
           <span><span data-ui-message=Run%20on>Run on</span></span>
           <select id="new-node">
@@ -2885,7 +2887,7 @@
           <input id="new-cwd" type="text" value="~/Workflows"
                  placeholder="~/project" autocomplete="off" />
         </label>
-        <div class="modal-hint">
+        <div class="modal-hint" id="new-standard-help">
           <b><span data-ui-message=Resume>Resume</span></b><span data-ui-message=%3A%20start%20a%20new%20tmux%20session%20using%20the%20selected%20session%27s%20native%20CLI%20resume%20id.%20Only%20ended%20sessions%20with%20saved%20resume%20metadata%20appear%20in%20the%20list.>: start a new tmux session using the selected session's
           native CLI resume id. Only ended sessions with saved resume metadata
           appear in the list.</span><br/>
@@ -6650,6 +6652,13 @@
       title.textContent = display;
       title.title = display;
     }
+    const sshDisconnect = card.querySelector(".btn-disconnect-ssh");
+    if (sshDisconnect) {
+      sshDisconnect.hidden = !sessionIsTerminal(s);
+      if (!sshDisconnect.dataset.busy) sshDisconnect.disabled = !s.alive || !!(s.remote && s.node_online === false);
+    }
+    const switchType = card.querySelector(".btn-switch-type");
+    if (switchType) switchType.disabled = !!(s.remote && s.node_online === false);
     const nodeBadge = card.querySelector(".pane-node-badge");
     if (nodeBadge) {
       nodeBadge.textContent = s.node_label || s.node_id || "remote";
@@ -7362,6 +7371,7 @@
 
   function restoreCachedPane(ctrl, slotIdx) {
     if (!ctrl || !ctrl.cached) return;
+    switchedPaneDrafts.delete(ctrl.runId);
     ctrl.cached = false;
     ctrl.cacheTouchedAt = Date.now();
     ctrl.cardEl.classList.remove("cached-pane");
@@ -7803,6 +7813,8 @@
             </label>
             <p class="ui-secondary" ${s.remote ? "hidden" : ""} data-i18n="sshFileHelp">File links use this SSH host. Saved in this browser; clear to use local files.</p>
             <button class="btn-terminal-files" data-dialog-close data-i18n="terminalFiles">Terminal files</button>
+            <button class="btn-switch-type" data-dialog-close><span data-ui-message="Switch%20pane%20type">Switch pane type</span></button>
+            <button class="btn-disconnect-ssh" ${terminalSession ? "" : "hidden"} data-dialog-close><span data-ui-message="Disconnect%20SSH">Disconnect SSH</span></button>
             <button class="btn-reload" data-dialog-close>${ui.icon("refresh")}<span data-i18n="reconnect">Reconnect display</span></button>
             <label><span data-i18n="move">Move / swap with pane</span><select class="pane-move-select"></select></label>
           </div>
@@ -7826,6 +7838,21 @@
     paneGroups.decorate(card, s);
     const paneMenu = card.querySelector(".pane-menu");
     const moveSelect = card.querySelector(".pane-move-select");
+    card.querySelector(".btn-switch-type").addEventListener("click", () => openSwitchPaneModal(runId));
+    card.querySelector(".btn-disconnect-ssh").addEventListener("click", async event => {
+      const button = event.currentTarget;
+      if (button.disabled) return;
+      button.disabled = true;
+      button.dataset.busy = "1";
+      try {
+        const path = `/api/sessions/${encodeURIComponent(runId)}/ssh-control`;
+        const current = await api(path);
+        if (!confirm(ui.message("Disconnect the foreground SSH connection? The local shell stays open; remote commands may be interrupted."))) return;
+        await api(path, {method: "POST", body: {token: current.token}});
+        $("conn-status").textContent = ui.message("SSH disconnect requested");
+      } catch (error) { alert(error.message); }
+      finally { delete button.dataset.busy; button.disabled = false; }
+    });
     card.querySelector(".btn-terminal-files").addEventListener("click", () => {
       void terminalFileController().configure(runId).catch(error => alert(error.message));
     });
@@ -7885,6 +7912,10 @@
 
     const paneEl = card.querySelector(".pane");
     const inputEl = card.querySelector("textarea");
+    if (switchedPaneDrafts.has(runId)) {
+      inputEl.value = switchedPaneDrafts.get(runId);
+      switchedPaneDrafts.delete(runId);
+    }
     const btnSend = card.querySelector(".btn-send");
     const btnProgress = card.querySelector(".btn-progress");
     const btnMonitor = card.querySelector(".btn-monitor");
@@ -12803,6 +12834,9 @@
   // ---------- New-session modal ----------
   const modal = $("new-modal");
   let newSessionTargetSlot = null;
+  let paneSwitchSource = null;
+  let paneSwitchRequestId = "";
+  const switchedPaneDrafts = new Map();
   let resumableSessions = [];
   let resumeLoadSeq = 0;
   let resumeSearchTimer = null;
@@ -12858,10 +12892,14 @@
   }
 
   function openNewSessionModal(slotIdx = null) {
+    paneSwitchSource = null;
+    paneSwitchRequestId = "";
     const parsedSlot = Number(slotIdx);
     newSessionTargetSlot = slotIdx !== null && Number.isInteger(parsedSlot)
       && parsedSlot >= 0 && parsedSlot < slots.length
       ? parsedSlot : null;
+    delete $("new-modal-title").dataset.uiMessage;
+    delete $("new-modal-title").dataset.uiValues;
     $("new-modal-title").textContent = newSessionTargetSlot === null
       ? ui.message("New session")
       : ui.message("New session · pane {pane}", {pane:SLOT_MARKS[newSessionTargetSlot] || newSessionTargetSlot + 1});
@@ -12870,9 +12908,32 @@
     updateNewSessionMode();
     setTimeout(() => $("new-label").focus(), 50);
   }
+  function openSwitchPaneModal(runId) {
+    const source = sessions.find(row => row.run_id === runId);
+    if (!source) return;
+    const nodeId = source.remote ? (source.node_id || remoteNodeIdFromRunId(runId)) : "local";
+    if (source.remote && (source.node_online === false || !REMOTE_NODES.some(node => node.id === nodeId))) {
+      alert(ui.message("Cannot switch an unavailable node"));
+      return;
+    }
+    openNewSessionModal(slotOf(runId));
+    paneSwitchSource = source;
+    paneSwitchRequestId = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, "0")).join("");
+    $("new-kind").value = "new";
+    $("new-node").value = nodeId;
+    $("new-agent").value = sessionIsTerminal(source) ? "claude" : "terminal";
+    $("new-label").value = sessionTitle(source);
+    $("new-cwd").value = source.cwd || "";
+    $("new-model").value = "";
+    $("new-effort").value = "";
+    ui.setMessage($("new-modal-title"), "Switch pane type · {pane}", {pane: SLOT_MARKS[slotOf(runId)] || slotOf(runId) + 1});
+    updateNewSessionMode();
+  }
   const closeModal = () => {
     modal.hidden = true;
     newSessionTargetSlot = null;
+    paneSwitchSource = null;
+    paneSwitchRequestId = "";
   };
   $("btn-new").addEventListener("click", () => openNewSessionModal());
 
@@ -13075,6 +13136,12 @@
     const isImport = kind === "import";
     const isTerminal = $("new-agent").value === "terminal";
     const remoteNode = selectedRemoteNode();
+    $("new-switch-help").hidden = !paneSwitchSource;
+    $("new-switch-host-help").hidden = !paneSwitchSource;
+    $("new-standard-help").hidden = !!paneSwitchSource;
+    $("new-kind").closest("label").hidden = !!paneSwitchSource;
+    $("new-node").disabled = !!paneSwitchSource;
+    for (const option of $("new-agent").options) option.disabled = !!paneSwitchSource && option.value === paneSwitchSource.agent;
     $("new-resume-field").hidden = !isResume;
     $("new-import-field").hidden = !isImport;
     $("new-label-field").hidden = isImport;
@@ -13082,13 +13149,15 @@
     $("new-model-field").hidden = isResume || isImport || isTerminal;
     $("new-effort-field").hidden = isResume || isImport || $("new-agent").value !== "claude";
     $("new-cwd-field").hidden = isImport;
-    $("new-submit").hidden = !!remoteNode || isImport;
+    $("new-submit").hidden = !!remoteNode || isImport || !!paneSwitchSource;
     $("new-submit").textContent = isResume ? ui.message("Open iTerm & Resume") : ui.message("Open iTerm & Start");
-    $("new-submit-bg").textContent = isImport
+    delete $("new-submit-bg").dataset.uiMessage;
+    $("new-submit-bg").textContent = paneSwitchSource ? ui.message("Switch type") : isImport
       ? ui.message("Import selected")
       : remoteNode
       ? ui.message("{action} on {node}", {action:ui.message(isResume ? "Resume" : "Start"), node:remoteNode.label || remoteNode.id})
       : (isResume ? ui.message("Resume in background") : ui.message("Start in background"));
+    if (paneSwitchSource) ui.setMessage($("new-submit-bg"), "Switch type");
     if (isResume) loadResumableSessions();
     if (isImport) loadNativeSessions();
   }
@@ -13120,11 +13189,15 @@
     const btnIterm = $("new-submit");
     const btnBg = $("new-submit-bg");
     const both = [btnIterm, btnBg];
+    if (btnBg.disabled || btnIterm.disabled) return;
+    const switchSource = paneSwitchSource;
+    const switchRequestId = paneSwitchRequestId;
     const requestedSlot = newSessionTargetSlot;
     const requestedLayout = layout;
     both.forEach(b => b.disabled = true);
     const active = (mode === "background") ? btnBg : btnIterm;
-    active.textContent = ui.message("Starting…");
+    if (switchSource) ui.setMessage(active, "Starting…");
+    else active.textContent = ui.message("Starting…");
     try {
       if (isImport) {
         const nativeKeys = Array.from(
@@ -13167,9 +13240,14 @@
             mode:  mode,
             terminal_theme: currentGlobalTerminalTheme(),
           };
+      if (switchSource) {
+        if (body.agent === switchSource.agent) throw new Error(ui.message("Choose a different pane type"));
+        body.request_id = switchRequestId;
+        body.terminal_theme = terminalThemeValue(switchSource.terminal_theme);
+      }
       if (isResume && !body.run_id) throw new Error("Choose a session to resume.");
       const result = await api(
-        isResume ? "/api/resume" : "/api/create",
+        switchSource ? `/api/sessions/${encodeURIComponent(switchSource.run_id)}/switch-type` : isResume ? "/api/resume" : "/api/create",
         { method: "POST", body },
       );
       const newRunId = String(result?.run_id || "");
@@ -13178,7 +13256,13 @@
           expiresAt: Date.now() + 30000,
           zoom: false,
         });
-        const destination = ui.createdSessionSlot(slots, requestedSlot, requestedLayout, layout, newRunId);
+        const sourceSlot = switchSource ? slotOf(switchSource.run_id) : -1;
+        const destination = sourceSlot >= 0 ? sourceSlot : ui.createdSessionSlot(slots, requestedSlot, requestedLayout, layout, newRunId);
+        if (switchSource) {
+          const previous = paneCtrls.get(switchSource.run_id);
+          if (previous?.inputEl) switchedPaneDrafts.set(switchSource.run_id, previous.inputEl.value);
+          if (paneZoomState?.card === previous?.cardEl) closePaneZoom();
+        }
         if (destination >= 0) {
           slots[destination] = newRunId;
           saveSlots();

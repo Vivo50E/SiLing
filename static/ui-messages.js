@@ -1,6 +1,18 @@
 /* Authored Dashboard copy only. Never translate terminal output or user data. */
 (() => {
   const zh = {
+    "Switch pane type": "切换面板类型",
+    "Disconnect SSH": "断开 SSH",
+    "Disconnect the foreground SSH connection? The local shell stays open; remote commands may be interrupted.": "断开当前前台 SSH 连接？本地 shell 会保留；远程命令可能被中断。",
+    "SSH disconnect requested": "已请求断开 SSH",
+    "The original session stays in the background. A new session replaces it in this pane; open the original from Sessions.": "原会话会保留在后台。新会话显示在当前面板；可从会话列表重新打开原会话。",
+    "The new session runs on the selected Dashboard node, not inside an SSH connection.": "新会话运行在所选 Dashboard 节点上，不会进入原有 SSH 连接内。",
+    "Switch type": "切换类型",
+    "Choose a different pane type": "请选择不同的面板类型",
+    "Switch pane type \u00b7 {pane}": "切换面板类型 · {pane}",
+    "Cannot switch an unavailable node": "无法切换不可用的节点",
+    "Checking SSH\u2026": "正在检查 SSH…",
+
     "The plugin switch is saved on the Dashboard host and shared by its clients.": "插件开关保存在 Dashboard 服务端，由连接它的客户端共享。",
     "Plugins": "插件",
     "Enable Spec Kit": "启用 Spec Kit",

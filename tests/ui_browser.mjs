@@ -32,6 +32,9 @@ let delayedLinkReply;
 let frameLoads = 0;
 let pendingCreation;
 let pendingRestart;
+let pendingSwitch;
+const switchRequests = [];
+let sshDisconnects = 0;
 let pendingResume;
 let resumeBody;
 const groupFixture = {groups: [], members: {}};
@@ -57,6 +60,20 @@ const server = http.createServer((req, res) => {
     frameLoads++;
     res.setHeader('Content-Type', 'text/html');
     return res.end('<!doctype html><body style="background:#151b24;color:#d9e2ef;font:14px monospace"><pre>Isolated terminal fixture\nNo live session or credentials loaded.</pre><textarea aria-label="Terminal input"></textarea></body>');
+  }
+  if (url.pathname.endsWith('/ssh-control')) {
+    res.setHeader('Content-Type','application/json');
+    if(req.method==='GET') return res.end(JSON.stringify({token:'fixture-foreground'}));
+    let raw='';req.on('data',chunk=>raw+=chunk);req.on('end',()=>{
+      assert.equal(JSON.parse(raw).token,'fixture-foreground');sshDisconnects++;
+      res.end(JSON.stringify({ok:true,status:'disconnect_requested'}));
+    });return;
+  }
+  if (url.pathname.endsWith('/switch-type')) {
+    res.setHeader('Content-Type','application/json');
+    let raw='';req.on('data',chunk=>raw+=chunk);req.on('end',()=>{
+      switchRequests.push(JSON.parse(raw));pendingSwitch=res;
+    });return;
   }
   if (url.pathname.startsWith('/api/plugins')) res.setHeader('Content-Type','application/json');
   if (url.pathname === '/api/plugins') return res.end(JSON.stringify({plugins:[{id:'spec-kit', enabled:specKitEnabled}]}));
@@ -1023,6 +1040,63 @@ try {
   await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
   await waitFor(`!document.querySelector('#settings-modal').open`);
   console.log('PASS: Spec Kit plugin enable, preview, validation, invalidation, launch, bilingual narrow layout and disable');
+
+  await viewport(1280,900);
+  await evaluate(`{const c=document.querySelector('[data-appearance="language"]');c.value='en';c.dispatchEvent(new Event('change'));}`);
+  const shellId='fixture-reopened';
+  const shellSelector=`[data-run-id="${shellId}"]`;
+  const originalPaneSlot=await evaluate(`JSON.parse(localStorage.getItem('orch_slots')).indexOf('${shellId}')`);
+  const existingStops=requests.filter(r=>/\/(stop|kill)$/.test(r.path)).length;
+  await evaluate(`window.switchAlerts=[];window.alert=text=>switchAlerts.push(text);window.confirm=()=>false;document.querySelector('${shellSelector} .btn-pane-more').click();document.querySelector('${shellSelector} .btn-disconnect-ssh').click()`);
+  await pause(200);
+  assert.equal(sshDisconnects,0,'Cancelled SSH disconnect does not send a signal');
+  await evaluate(`window.confirm=()=>true;document.querySelector('${shellSelector} .btn-pane-more').click();document.querySelector('${shellSelector} .btn-disconnect-ssh').click()`);
+  await waitFor(`document.querySelector('#conn-status').textContent.includes('SSH disconnect requested')`);
+  assert.equal(sshDisconnects,1);
+  await evaluate(`document.querySelector('${shellSelector} .pane-input textarea').value='keep my shell draft';document.querySelector('${shellSelector} .btn-pane-more').click();document.querySelector('${shellSelector} .btn-switch-type').click()`);
+  assert.equal(await evaluate(`document.querySelector('#new-agent').value`),'claude');
+  assert.equal(await evaluate(`document.querySelector('#new-node').disabled`),true);
+  assert.equal(await evaluate(`document.querySelector('#new-switch-help').hidden`),false);
+  assert.equal(await evaluate(`document.querySelector('#new-submit').hidden`),true);
+  await screenshot('switch-pane-en');
+  await evaluate(`document.querySelector('#new-cwd').value='/fixture/project';document.querySelector('#new-submit-bg').click();document.querySelector('#new-submit-bg').click()`);
+  for(let i=0;i<60&&!pendingSwitch;i++) await pause(50);
+  assert.ok(pendingSwitch);
+  assert.equal(switchRequests.length,1);
+  pendingSwitch.writeHead(500);pendingSwitch.end(JSON.stringify({detail:'Fixture launch failure'}));pendingSwitch=undefined;
+  await waitFor(`!document.querySelector('#new-submit-bg').disabled`);
+  assert.equal(await evaluate(`JSON.parse(localStorage.getItem('orch_slots'))[${originalPaneSlot}]`),shellId,'Failed switch retains original pane');
+  await evaluate(`document.querySelector('#new-submit-bg').click()`);
+  for(let i=0;i<60&&!pendingSwitch;i++) await pause(50);
+  assert.equal(switchRequests[1].request_id,switchRequests[0].request_id,'Retry retains identity');
+  sessions.push({...sessions.find(row=>row.run_id===shellId),run_id:'fixture-switched-agent',agent:'claude',tmux_session:'fixture-switched-agent',alive:true});
+  pendingSwitch.end(JSON.stringify({run_id:'fixture-switched-agent',source_preserved:true}));pendingSwitch=undefined;
+  await waitFor(`JSON.parse(localStorage.getItem('orch_slots'))[${originalPaneSlot}] === 'fixture-switched-agent'`);
+  await waitFor(`!!document.querySelector('[data-run-id="fixture-switched-agent"] iframe')`);
+  assert.equal(sessions.find(row=>row.run_id===shellId).alive,true);
+  assert.equal(requests.filter(r=>/\/(stop|kill)$/.test(r.path)).length,existingStops,'Switch never stops the source');
+  await evaluate(`document.querySelector('[data-run-id="fixture-switched-agent"] .btn-pane-more').click();document.querySelector('[data-run-id="fixture-switched-agent"] .btn-switch-type').click()`);
+  assert.equal(await evaluate(`document.querySelector('#new-agent').value`),'terminal','Agent can switch to a shell');
+  assert.equal(await evaluate(`document.querySelector('#new-model-field').hidden`),true);
+  await evaluate(`{const c=document.querySelector('[data-appearance="language"]');c.value='zh';c.dispatchEvent(new Event('change'));}`);
+  await viewport(390,844);
+  assert.equal(await evaluate(`document.querySelector('#new-submit-bg').textContent`),'切换类型');
+  assert.ok(await evaluate(`document.querySelector('#new-modal-title').textContent.startsWith('切换面板类型')`));
+  assert.equal(await evaluate(`document.querySelector('#new-standard-help').hidden`),true);
+  await screenshot('switch-pane-zh-narrow');
+  await evaluate(`document.querySelector('#new-close').click()`);
+  await viewport(1280,900);
+  await evaluate(`document.querySelector('[data-run-id="fixture-switched-agent"] .btn-pane-more').click();document.querySelector('[data-run-id="fixture-switched-agent"] .btn-switch-type').click();document.querySelector('#new-submit-bg').click()`);
+  for(let i=0;i<60&&!pendingSwitch;i++) await pause(50);
+  assert.ok(pendingSwitch);
+  const movedSlot=(originalPaneSlot+1)%4;
+  await evaluate(`document.querySelector('#new-close').click();document.querySelector('[data-run-id="fixture-switched-agent"] .btn-pane-more').click();const move=document.querySelector('[data-run-id="fixture-switched-agent"] .pane-move-select');move.value='${movedSlot}';move.dispatchEvent(new Event('change'))`);
+  assert.equal(await evaluate(`JSON.parse(localStorage.getItem('orch_slots'))[${movedSlot}]`),'fixture-switched-agent');
+  sessions.push({...sessions.find(row=>row.run_id===shellId),run_id:'fixture-switched-shell',agent:'terminal',tmux_session:'fixture-switched-shell',alive:true});
+  pendingSwitch.end(JSON.stringify({run_id:'fixture-switched-shell',source_preserved:true}));pendingSwitch=undefined;
+  await waitFor(`JSON.parse(localStorage.getItem('orch_slots'))[${movedSlot}] === 'fixture-switched-shell'`);
+  assert.equal(requests.filter(r=>/\/(stop|kill)$/.test(r.path)).length,existingStops);
+  console.log('PASS: SSH inspect/confirmation, both pane type directions, failure preservation, idempotent retry and moved-pane replacement');
 
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));
