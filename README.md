@@ -38,7 +38,8 @@ The following are additions and improvements maintained in
   agents share a working directory.
 - **Better terminal interaction:** reliable multiline input, improved Codex
   scrollback and return to live input, and cross-screen text selection/copying in
-  Terminal, Codex and Cursor panes.
+  Terminal, Codex and Cursor panes. Cursor full-screen and partial repaints use
+  [synchronized output](docs/cursor-redraw.md) to hide intermediate replay screens.
 - **Links and file previews:** optional in-Dashboard web browsing, local terminal
   paths that open in Files, read-only remote file snapshots from SSH terminals
   with a configured file host, more reliable wrapped links (including long URL

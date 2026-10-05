@@ -14,6 +14,13 @@ class CursorSyncOutputTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which('node') and shutil.which('tmux'), 'Node.js and tmux required')
     def test_large_replay_is_atomic_through_real_tmux(self):
+        self._assert_replay_atomic()
+
+    @unittest.skipUnless(shutil.which('node') and shutil.which('tmux'), 'Node.js and tmux required')
+    def test_partial_repaint_without_final_newline_is_atomic_through_real_tmux(self):
+        self._assert_replay_atomic(partial=True)
+
+    def _assert_replay_atomic(self, partial=False):
         import fcntl
         import os
         import pty
@@ -33,6 +40,10 @@ class CursorSyncOutputTests(unittest.TestCase):
             socket = str(base / 'tmux.sock')
             fixture = base / 'writer.cjs'
             fixture.write_text("const fs=require('fs');const timer=setInterval(()=>{if(!fs.existsSync(process.argv[2]))return;clearInterval(timer);let data='\\x1b[2J\\x1b[3J\\x1b[H';for(let i=0;i<150000;i++)data+='REPLAY-'+i+'-abcdefghijklmnopqrstuvwxyz\\n';data+='FINAL-STABLE-FRAME\\n';process.stdout.write(data);},20);setInterval(()=>{},10000);")
+            if partial:
+                fixture.write_text(fixture.read_text().replace(
+                    r"\x1b[2J\x1b[3J\x1b[H", r"\x1b[2K\x1b[1A\x1b[G").replace(
+                    r"FINAL-STABLE-FRAME\n", "FINAL-STABLE-FRAME"))
             def tm(*args):
                 return subprocess.check_output(['tmux', '-S', socket, *args], stderr=subprocess.DEVNULL)
             outputs, screens = {}, {}

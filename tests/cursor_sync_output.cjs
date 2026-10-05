@@ -21,6 +21,30 @@ stream.write(begin+'widget'+end);
 assert.equal(writes.pop().toString(),begin+'widget'+end,'No nested transaction');
 stream.write('ordinary line');
 assert.equal(writes.pop().toString(),'ordinary line','No rendering changes outside full repaint frames');
+// Ink's working and resize paths erase/move the cursor without a full clear.
+for (const redraw of ['\x1b[2K\x1b[1A\x1b[Gworking…', '\x1b[4Aupdated\n', clear+'resize']) {
+  stream.write(redraw);
+  assert.equal(writes.pop().toString(),begin+redraw+end,'Synchronize partial and non-newline redraws');
+}
+stream.write(begin);
+assert.equal(writes.pop().toString(),begin);
+stream.write(clear+'native widget\n');
+assert.equal(writes.pop().toString(),clear+'native widget\n','Respect transactions spanning writes');
+stream.write(end);
+assert.equal(writes.pop().toString(),end);
+// Split controls and Unicode must stay byte-for-byte intact across writes.
+for (const chunks of [
+  ['\x1b[?20', '26h', clear+'widget\n', '\x1b[?202', '6l'],
+  ['\x1b]8;;https://example.com/', 'path'+clear+'\x07'],
+  [Buffer.concat([Buffer.from(clear),Buffer.from([0xf0,0x9f])]), Buffer.from([0x99,0x82])],
+]) {
+  for (const chunk of chunks) {
+    stream.write(chunk);
+    assert.deepEqual(writes.pop(),Buffer.from(chunk),'Do not wrap partial controls, native transactions or UTF-8');
+  }
+}
+stream.write('\x1b[2Kready');
+assert.equal(writes.pop().toString(),begin+'\x1b[2Kready'+end,'Resume synchronization after split writes');
 const large=Buffer.from(clear+'你好\n'.repeat(50000)+'\x1b]8;;https://example.com/'+ 'x'.repeat(70000)+'\x07link\x1b]8;;\x07\n');
 const wrapped=frame(large);
 assert.ok(wrapped.toString().split(begin).length>3,'Refresh sync deadline during large frames');

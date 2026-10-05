@@ -32,7 +32,8 @@ SiLing 的版权声明。
   CLI。它与“重连显示”不同，可用于重新加载更新后的 MCP 配置。
   Stop 和 Terminate 会保留已保存的对话 ID，多个 Agent 共用工作目录时也不会重新猜测身份。
 - **终端交互改进**：可靠的多行输入、Codex 历史滚动和返回实时输入，以及
-  Terminal／Codex pane 内跨屏选中文字并复制。
+  Terminal／Codex pane 内跨屏选中文字并复制。Cursor 整屏与局部重绘使用
+  [同步输出](docs/cursor-redraw.md)，避免显示历史重放的中间画面。
 - **链接与文件预览**：可选择在 Dashboard 内打开网页，点击终端本地路径进入
   Files 预览；配置文件主机后，也可预览 SSH 终端中的远程文件只读副本。改善换行
   链接识别（包括带长查询参数的 URL），Markdown 预览跟随应用主题。

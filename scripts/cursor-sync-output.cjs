@@ -29,9 +29,42 @@ function frame(data) {
   pieces.push(data.subarray(start),END);
   return Buffer.concat(pieces);
 }
+// Track controls across writes: never insert markers inside a split escape,
+// UTF-8 character, or a transaction owned by Cursor itself.
+function inspect(data, context) {
+  const startsClean = context.state === 'text' && !context.utf8;
+  let redraw = false, native = context.sync;
+  for (const b of data) {
+    if (context.state === 'text') {
+      if (context.utf8 && b >= 128 && b < 192) { context.utf8--; continue; }
+      context.utf8 = b >= 194 && b <= 223 ? 1 : b >= 224 && b <= 239 ? 2 : b >= 240 && b <= 244 ? 3 : 0;
+      if (b === 27) context.state = 'escape';
+    } else if (context.state === 'escape') {
+      if (b === 91) { context.state = 'csi'; context.params = ''; }
+      else if ([93,80,88,94,95].includes(b)) context.state = 'string';
+      else if (b >= 48 && b <= 126) context.state = 'text';
+    } else if (context.state === 'csi') {
+      if (b >= 64 && b <= 126) {
+        const command = String.fromCharCode(b);
+        if ('ABCDEFGHJKSTf'.includes(command)) redraw = true;
+        if (context.params.startsWith('?') && context.params.slice(1).split(';').includes('2026') && (command === 'h' || command === 'l')) {
+          context.sync = command === 'h'; native = true;
+        }
+        context.state = 'text';
+      } else if (context.params.length < 128) context.params += String.fromCharCode(b);
+    } else if (context.state === 'string') {
+      if (b === 7) context.state = 'text';
+      else if (b === 27) context.state = 'string-escape';
+    } else if (context.state === 'string-escape') {
+      context.state = b === 92 ? 'text' : b === 27 ? 'string-escape' : 'string';
+    }
+  }
+  return startsClean && context.state === 'text' && !context.utf8 && !native && redraw;
+}
 function install(stream) {
   if (!stream.isTTY) return false;
   const original = stream.write;
+  const context = {state: 'text', params: '', utf8: 0, sync: false};
   stream.write = function (chunk, encoding, callback) {
     if (!(typeof chunk === 'string' || chunk instanceof Uint8Array)) {
       return original.apply(this, arguments);
@@ -39,11 +72,9 @@ function install(stream) {
     const data = typeof chunk === 'string'
       ? Buffer.from(chunk, typeof encoding === 'string' ? encoding : 'utf8')
       : Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
-    // Do not nest transactions owned by Cursor's existing fullscreen widgets.
-    if (!data.includes(Buffer.from('\x1b[2J')) || data.at(-1)!==10
-        || data.includes(BEGIN) || data.includes(END)) {
-      return original.apply(this, arguments);
-    }
+    // Ink also redraws using line erasure/cursor motion, particularly during
+    // working updates and shrinking a terminal. These need not end in a newline.
+    if (!inspect(data, context)) return original.apply(this, arguments);
     return original.call(this, frame(data),
       typeof encoding === 'function' ? encoding : callback);
   };
