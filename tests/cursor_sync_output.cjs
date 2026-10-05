@@ -21,6 +21,11 @@ stream.write(begin+'widget'+end);
 assert.equal(writes.pop().toString(),begin+'widget'+end,'No nested transaction');
 stream.write('ordinary line');
 assert.equal(writes.pop().toString(),'ordinary line','No rendering changes outside full repaint frames');
+// Resize/log-clear and replacement text can arrive in separate writes.
+stream.write('\x1b[2K\x1b[G');
+assert.equal(writes.pop().toString(),begin+'\x1b[2K\x1b[G','Do not commit an empty erase-only frame');
+stream.write('replacement text');
+assert.equal(writes.pop().toString(),'replacement text'+end,'Commit when replacement content arrives');
 // Ink's working and resize paths erase/move the cursor without a full clear.
 for (const redraw of ['\x1b[2K\x1b[1A\x1b[Gworking…', '\x1b[4Aupdated\n', clear+'resize']) {
   stream.write(redraw);
@@ -57,3 +62,18 @@ const child=spawnSync(process.execPath,['-e',`process.stdout.write(JSON.stringif
 assert.equal(child.status,0,child.stderr);
 assert.deepEqual(JSON.parse(child.stdout),{options:'--no-warnings'},'Child env preserves user options but removes preload and marker');
 console.log('PASS: atomic Cursor writes, UTF-8/binary, callbacks, backpressure, native transactions and child environment');
+
+// An intentionally empty screen must still become visible within a bounded time.
+const timeoutWrites=[];
+const timeoutStream={isTTY:true,write(data){timeoutWrites.push(Buffer.from(data).toString());return true;}};
+install(timeoutStream);
+timeoutStream.write('\x1b[2J');
+setTimeout(()=>{
+  assert.equal(timeoutWrites.join(''),begin+'\x1b[2J'+end,'Release unmatched clear before tmux sync timeout');
+},1000);
+
+assert.equal(frame(Buffer.from('\x1b[2J\x1b[3J\x1b[Hcontent'),2).toString(),
+  begin+'\x1b[1;1H\x1b[2K\x1b[2;1H\x1b[2K\x1b[3J\x1b[Hcontent'+end,
+  'Clear/history/home uses synchronized line erasure on tmux');
+assert.equal(frame(Buffer.from('\x1b[2J\x1b[Hcontent'),2).toString(),
+  begin+'\x1b[2J\x1b[Hcontent'+end,'Plain clear preserves scroll-on-clear history semantics');

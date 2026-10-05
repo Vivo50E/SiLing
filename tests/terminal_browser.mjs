@@ -90,6 +90,8 @@ try {
   const injection=execFileSync(python,['-c',"from agent_orchestrator.terminal_theme import _TTYD_INTERACTION_SCRIPT as s;print(s.split('>',1)[1].rsplit('</script>',1)[0])"],{cwd:root,encoding:'utf8'});
   await evaluate(`Object.defineProperty(window,'frameElement',{value:{dataset:{inlineSelection:'true',nativeSelection:'true'}}});window.localMessages=[];Object.defineProperty(window,'parent',{value:{postMessage: message=>window.localMessages.push(message)}});void 0;`);
   await evaluate(injection);
+  // Let initial font fitting and ttyd's 300 ms resize overlay settle.
+  await pause(500);
   // Browser rendering must remain frozen across split synchronized updates.
   await evaluate(`new Promise(resolve => term.write('\\x1b[?1049hBASELINE\\x1b[?25l', resolve))`);
   await pause(100);
@@ -97,7 +99,10 @@ try {
   await evaluate(`window.syncRenders=0;window.syncObserver=term.onRender(()=>window.syncRenders++);new Promise(resolve=>term.write('\\x1b[?2026h\\x1b[2J\\x1b[HPARTIAL',resolve))`);
   await pause(150);
   assert.equal(await evaluate('window.syncRenders'),0,'Do not paint an unfinished synchronized frame');
-  assert.equal((await cdp('Page.captureScreenshot',{format:'png'})).data,beforeSyncPaint,'Visible pixels remain unchanged until the end marker');
+  const duringSyncPaint=(await cdp('Page.captureScreenshot',{format:'png'})).data;
+  fs.writeFileSync(path.join(artifacts,'sync-before.png'),Buffer.from(beforeSyncPaint,'base64'));
+  fs.writeFileSync(path.join(artifacts,'sync-during.png'),Buffer.from(duringSyncPaint,'base64'));
+  assert.ok(duringSyncPaint===beforeSyncPaint,'Visible pixels remain unchanged until the end marker');
   assert.ok(await evaluate("term.buffer.active.getLine(0).translateToString(true).includes('PARTIAL')"),'Parsing continues while rendering is held');
   await evaluate(`new Promise(resolve=>term.write('\\x1b[HFINAL-FRAME\\x1b[?2026l',resolve))`);
   await pause(100);
@@ -109,6 +114,11 @@ try {
   assert.ok(await evaluate('window.syncRenders>0'),'A missing end marker cannot freeze the pane');
   await evaluate(`window.syncObserver.dispose();new Promise(resolve=>term.write('\\x1b[?1049l',resolve))`);
   await pause(100);
+  // The parser fixture left tmux's alternate screen; restore the real client
+  // buffer before testing tmux coordinates, links and selection.
+  await evaluate(`new Promise(resolve=>term.write('\\x1b[?1049h',resolve))`);
+  tmux('refresh-client');
+  await pause(150);
   console.log('PASS: synchronized browser paint, incremental parsing and missing-end timeout');
   await evaluate(`window.tmuxSyncStarts=0;window.tmuxSyncProbe=term.parser.registerCsiHandler({prefix:'?',final:'h'},params=>{if(params.includes(2026))window.tmuxSyncStarts++;return false;});`);
   tmux('send-keys','-t','check','echo BROWSER_SYNC_ROUNDTRIP','Enter');
@@ -116,6 +126,34 @@ try {
   assert.ok(await evaluate('window.tmuxSyncStarts>0'),'Real tmux client emits synchronized updates through ttyd');
   await evaluate('window.tmuxSyncProbe.dispose()');
   console.log('PASS: tmux to ttyd to browser synchronization negotiation');
+  // A late layout/font change can miss ttyd's one window-resize fit.
+  // Change only the container, so the browser window emits no resize event.
+  await evaluate(`window.fitParent=term.element.parentElement;window.fitOriginalStyle=fitParent.getAttribute('style');window.narrowCols=term.cols;fitParent.style.width='600px';fitParent.style.height='500px';`);
+  await pause(250);
+  const shrunk=await evaluate('term.cols');
+  assert.ok(shrunk<await evaluate('window.narrowCols'),'Container resize converges without a window resize notification');
+  await evaluate(`fitParent.style.width='1280px';fitParent.style.height='800px';`);
+  await pause(250);
+  assert.ok(await evaluate('term.cols')>shrunk,'Zoom expansion does not retain narrow columns');
+  const settledCols=await evaluate('term.cols');
+  await pause(300);
+  assert.equal(await evaluate('term.cols'),settledCols,'Converged layout does not keep resizing');
+  await evaluate(`if(fitOriginalStyle===null)fitParent.removeAttribute('style');else fitParent.setAttribute('style',fitOriginalStyle);`);
+  await pause(500);
+  console.log('PASS: terminal size converges after missed resize and zoom changes');
+  // Real Cursor-style clear-then-render through Node -> tmux -> ttyd -> xterm.
+  await evaluate(`window.blankPaints=0;window.blankObserver=term.onRender(()=>{const b=term.buffer.active;let text='';for(let row=0;row<term.rows;row++)text+=b.getLine(b.viewportY+row)?.translateToString(true)||'';if(!text.trim())window.blankPaints++;});`);
+  const shellQuote=value=>"'"+value.replaceAll("'", "'\\''")+"'";
+  const clearThenRender='process.stdout.write("\\x1b[2J\\x1b[3J\\x1b[H");setTimeout(()=>process.stdout.write("CLEAR_REPAINT_FINISHED\\n"),200)';
+  const hook=process.env.CURSOR_TEST_HOOK || path.join(root,'scripts/cursor-sync-output.cjs');
+  tmux('send-keys','-t','check',`env SILING_CURSOR_SYNC_ONCE=1 NODE_OPTIONS=${shellQuote('--require="'+hook+'"')} node -e ${shellQuote(clearThenRender)}`,'Enter');
+  await pause(700);
+  assert.equal(await evaluate('window.blankPaints'),0,'Separate erase/repaint writes must not publish a blank browser frame');
+  assert.ok(tmux('capture-pane','-t','check','-p').includes('CLEAR_REPAINT_FINISHED'));
+  await evaluate('window.blankObserver.dispose()');
+  console.log('PASS: clear-then-render stays visible across the complete terminal pipeline');
+
+
 
 
   // Real xterm viewport: scrollbar colors must follow the terminal palette,

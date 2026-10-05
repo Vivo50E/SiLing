@@ -129,9 +129,10 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     // internal screen yet still send a client repaint over several WS chunks.
     // Hold only paint, not parsing/input, until that client frame is complete.
     const render = core._renderService;
+    let synchronized = false;
+    let fitAfterSync = null;
     if (render && typeof render._renderRows === "function" && terminal.parser) {
       const renderRows = render._renderRows;
-      let synchronized = false;
       let syncTimeout = null;
       const finishSync = () => {
         clearTimeout(syncTimeout);
@@ -139,6 +140,9 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
         if (!synchronized) return;
         synchronized = false;
         terminal.refresh(0, terminal.rows - 1);
+        const pendingFit = fitAfterSync;
+        fitAfterSync = null;
+        pendingFit?.();
       };
       render._renderRows = function (...args) {
         if (!synchronized) return renderRows.apply(this, args);
@@ -158,6 +162,32 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       });
       terminal.onResize(finishSync);
       window.addEventListener("pagehide", finishSync);
+    }
+
+    // Zoom/toolbar/font changes can settle after ttyd's single window-resize
+    // fit. Recheck the actual container after layout, without changing the PTY
+    // again when the fitted dimensions already match.
+    const fitParent = terminal.element && terminal.element.parentElement;
+    if (fitParent && typeof terminal.fit === "function") {
+      let fitFrame = 0;
+      const scheduleFit = () => {
+        if (fitFrame) return;
+        fitFrame = requestAnimationFrame(() => {
+          fitFrame = requestAnimationFrame(() => {
+            fitFrame = 0;
+            if (synchronized) { fitAfterSync = scheduleFit; return; }
+            const bounds = fitParent.getBoundingClientRect();
+            if (!fitParent.isConnected || bounds.width < 2 || bounds.height < 2) return;
+            terminal.fit();
+          });
+        });
+      };
+      const fitObserver = new ResizeObserver(scheduleFit);
+      fitObserver.observe(fitParent);
+      document.fonts?.ready.then(scheduleFit);
+      document.fonts?.addEventListener("loadingdone", scheduleFit);
+      window.addEventListener("pageshow", scheduleFit);
+      scheduleFit();
     }
 
     // The iframe does not inherit Dashboard CSS. Keep its native scrollbar

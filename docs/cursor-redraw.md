@@ -2,7 +2,7 @@
 
 The observed Cursor build (`2026.10.01-14929f9`) uses an Ink renderer that can clear the terminal and replay all static history when its changed live region exceeds the terminal height. In the affected session, the PTY stayed at 35 × 10 while tmux history changed by thousands of lines between samples. Increasing pane height only reduced the trigger; it did not fix partial repaint delivery.
 
-SiLing's Cursor launcher now preloads `scripts/cursor-sync-output.cjs` for that invocation. Complete repaint writes using screen/line erasure or cursor motion are bracketed with DEC synchronized-output markers before entering the PTY. tmux processes the history but presents the finished screen instead of intermediate replay screens. For large frames, markers refresh the synchronization deadline at character boundaries outside ANSI control strings. This preserves the original data, colors, hyperlinks, terminal history, callback and backpressure behavior.
+SiLing's Cursor launcher now preloads `scripts/cursor-sync-output.cjs` for that invocation. Complete repaint writes using screen/line erasure or cursor motion are bracketed with DEC synchronized-output markers before entering the PTY. tmux processes the history but presents the finished screen instead of intermediate replay screens. For large frames, markers refresh the synchronization deadline at character boundaries outside ANSI control strings. This preserves the original data, colors, hyperlinks, terminal history, callback and backpressure behavior; the exact clear/history/home prefix uses equivalent line erasures as described below.
 
 This covers complete clear-screen and partial repaint writes, including writes without a trailing newline. The earlier implementation only recognized clear-screen writes ending in a newline and left Ink's line-erasure/cursor-motion paths unprotected. A stream parser tracks split ANSI controls, UTF-8 characters and Cursor-owned synchronization across writes; those writes pass through unchanged, as do ordinary text and redirected output. It does not change Cursor's computation or reduce how often Cursor internally redraws. No vendor installation files or global shell configuration are modified; the preload removes its environment settings before Cursor starts child commands.
 
@@ -48,3 +48,36 @@ unfinished frames, not legitimate changes between complete frames.
 期间输入和解析继续进行；结束标记、终端尺寸变化或一秒超时均会释放绘制。
 这部分更新后需要刷新 Dashboard／终端 iframe；已加载 Cursor 输出补丁的 Agent 无需再次重启。
 正常内容更新和尺寸重排仍会发生，补丁针对未完成画面的闪烁，不隐藏真正的内容变化。
+
+## Separate clears and settled layout
+
+The tmux 3.7c [whole-screen erase path](https://github.com/tmux/tmux/blob/3.7c/screen-write.c#L1815)
+issues a direct client clear even during application synchronization; the
+[line erase path](https://github.com/tmux/tmux/blob/3.7c/screen-write.c#L1411)
+uses collected updates. A real PTY capture reproduced a blank client frame before
+replacement text. For Cursor's exact clear-screen + clear-history + home prefix,
+the hook substitutes per-line erasure using the current TTY row count, retains
+clear-history and homes the cursor. Plain clears are not translated, so tmux's
+`scroll-on-clear` history behavior is preserved outside that explicit sequence.
+
+A synchronized erase-only write still publishes an empty frame if its end marker
+is sent before Ink writes the replacement. The Cursor hook now keeps that erase
+transaction open across subsequent control writes and closes it with replacement
+text. It releases after 900 ms if no replacement arrives, before tmux's one-second
+timeout, and closes before native synchronized blocks or incomplete control data.
+Input, byte order, callbacks and backpressure remain unchanged. This hook change
+requires restarting/resuming an existing Cursor process after updating SiLing.
+
+The browser also observes the actual terminal container and font readiness, then
+fits after two animation frames. This covers layout changes after ttyd's single
+window resize event. Hidden containers are skipped, and fitting waits for an
+active synchronized frame to finish. An unchanged fit does not resize the PTY.
+The browser part requires a page reload, not an agent restart.
+
+“先清空、稍后重绘”现在共享同一段同步显示保护，避免先提交一帧空白。
+无后续文字时会在 900 ms 内释放，退出与原生同步控制也会正常收尾。
+该部分属于 Cursor 进程内补丁，更新后已有 Cursor 需重启／恢复才能加载。
+
+放大／还原后，浏览器观察实际容器和字体变化，在布局稳定后重新计算列数，
+避免错过单次 resize 事件后一直保持窄列。隐藏容器不调整尺寸，正在同步重绘时
+延后校正，尺寸相同不会反复触发 PTY resize。这部分刷新页面即可加载。
