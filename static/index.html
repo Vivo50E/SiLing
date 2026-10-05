@@ -2757,6 +2757,8 @@
 <script src="/static/terminal-keys.js?v=1"></script>
 <link rel="stylesheet" href="/static/browser-panes.css?v=1" />
 <script src="/static/browser-panes.js?v=1"></script>
+<link rel="stylesheet" href="/static/mobile-reader.css?v=1">
+<script src="/static/mobile-reader.js?v=1"></script>
 </head>
 <body>
 
@@ -4323,6 +4325,8 @@
   // header button; otherwise we treat "no value yet" as "on".
   let ttyMode = localStorage.getItem("orch_tty") !== "0";
   let health = { ttyd: false };
+  let mobileReader = null;
+  const isMobileView = () => window.innerWidth < 820;
   // Plain panes use short polling instead of one EventSource per pane.
   // A 3x2+ layout can otherwise consume Chrome's per-origin HTTP/1.1
   // connection pool and starve normal API calls such as /api/create.
@@ -5921,6 +5925,7 @@
       const s = canonicalSession(requested);
       if (!s) return;
       runId = s.run_id;
+      if (isMobileView()) { mobileReader?.open(runId); closeSidebar(); return; }
       acknowledge(runId);
       // If this run is not pinned, borrow a pane only for the enlarged
       // notification view. Closing it restores the exact original layout;
@@ -6353,7 +6358,7 @@
           sessions.map(s => s.run_id)
         );
         let changed = false;
-        for (let i = 0; i < slots.length; i++) {
+        for (let i = 0; !isMobileView() && i < slots.length; i++) {
           if (slots[i] && !knownSessions.has(slots[i])
               && !browserPanes.isBrowser(slots[i])
               && !restartingSessions.has(slots[i])
@@ -6834,6 +6839,7 @@
   }
 
   function renderList() {
+    mobileReader?.update();
     const el = $("session-list");
     syncSidebarAuxControls();
     const hasRecoverableOfflineNode = REMOTE_NODES.some(
@@ -6923,6 +6929,7 @@
         if (ev.target.closest(".btn-rename")) {
           ev.stopPropagation(); renameSession(id); return;
         }
+        if (isMobileView()) { handleSessionClick(ev, id); return; }
         // A normal click rebuilds the sidebar and replaces this DOM node.
         // Defer it briefly so a second click can become a real dblclick
         // instead of acting on a newly-rendered replacement row.
@@ -7020,6 +7027,7 @@
   }
 
   function handleSessionClick(ev, id) {
+    if (isMobileView()) { mobileReader?.open(id); closeSidebar(); return; }
     idleNotif.acknowledge(id);
     // ⌘/Ctrl+Click: toggle this session in/out of pinned slots
     if (ev.metaKey || ev.ctrlKey) {
@@ -7377,6 +7385,7 @@
 
   function isPaneCacheEligible(ctrl) {
     if (!ctrl || !ctrl.cardEl || !ctrl.paneEl) return false;
+    if (ctrl.mobileSuspended) return true;
     const s = currentSessionForPane(ctrl);
     if (!ttyMode || !health.ttyd || !s.alive || !ctrl.usingTty) return false;
     return !!ctrl.paneEl.querySelector("iframe");
@@ -7452,6 +7461,7 @@
   }
 
   function prunePaneCache() {
+    if (isMobileView()) return;
     const now = Date.now();
     for (const [id, ctrl] of [...paneCtrls]) {
       if (!ctrl.cached) continue;
@@ -7474,6 +7484,7 @@
   }
 
   function renderGrid() {
+    if (isMobileView()) { mobileReader?.update(); return; }
     const grid = $("grid");
     browserPanes.reconcile();
     const filled = slots.filter(Boolean);
@@ -7577,6 +7588,7 @@
       }
       setPaneNodeSlot(existing.cardEl, slotIdx);
       if (!existing.cardEl.parentNode) $("grid").appendChild(existing.cardEl);
+      if (existing.mobileSuspended && !isMobileView()) void attachPaneView(existing);
       return existing.cardEl;
     }
     openPane(runId, slotIdx);
@@ -8619,6 +8631,8 @@
   async function attachPaneView(
     ctrl, { priority = false, forceTty = false } = {},
   ) {
+    if (isMobileView()) { ctrl.mobileSuspended = true; return; }
+    ctrl.mobileSuspended = false;
     const { runId, paneEl } = ctrl;
     const s = currentSessionForPane(ctrl);
     ctrl.session = Object.assign({}, ctrl.session || {}, s);
@@ -8645,10 +8659,11 @@
     if ((ttyMode || forceTty) && health.ttyd && s.alive) {
       try {
         const resp = await scheduleTtyAttach(
-          () => api(`/api/sessions/${encodeURIComponent(runId)}/tty`),
+          () => isMobileView() || ctrl.attachToken !== attachToken
+            ? null : api(`/api/sessions/${encodeURIComponent(runId)}/tty`),
           { priority },
         );
-        if (paneCtrls.get(runId) !== ctrl || ctrl.attachToken !== attachToken) return;
+        if (isMobileView() || paneCtrls.get(runId) !== ctrl || ctrl.attachToken !== attachToken) return;
         if (resp && resp.ok && resp.url) {
           const theme = terminalThemeValue(s.terminal_theme);
           const ifr = document.createElement("iframe");
@@ -8683,6 +8698,8 @@
         console.warn(`[pane ${runId}] tty attach failed, using plain SSE:`, e);
       }
     }
+
+    if (isMobileView() || ctrl.attachToken !== attachToken || paneCtrls.get(runId) !== ctrl) return;
 
     // Fallback: short-polling plain text view. Used when:
     //   - ttyd is disabled on the server (health.ttyd === false), or
@@ -13416,9 +13433,48 @@
   $("sidebar-scrim").addEventListener("click", closeSidebar);
   function closeSidebar() { sb.classList.remove("open"); }
 
+  const mobileHost = document.createElement("div");
+  $("grid").before(mobileHost);
+  mobileReader = window.SilingMobileReader.create({
+    host: mobileHost, api, message: (key, params) => ui.message(key, params),
+    sessions: () => sessions, title: sessionTitle,
+    attention: s => !!sessionAttentionState(s) || s.panel_state === "blocked",
+    status: s => sessionDotPresentation(s).title,
+    files: id => void openFolderViewer(id),
+    terminal: (resp, s) => {
+      const iframe = document.createElement("iframe");
+      iframe.dataset.nativeSelection = sessionPrefersNativeSelection(s) ? "true" : "false";
+      iframe.dataset.inlineSelection = iframe.dataset.nativeSelection === "true" && resp.selection_copy === true ? "true" : "false";
+      iframe.dataset.fileContext = resp.file_context === true ? "true" : "false";
+      terminalFileController().attach(iframe, s.run_id);
+      bridgeTtyControlSlash(iframe, s.run_id);
+      iframe.src = resp.url;
+      return iframe;
+    },
+  });
+  let wasMobile = false;
   function applyResponsive() {
-    const mobile = window.innerWidth < 820;
+    const mobile = isMobileView();
+    if (mobile && !wasMobile) {
+      closePaneZoom();
+      for (const ctrl of paneCtrls.values()) {
+        ctrl.attachToken = (ctrl.attachToken || 0) + 1;
+        detachPaneSources(ctrl);
+        ctrl.paneEl.querySelectorAll("iframe").forEach(frame => frame.remove());
+        ctrl.mobileSuspended = true;
+      }
+    }
     appEl.classList.toggle("mobile", mobile);
+    mobileReader.setActive(mobile);
+    if (!mobile && wasMobile) {
+      slots = normalizeSlotsForLayout(slots, layoutSize(layout));
+      applyLayoutChrome(layout);
+      renderGrid();
+      for (const ctrl of paneCtrls.values()) {
+        if (ctrl.mobileSuspended && !ctrl.cached) void attachPaneView(ctrl);
+      }
+    }
+    wasMobile = mobile;
     if (!mobile) sb.classList.remove("open");  // desktop: sidebar is always visible, no overlay
   }
   applyResponsive();
@@ -13686,21 +13742,21 @@
     refreshPhoneUrl();
     setInterval(refreshPhoneUrl, 30000);
     if (!health.ttyd) {
-      ttyMode = false; saveTty();
+      ttyMode = false; if (!isMobileView()) saveTty();
       $("btn-toggle-tty").textContent = ui.message("tty: n/a");
       $("btn-toggle-tty").disabled = true;
     } else {
       // First visit with ttyd available → default ON. Once the user toggles,
       // the preference sticks.
       if (localStorage.getItem("orch_tty") === null) {
-        ttyMode = true; saveTty();
+        ttyMode = true; if (!isMobileView()) saveTty();
       }
       $("btn-toggle-tty").classList.toggle("toggle-on", ttyMode);
       $("btn-toggle-tty").textContent = ui.message(ttyMode ? "tty: on" : "tty: off");
       if (ttyMode) showInsecureContextBanner();
     }
     // Ensure slots length matches saved layout (may be from old localStorage)
-    resizeSlots(layoutSize(layout));
+    if (!isMobileView()) resizeSlots(layoutSize(layout));
     // IMPORTANT: fetch sessions FIRST so setLayout's internal renderGrid
     // can find pinned run_ids in `sessions`. If we call setLayout before
     // refreshList, `sessions=[]` means pinned run_ids temporarily render as
@@ -13715,12 +13771,12 @@
         await new Promise(resolve => setTimeout(resolve, 250));
       }
     }
-    setLayout(layout);
+    if (!isMobileView()) setLayout(layout);
     // Auto-place the first live session if all slots are empty. Ended runs
     // stay in the history API, but must not reappear after the user clears
     // their pane layout and reloads the Dashboard.
     const firstLiveSession = sessions.find(s => s.alive);
-    if (firstLiveSession && slots.every(x => !x)) {
+    if (!isMobileView() && firstLiveSession && slots.every(x => !x)) {
       slots[0] = firstLiveSession.run_id;
       saveSlots();
     }

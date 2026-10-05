@@ -7,6 +7,7 @@ import http from 'node:http';
 import { spawn, execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
+import { checkMobileReader } from './mobile_browser.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const executable = process.env.UI_BROWSER;
@@ -23,6 +24,10 @@ const sessions = ['claude', 'codex', 'terminal', 'cursor', 'custom-agent'].map((
   remote: i === 4, node_id: i === 4 ? 'fixture-remote' : '', node_online: i !== 4,
 }));
 const requests = [];
+let readerMode = 'ok';
+let delayedRead;
+let delayTty = false;
+const delayedTtys = [];
 const sentPrompts = [];
 const fileDiscoveries = [];
 const linkJobs = new Map();
@@ -56,6 +61,14 @@ let truncatePreview = false;
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   requests.push({ method: req.method, path: url.pathname });
+  if (url.pathname.endsWith('/read')) {
+    res.setHeader('Content-Type','application/json');
+    if (readerMode === 'delay') {readerMode='ok';delayedRead=()=>res.end(JSON.stringify({ok:true,text:'WRONG LATE SESSION',source:'tmux'}));return;}
+    if (readerMode === 'error') {res.writeHead(502);return res.end(JSON.stringify({detail:'fixture offline'}));}
+    if (readerMode === 'legacy') return res.end(JSON.stringify({ok:true,text:'legacy snapshot',source:'log'}));
+    if (readerMode === 'empty') return res.end(JSON.stringify({ok:true,text:'',source:'tmux',observed_at:1791220000,truncated:false}));
+    return res.end(JSON.stringify({ok:true,text:'<literal> snapshot\n',source:'tmux',observed_at:1791220000,content_updated_at:null,truncated:true}));
+  }
   if (url.pathname === '/fixture-web-page') {res.setHeader('Content-Type','text/html');return res.end('<!doctype html><title>Isolated web pane</title><p>Web pane fixture</p>');}
   if (url.pathname.startsWith('/fixture-tty/')) {
     frameLoads++;
@@ -222,6 +235,7 @@ const server = http.createServer((req, res) => {
     if (url.pathname === '/api/sessions') value = { sessions, snapshot: { ready: true }, pane_groups: groupFixture };
     if (url.pathname === '/api/host') value = { best_url: 'https://dashboard.example/?token=fixture-secret' };
     if (url.pathname.endsWith('/tty')) value = { ok: true, selection_copy: url.pathname.includes('/fixture-1/') ? undefined : true, url: '/fixture-tty/' + url.pathname.split('/')[3] };
+    if (url.pathname.endsWith('/tty') && delayTty) {delayedTtys.push(()=>res.end(JSON.stringify(value)));return;}
     return res.end(JSON.stringify(value));
   }
   const relative = url.pathname === '/' ? 'static/index.html' : url.pathname.slice(1);
@@ -285,9 +299,17 @@ try {
     await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: 1 });
   };
   await cdp('Page.enable'); await cdp('Runtime.enable');
-  await viewport(1280, 800);
+  await viewport(baseline ? 1280 : 390, 800);
+  if (!baseline) sessions[0].panel_state='blocked';
   await cdp('Page.addScriptToEvaluateOnNewDocument', { source: `if(!localStorage.getItem('orch_layout')){localStorage.setItem('orch_layout','cols-2x2');localStorage.setItem('orch_slots',JSON.stringify(['fixture-0','fixture-1','fixture-2','fixture-3']));localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'en',theme:'dark'}));}` });
   await cdp('Page.navigate', { url: `http://127.0.0.1:${server.address().port}/` });
+  if (!baseline) {
+    await checkMobileReader({evaluate,viewport,waitFor,screenshot,requests,pause,
+      mode:value=>{readerMode=value;}, delayed:()=>!!delayedRead, release:()=>{delayedRead?.();delayedRead=null;}});
+    sessions[0].panel_state='p0';
+    await viewport(1280,800);
+    await cdp('Page.reload');
+  }
   for (let i = 0; i < 80; i++) {
     if (await evaluate(`document.querySelectorAll('.pane iframe').length === 4`)) break;
     await pause(100);
@@ -400,7 +422,8 @@ try {
     await waitFor(`document.querySelector('[data-group-filter="project-fixture"]') === null`);
     assert.equal(await evaluate(`document.querySelector('[data-group-filter="all"]').getAttribute('aria-pressed')`), 'true');
     assert.equal(await evaluate(`document.querySelectorAll('#grid .pane-card.group-hidden').length`), 0);
-    assert.equal(frameLoads, groupFrames, 'Assignment, rename, delete and filtering preserve terminal frames');
+    assert.equal(frameLoads, groupFrames + 4, 'Only desktop return reconnects the four suspended displays');
+    assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-0"] .pane-input textarea').value`),'group draft','Mobile resize preserves the desktop draft');
     assert.equal(requests.some(r => /\/(stop|terminate|restart)$/.test(r.path)), false);
     await evaluate(`document.querySelector('#pane-groups-dialog').close();document.querySelector('[data-run-id="fixture-0"] .pane-input textarea').value=''`);
   }
@@ -559,7 +582,7 @@ try {
   assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-0"] .btn-folders').textContent`),'files 1');
   assert.equal(await evaluate(`document.querySelectorAll('.btn-folders svg').length`),4,'Polling keeps file icons');
   assert.equal(await evaluate(`document.querySelectorAll('#btn-mission-control svg').length`),1,'Polling keeps mission icon');
-  const frames = frameLoads;
+  let frames = frameLoads;
   await evaluate(`document.querySelector('#btn-search-primary').click();const search=document.querySelector('#sess-search-input');search.value='codex';search.dispatchEvent(new Event('input'));`);
   await pause(150);
   assert.equal(await evaluate(`document.querySelectorAll('.session-item').length`), 1, 'Search filters live sessions by agent');
@@ -663,6 +686,9 @@ try {
   assert.equal(await evaluate(`document.querySelector('.pane-input textarea').value`), 'preserved draft');
   assert.equal(requests.some(r=>r.path==='/api/version' && r.method!=='GET'),false);
   await viewport(1280,800);
+  await waitFor(`document.querySelectorAll('.pane iframe').length===4`);
+  await waitFor(`Array.from(document.querySelectorAll('.pane iframe')).every(f=>f.contentDocument?.querySelector('textarea'))`);
+  frames = frameLoads;
   await clickIcon('[data-settings-section="appearance"]');
   console.log('PASS: About version, bilingual labels, mobile layout, failed/unknown/timeout responses and refresh after restart');
   console.log('PASS: English/Chinese labels, tooltips and placeholders switch without changing drafts, API values, user content or terminal frames');
@@ -701,20 +727,26 @@ try {
   for (const [width, height] of [[1440,900],[768,1024],[390,844],[320,740]]) {
     await viewport(width, height);
     assert.ok(await evaluate(`document.documentElement.scrollWidth <= innerWidth`), `Page overflow at ${width}`);
-    await clickIcon('.btn-pane-more');
-    assert.ok(await evaluate(`(()=>{const r=document.querySelector('.pane-menu[open]').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight})()`), `Menu clipped at ${width}`);
-    await screenshot(`pane-menu-${width}`);
-    await clickIcon('.pane-menu[open] [data-dialog-close]');
-    assert.equal(await evaluate(`!!document.querySelector('.pane-menu[open]')`),false,'Clicking close SVG dismisses dialog');
+    if (width >= 820) {
+      await clickIcon('.btn-pane-more');
+      assert.ok(await evaluate(`(()=>{const r=document.querySelector('.pane-menu[open]').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight})()`), `Menu clipped at ${width}`);
+      await screenshot(`pane-menu-${width}`);
+      await clickIcon('.pane-menu[open] [data-dialog-close]');
+      assert.equal(await evaluate(`!!document.querySelector('.pane-menu[open]')`),false,'Clicking close SVG dismisses dialog');
+    } else {
+      assert.equal(await evaluate(`document.querySelectorAll('#grid iframe').length`),0,'Narrow views suspend desktop transports');
+    }
     await evaluate(`document.querySelector('#btn-settings').click()`);
     assert.ok(await evaluate(`(()=>{const r=document.querySelector('#settings-modal .modal').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight})()`), `Settings clipped at ${width}`);
     await screenshot(`settings-${width}`);
     await evaluate(`document.querySelector('#settings-close-2').click()`);
   }
+  await viewport(1280,800);
+  await waitFor(`document.querySelectorAll('.pane iframe').length===4`);
   await evaluate(`document.querySelector('.btn-pane-more').click();document.querySelector('.pane-menu[open] .btn-unpin').click()`);
   assert.ok(await evaluate(`!JSON.parse(localStorage.getItem('orch_slots')).includes('fixture-0')`), 'Close pane only unpins');
   assert.equal(requests.filter(r => r.path === '/api/pane-groups' && r.method === 'POST').length, 6, 'Only explicit group edits write group metadata');
-  assert.deepEqual(requests.filter(r => r.method !== 'GET' && r.path !== '/api/pane-groups'), [{ method: 'POST', path: '/api/self-update/fetch' }, {method:'POST',path:'/api/sessions/fixture-2/folders'}, {method:'POST',path:'/api/sessions/fixture-2/ssh-file'}], 'Only boot-time fetch and explicitly clicked files may mutate other state');
+  assert.deepEqual(requests.filter(r => r.method !== 'GET' && r.path !== '/api/pane-groups'), [{ method: 'POST', path: '/api/self-update/fetch' }, {method:'POST',path:'/api/self-update/fetch'}, {method:'POST',path:'/api/sessions/fixture-2/folders'}, {method:'POST',path:'/api/sessions/fixture-2/ssh-file'}], 'Only the two boots and explicitly clicked files may mutate other state');
   // Hold a real UI request open, fill its intended slot, then return the result.
   await viewport(1280, 800);
   await evaluate(`document.querySelector('[data-run-id="fixture-1"] .btn-pane-more').click();document.querySelector('[data-run-id="fixture-1"] .btn-unpin').click();`);
@@ -895,6 +927,10 @@ try {
   await evaluate(`document.querySelector('dialog[open] [data-close]').click()`);
   await viewport(1280,800);
   console.log('PASS: narrow Link, keyboard dismissal and stale response isolation');
+  await pause(1200); // Allow the two-at-a-time desktop attachment queue to settle.
+  await waitFor(`Array.from(document.querySelectorAll('.pane iframe')).every(f=>f.contentDocument?.querySelector('textarea'))`);
+  const workflowFrames = frameLoads;
+  const workflowPaneCount = await evaluate(`document.querySelectorAll('.pane iframe').length`);
   // Resource IDs, editable roles, explicit workflows, and keyboard/narrow layouts.
   const artifact = linkedFixtures.get('fixture-0')[0];
   Object.assign(artifact, {artifact_id:'artifact-fixture',availability:'verified',snapshot:false,checked_at:'2026-01-01T00:00:00Z',
@@ -935,7 +971,8 @@ try {
   await waitFor(`!document.querySelector('#workflow-modal').open`);
   assert.equal(await evaluate(`document.querySelector('#workflow-modal').open`),false,'Escape closes the keyboard-accessible workflow dialog');
   await viewport(1280,800);
-  assert.equal(frameLoads,beforeFileContextFrames,'Workflow controls preserve terminal frames');
+  await waitFor(`document.querySelectorAll('.pane iframe').length===${workflowPaneCount} && Array.from(document.querySelectorAll('.pane iframe')).every(f=>f.contentDocument?.querySelector('textarea'))`);
+  assert.equal(frameLoads,workflowFrames+workflowPaneCount,'Only desktop return reconnects suspended workflow displays');
   console.log('PASS: artifact resource IDs, role persistence, workflow review/start/approval, narrow bilingual UI and Escape');
   sessions[0].lifecycle={execution:'waiting_user',connection:'available',source:'claude-hook',observed_at:1735689600,
     logical_session_id:'session-fixture',execution_id:'fixture-0',previous_execution_id:'fixture-previous',native_resume_id:'native-fixture'};
@@ -1178,6 +1215,19 @@ try {
   }
   console.log('PASS: 4x3/4x4 fit the viewport, compact controls, preserved drafts and stable terminal geometry');
 
+  await viewport(1280,800);
+  await evaluate(`localStorage.setItem('orch_layout','cols-2x2');localStorage.setItem('orch_slots',JSON.stringify(['fixture-0','fixture-1','fixture-2','fixture-3']))`);
+  delayTty = true;
+  const ttyBefore = requests.filter(r=>r.path.endsWith('/tty')).length;
+  await cdp('Page.reload');
+  for(let i=0;i<100&&delayedTtys.length<2;i++) await pause(100);
+  assert.equal(delayedTtys.length,2,'Only two desktop attachments start concurrently');
+  await viewport(390,844);
+  delayedTtys.splice(0).forEach(reply=>reply()); delayTty=false;
+  await pause(1200);
+  assert.equal(requests.filter(r=>r.path.endsWith('/tty')).length,ttyBefore+2,'Queued desktop attachments cancel on mobile resize');
+  assert.equal(await evaluate(`document.querySelectorAll('#grid iframe').length`),0,'Late desktop replies cannot install frames');
+  console.log('PASS: queued and late desktop terminal attachments are suppressed after mobile resize');
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));
   }

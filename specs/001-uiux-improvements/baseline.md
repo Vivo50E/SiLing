@@ -24,7 +24,7 @@
 | AGENT-01 | FR-022、US6 | [agentBadge](../../static/ui-foundation.js)、[未知名称/图标测试](../../tests/test_ui_foundation.py)、[历史美化报告](../../docs/uiux-visual-polish.md) | 已有五种形状及安全名称回退；全部展示位置一致性待验收。原文建议 Lucide 不再作为新增依赖要求。 |
 | STATE-01 | FR-010/013、US3 | [生命周期投影](../../agent_orchestrator/session_lifecycle.py)、[生命周期测试](../../tests/test_session_lifecycle.py)、[重启测试](../../tests/test_agent_restart.py) | 执行/连接/来源/时间/尝试链路已有；人工角色/优先级/标记仍共享 `panel_state`。展示可分开，持久化仍互斥；不能宣称数据迁移已完成。 |
 | STATE-02 | FR-011/012、US3 | [原生活动](../../agent_orchestrator/native_activity.py)、[活动测试](../../tests/test_native_activity.py)、Dashboard 现有提醒 | 原生观察和提醒不等于统一待处理中心或 300 秒心跳契约；统一事件确认、过期检查属于计划。 |
-| MOBILE-01 | FR-007、US2 | Dashboard `.app.mobile`、纵向 pane 导航 | 当前是响应式网格/抽屉，不是列表 → 单会话只读默认的新流程。计划；无本轮真机验收。 |
+| MOBILE-01 | FR-007、US2 | [手机控制器](../../static/mobile-reader.js)、[计划](plan.md)、[测试](../../tests/mobile_browser.mjs) | 2026-10-05 增量新增列表 → 单会话只读 → 返回、单个显式终端、时间/来源/截断证据与桌面状态隔离；真机验收仍待完成，不等于整个 US2 完成。 |
 | MOBILE-02 | FR-008/009/026、US2 | [终端按键测试](../../tests/test_terminal_keys.py)、[浏览器样本](../../tests/ui_browser.mjs) | 输入基础不代表软键盘、安全区、草稿隔离和未知发送结果全链路通过。计划/待真机验证。 |
 | FILE-01 | FR-014/015/016、US4 | [产出契约](../../agent_orchestrator/artifacts.py)、[产出测试](../../tests/test_artifacts.py)、[SSH Files 测试](../../tests/test_ssh_files.py)、[Markdown 对比度记录](../../docs/markdown-preview-contrast.md) | 用途、来源和验证状态已有；手机列表/详情导航和六类资源矩阵待验收。 |
 | SETTINGS-01 | FR-017/018/020、US5 | Dashboard 设置分组、[偏好测试](../../tests/test_ui_foundation.py)、[版本测试](../../tests/test_version.py) | 不是“仅链接模式/透明度”；已有多分组、插件/About。搜索、完整作用域/来源呈现、分组重置仍待补齐。 |
@@ -38,8 +38,8 @@
 旧 A/B/C 保留为历史分期，不作为完成度百分比。A 的已有视觉/设置/面板基础映射到 US1/5/6；
 B 对应 US2/4；C 对应 US3 和 US5 的服务配置部分。
 
-建议下一次先选择 **US2 的“手机列表 → 单会话只读输出 → 返回”** 子切片做计划，保留现有终端入口，
-不捎带实现新的监控中心或通用服务配置。这是建议，不是已授权的实施任务。
+2026-10-05 用户明确要求开始实施，已选择 **US2 的“手机列表 → 单会话只读输出 → 返回”**
+切片，并保留显式终端入口。实施前代码基点为 `ba39252`；不捎带新的监控中心或通用服务配置。
 
 选定切片后才运行 `$speckit-plan` → `$speckit-tasks` → `$speckit-analyze`；
 每项任务关联 FR/US/SC 与行为测试。原有契约和数据结构作为研究输入，不把全项目推倒重写。

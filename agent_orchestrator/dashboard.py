@@ -9825,6 +9825,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         run_id: str,
         lines: int = Query(200, ge=1, le=50000),
         position: str = Query("tail", pattern="^(head|tail)$"),
+        max_chars: Optional[int] = Query(None, ge=1, le=200000),
     ):
         """Read a bounded head/tail of one terminal, falling back to its log."""
         r = _lookup_run_light(outputs_dir, run_id)
@@ -9833,10 +9834,12 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
 
         source = ""
         text: Optional[str] = None
+        # Opt-in bounded mode probes one extra line; legacy CLI selection is unchanged.
+        read_lines = lines + 1 if max_chars is not None else lines
         session = str(r.get("tmux_session") or "")
         session_alive = bool(session and tmux_alive(session))
         if session_alive:
-            text = tmux_capture_lines(session, lines, position)
+            text = tmux_capture_lines(session, read_lines, position)
             if text is not None:
                 source = "tmux"
 
@@ -9846,11 +9849,21 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             if run_dir and log_file:
                 log_path = Path(run_dir) / log_file
                 if log_path.is_file():
-                    text = _read_file_lines(log_path, lines, position)
+                    text = _read_file_lines(log_path, read_lines, position)
                     if text is not None:
                         source = "log"
 
         text = text or ""
+        truncation_reasons = []
+        if max_chars is not None:
+            selected = text.splitlines(keepends=True)
+            if len(selected) > lines:
+                truncation_reasons.append("lines")
+                selected = selected[:lines] if position == "head" else selected[-lines:]
+                text = "".join(selected)
+            if len(text) > max_chars:
+                truncation_reasons.append("chars")
+                text = text[:max_chars] if position == "head" else text[-max_chars:]
         return {
             "ok": bool(source),
             "run_id": run_id,
@@ -9861,6 +9874,11 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             "returned_lines": len(text.splitlines()),
             "text": text,
             "alive": session_alive,
+            "observed_at": time.time() if source else None,
+            # Neither tmux presence nor log mtime proves when the agent last wrote.
+            "content_updated_at": None,
+            "truncated": bool(truncation_reasons) if max_chars is not None else None,
+            "truncation_reasons": truncation_reasons,
         }
 
     @app.get("/api/sessions/{run_id}/stream")

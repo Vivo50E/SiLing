@@ -61,8 +61,8 @@ The inherited foundation includes multi-agent layouts, task priorities and state
 linked files/folders/URLs, session save/restore, Mission Control, remote nodes, and
 experimental workspace sync. Those capabilities are credited to Agent Orchestrator.
 
-**Scope:** the UI work is incremental. A dedicated mobile single-session workflow
-and service-wide Settings editor are still planned; see the
+**Scope:** the UI work is incremental. Mobile now defaults to a session list and
+single-session read-only snapshots; richer mobile input and a service-wide Settings editor remain planned. See the
 [UI/UX specification and current baseline](docs/uiux-improvement-spec.md) for boundaries.
 
 ## Dashboard at a glance
@@ -434,8 +434,14 @@ credentials, but the copied link grants access: share it only with trusted devic
 The [Spec Kit UI/UX contract](specs/001-uiux-improvements/spec.md) and
 [current baseline](specs/001-uiux-improvements/baseline.md) separate requirements
 from implemented or unverified behavior. The [first implementation report](docs/uiux-implementation-status.md)
-is historical evidence. Mobile single-task navigation and service-wide settings
-editing remain planned. See [the Spec Kit workflow](specs/README.md) to contribute.
+is historical evidence. The [mobile reader increment](specs/001-uiux-improvements/plan.md)
+adds list/search/attention filters, bounded output with source/read-time/truncation,
+Files and return navigation. Reading does not attach a terminal; **Open interactive terminal**
+explicitly connects one display. Back disconnects that display, not the agent.
+Desktop drafts/layout are preserved across narrow-screen transitions; returning to desktop
+reconnects suspended displays. Snapshot time is not last agent-output time; failures retain
+the previous snapshot with a stale warning. Full phone keyboard/device acceptance and
+service-wide settings editing remain pending. See [the Spec Kit workflow](specs/README.md).
 
 ### Check the SiLing version
 
@@ -741,6 +747,6 @@ Pane **⋯ → Disconnect SSH** recovers a stalled foreground SSH client while k
 
 Choose **Settings → Browsing & files → Default web link destination** to open links in an internal iframe, a new web pane, or an external browser. [Browser behavior](docs/desktop-browser.md#default-web-link-destination).
 
-Dense desktop layouts fit the viewport. Short panes keep the terminal visible and move secondary controls into **⋯**; choose **Write a message** to expand the pane and use its preserved draft. Zoom restores the full toolbars. Mobile layouts continue to scroll vertically.
+Dense desktop layouts fit the viewport. Short panes keep the terminal visible and move secondary controls into **⋯**; choose **Write a message** to expand the pane and use its preserved draft. Zoom restores the full toolbars. Narrow screens below 820px use the mobile list and single-session reader instead of stacking desktop terminals.
 
 Cursor launches use synchronized full-screen repaint delivery with tmux 3.7+ to avoid displaying intermediate history replays in small panes. Existing Cursor processes need a restart/resume after updating SiLing. [Cause, validation and activation](docs/cursor-redraw.md).
