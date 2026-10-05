@@ -3581,6 +3581,14 @@ def _discover_resume_metadata(r: dict[str, Any],
     agent = _norm_agent(r.get("agent", ""))
     if not agent:
         return {}
+    # A managed run already owns a conversation. Shared directories and even
+    # terminal output can mention another live agent's identity; neither is
+    # evidence that this run changed conversations.
+    saved = _saved_resume_meta(r)
+    if saved.get("resume_id") and saved.get("resume_agent") in ("", agent):
+        saved["resume_agent"] = agent
+        saved["resume_cmd"] = _resume_cmd_for(agent, saved["resume_id"])
+        return saved
     text_meta = _extract_resume_from_text(agent, terminal_text)
     if text_meta:
         return text_meta
@@ -12225,6 +12233,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         resume = _discover_resume_metadata(r, before_text)
         if resume:
             _persist_resume_metadata(r, resume)
+            _apply_resume_meta_to_row(r, resume)
 
         stop_result = _graceful_stop_agent(
             session, r.get("agent", ""), timeout_s=timeout)

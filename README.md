@@ -34,6 +34,8 @@ The following are additions and improvements maintained in
 - **Restart an individual agent:** restart supported sessions using their saved
   native conversation identity, with working-directory and CLI checks. This is
   separate from reconnecting the display and can reload updated MCP configuration.
+  Stop and Terminate preserve the saved conversation ID, including when several
+  agents share a working directory.
 - **Better terminal interaction:** reliable multiline input, improved Codex
   scrollback and return to live input, and cross-screen text selection/copying in
   Terminal, Codex and Cursor panes.
