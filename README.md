@@ -738,3 +738,5 @@ Pane **⋯ → Disconnect SSH** recovers a stalled foreground SSH client while k
 Choose **Settings → Browsing & files → Default web link destination** to open links in an internal iframe, a new web pane, or an external browser. [Browser behavior](docs/desktop-browser.md#default-web-link-destination).
 
 Dense desktop layouts fit the viewport. Short panes keep the terminal visible and move secondary controls into **⋯**; choose **Write a message** to expand the pane and use its preserved draft. Zoom restores the full toolbars. Mobile layouts continue to scroll vertically.
+
+Cursor launches use synchronized full-screen repaint delivery with tmux 3.7+ to avoid displaying intermediate history replays in small panes. Existing Cursor processes need a restart/resume after updating SiLing. [Cause, validation and activation](docs/cursor-redraw.md).

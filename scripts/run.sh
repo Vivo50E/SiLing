@@ -119,7 +119,12 @@ case "$AGENT_TYPE" in
         AGENT_CMD="$AGENT_BIN_Q"
         ;;
     cursor|agent)
-        AGENT_CMD="$AGENT_BIN_Q"
+        # Keep each Cursor repaint atomic across PTY chunks. Scope the Node
+        # preload to this invocation; the hook removes itself from child envs.
+        CURSOR_NODE_OPTIONS="${NODE_OPTIONS:-} --require=\"$SCRIPT_DIR/cursor-sync-output.cjs\""
+        CURSOR_NODE_OPTIONS_Q=$(printf '%q' "$CURSOR_NODE_OPTIONS")
+        CURSOR_PREVIOUS_NODE_OPTIONS_Q=$(printf '%q' "${NODE_OPTIONS:-}")
+        AGENT_CMD="env SILING_CURSOR_SYNC_ONCE=1 SILING_CURSOR_PREVIOUS_NODE_OPTIONS=$CURSOR_PREVIOUS_NODE_OPTIONS_Q NODE_OPTIONS=$CURSOR_NODE_OPTIONS_Q $AGENT_BIN_Q"
         ;;
     codex)
         # YOLO mode: skip approval prompts + sandbox so the watcher doesn't

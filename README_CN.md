@@ -632,3 +632,5 @@ SiLing 采用 [MIT License](LICENSE)。
 在 **设置 → 浏览与文件 → 网页链接默认打开方式** 选择内部 iframe、新建网页面板或外部浏览器。[打开行为说明](docs/desktop-browser.md#default-web-link-destination)。
 
 密集桌面布局保持整屏显示。高度较小的 pane 将次要工具收进 **⋯** 菜单，把空间留给终端；选择 **编写消息** 可放大面板并继续编辑保留的草稿。放大后恢复完整工具栏。移动端仍使用纵向滚动布局。
+
+Cursor 启动时使用同步整帧重绘（需 tmux 3.7+），避免小 pane 显示历史重放的中间过程。更新 SiLing 后，已有 Cursor 进程需重启／恢复才能启用。[原因、验证与启用说明](docs/cursor-redraw.md)。

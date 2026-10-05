@@ -75,6 +75,7 @@ class AgentCliTests(unittest.TestCase):
         package = scripts.parent / "agent_orchestrator"
         package.mkdir()
         shutil.copy(PROJECT / "scripts" / "run.sh", scripts / "run.sh")
+        shutil.copy(PROJECT / "scripts" / "cursor-sync-output.cjs", scripts / "cursor-sync-output.cjs")
         shutil.copy(PROJECT / "agent_orchestrator" / "agent_cli.py", package / "agent_cli.py")
         (scripts / "watcher.sh").write_text("#!/bin/sh\nexit 0\n")
         tools = self.root / "tools"
@@ -86,7 +87,12 @@ class AgentCliTests(unittest.TestCase):
         cli_dir = self.root / "cli bin"
         for name in ("claude", "codex", "agent"):
             self.executable(cli_dir / name)
+        if shutil.which("node"):
+            cli = cli_dir / "agent"
+            code = "console.log('CURSOR_PRELOAD_CLEAN='+(!process.env.SILING_CURSOR_SYNC_ONCE && !process.env.NODE_OPTIONS))"
+            cli.write_text(cli.read_text().replace('#!/bin/sh\n', '#!/bin/sh\n' + shlex.join([shutil.which('node'), '-e', code]) + '\n'))
         env = dict(os.environ, PATH=f"{tools}:{cli_dir}:/usr/bin:/bin", ORCH_OUTPUTS_DIR=str(self.root / "outputs"))
+        env.pop("NODE_OPTIONS", None)
         # Create the owned server with a PATH that cannot find our CLI fixture.
         subprocess.run([real_tmux, "-S", str(socket), "-f", "/dev/null", "new-session", "-d", "-s", "keeper", "sleep 60"],
                        env=dict(os.environ, PATH="/usr/bin:/bin"), check=True, capture_output=True, timeout=5)
@@ -107,6 +113,8 @@ class AgentCliTests(unittest.TestCase):
                             break
                         time.sleep(0.02)
                     self.assertIn("CLI_FIXTURE", pane)
+                    if agent == "cursor" and shutil.which("node"):
+                        self.assertIn("CURSOR_PRELOAD_CLEAN=true", pane)
                     if resume:
                         self.assertIn("<saved-id>", pane)
                         self.assertIn("<resume>" if agent == "codex" else "<--resume>", pane)
