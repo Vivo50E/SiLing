@@ -42,6 +42,8 @@ let versionMode = 'ok';
 let versionCommit = 'a'.repeat(40);
 const systemBrowserOpens = [];
 const linkedFixtures = new Map();
+let specKitEnabled = false;
+const specKitLaunches = [];
 const workflowFixtures = [];
 const workflowSubmissions = [];
 const artifactPreviewRequests = [];
@@ -55,6 +57,21 @@ const server = http.createServer((req, res) => {
     frameLoads++;
     res.setHeader('Content-Type', 'text/html');
     return res.end('<!doctype html><body style="background:#151b24;color:#d9e2ef;font:14px monospace"><pre>Isolated terminal fixture\nNo live session or credentials loaded.</pre><textarea aria-label="Terminal input"></textarea></body>');
+  }
+  if (url.pathname.startsWith('/api/plugins')) res.setHeader('Content-Type','application/json');
+  if (url.pathname === '/api/plugins') return res.end(JSON.stringify({plugins:[{id:'spec-kit', enabled:specKitEnabled}]}));
+  if (url.pathname.startsWith('/api/plugins/spec-kit/')) {
+    let raw=''; req.on('data', part=>raw+=part); req.on('end',()=>{
+      const body=JSON.parse(raw);
+      if(url.pathname.endsWith('/configure')) {specKitEnabled=body.enabled;return res.end(JSON.stringify({enabled:specKitEnabled}));}
+      if(!specKitEnabled) {res.writeHead(400);return res.end(JSON.stringify({detail:'Enable Spec Kit first'}));}
+      if(url.pathname.endsWith('/prepare')) {
+        if(!body.cwd.startsWith('/')) {res.writeHead(400);return res.end(JSON.stringify({detail:'Choose an absolute local project directory'}));}
+        return res.end(JSON.stringify({preview_id:'fixture-preview', delegation:{prompt:'Fixture Spec Kit stage: '+body.stage+'\n'+body.request},project:{specify_cli:null,stages:{plan:'.agents/skills/speckit-plan/SKILL.md'}}}));
+      }
+      specKitLaunches.push(body);
+      return res.end(JSON.stringify({run_id:'fixture-spec-kit'}));
+    });return;
   }
   if (url.pathname.startsWith('/api/workflows')) {
     res.setHeader('Content-Type','application/json');
@@ -551,14 +568,14 @@ try {
   assert.equal(await evaluate(`JSON.parse(localStorage.getItem('siling_appearance_v1')).fontSize`), 16, 'Failed save leaves persisted preference intact');
   await evaluate(`{Storage.prototype.setItem=window.realSetItem;const c=document.querySelector('[data-appearance="fontSize"]');c.value='16';c.dispatchEvent(new Event('change'));}`);
   await screenshot('settings-light');
-  assert.equal(await evaluate(`document.querySelectorAll('.settings-nav svg').length`),6,'Applying appearance keeps navigation icons');
+  assert.equal(await evaluate(`document.querySelectorAll('.settings-nav svg').length`),7,'Applying appearance keeps navigation icons');
   await evaluate(`{const c=document.querySelector('[data-appearance="language"]');c.value='zh';c.dispatchEvent(new Event('change'));}`);
   assert.equal(await evaluate(`document.querySelector('[data-settings-section="appearance"] span').textContent`),'外观');
   await clickIcon('[data-settings-section="connections"]');
   assert.match(await evaluate(`document.querySelector('#dashboard-update-help').innerText`), /Dashboard 服务端和网页界面.*不会更新 Electron 桌面客户端/);
   await screenshot('settings-dashboard-update-zh');
   await clickIcon('[data-settings-section="appearance"]');
-  assert.equal(await evaluate(`document.querySelectorAll('.settings-nav svg').length`),6,'Translation keeps icons');
+  assert.equal(await evaluate(`document.querySelectorAll('.settings-nav svg').length`),7,'Translation keeps icons');
   assert.equal(await evaluate(`document.querySelector('#settings-panel-opacity').closest('label').querySelector('.settings-row-title').textContent`),'面板不透明度');
   assert.equal(await evaluate(`document.querySelector('#btn-apply-global-theme').textContent`),'应用到已打开面板');
   assert.equal(await evaluate(`document.querySelector('.btn-progress').textContent`),'进度');
@@ -687,7 +704,8 @@ try {
   for (let i=0;i<50&&!pendingCreation;i++) await pause(100);
   assert.ok(pendingCreation, 'Enter on an empty pane can create a session');
   await evaluate(`document.querySelector('#new-close').click();document.querySelector('.session-item[data-id="fixture-1"]').click();`);
-  await pause(350); // Sidebar deliberately waits for a possible double-click.
+  // Wait for the deferred single-click result, including background-tab timer throttling.
+  await waitFor(`JSON.parse(localStorage.getItem('orch_slots'))[0] === 'fixture-1'`);
   assert.equal(await evaluate(`JSON.parse(localStorage.getItem('orch_slots'))[0]`), 'fixture-1');
   pendingCreation.end(JSON.stringify({ ok: true, run_id: 'fixture-created' }));
   await pause(200);
@@ -967,6 +985,44 @@ try {
   assert.equal(await evaluate(`JSON.parse(localStorage.getItem('orch_slots'))[${endedSlot}]`),'fixture-reopened','New shell replaces the ended shell in the same pane');
   assert.equal(requests.filter(r=>/\/(stop|kill)$/.test(r.path)).length,stoppedBefore);
   console.log('PASS: ended Terminal reopens without native resume metadata in the original pane');
+
+  await viewport(1280, 900);
+  await evaluate(`document.querySelector('#btn-settings').click();document.querySelector('[data-settings-section="plugins"]').click()`);
+  await waitFor(`!document.querySelector('#speckit-enabled').disabled`);
+  assert.equal(await evaluate(`document.querySelector('#speckit-form').disabled`),true);
+  await evaluate(`document.querySelector('#speckit-enabled').click()`);
+  await waitFor(`!document.querySelector('#speckit-form').disabled`);
+  await evaluate(`document.querySelector('#speckit-prepare').click()`);
+  await waitFor(`document.querySelector('#speckit-status').textContent.includes('absolute')`);
+  await evaluate(`document.querySelector('#speckit-cwd').value='/fixture/project';document.querySelector('#speckit-request').value='Add a search page';document.querySelector('#speckit-prepare').click()`);
+  await waitFor(`!document.querySelector('#speckit-launch').disabled`);
+  assert.ok(await evaluate(`document.querySelector('#speckit-preview').textContent.includes('Add a search page')`));
+  assert.equal(await evaluate(`document.querySelector('#settings-save-status').hidden`),true,'Plugin settings do not claim browser-only persistence');
+  await screenshot('spec-kit-plugin-en');
+  await evaluate(`document.querySelector('#speckit-stage').value='plan';document.querySelector('#speckit-stage').dispatchEvent(new Event('change'))`);
+  assert.equal(await evaluate(`document.querySelector('#speckit-launch').disabled`),true,'Changing stage invalidates reviewed prompt');
+  await evaluate(`document.querySelector('#speckit-prepare').click()`);
+  await waitFor(`!document.querySelector('#speckit-launch').disabled`);
+  const framesBeforePlugin = frameLoads;
+  await evaluate(`document.querySelector('#speckit-launch').click();document.querySelector('#speckit-launch').click()`);
+  await waitFor(`document.querySelector('#speckit-status').textContent.includes('fixture-spec-kit')`);
+  assert.equal(specKitLaunches.length,1,'Double click creates one stage');
+  assert.equal(specKitLaunches[0].stage,'plan');
+  assert.ok(specKitLaunches[0].idempotency_key);
+  assert.equal(frameLoads,framesBeforePlugin,'Plugin launch preserves attached terminal frames');
+  await evaluate(`{const c=document.querySelector('[data-appearance="language"]');c.value='zh';c.dispatchEvent(new Event('change'));}`);
+  await viewport(390,844);
+  assert.equal(await evaluate(`document.querySelector('#settings-section-picker').value`),'plugins');
+  assert.equal(await evaluate(`document.querySelector('#settings-section-plugins h2').textContent`),'插件');
+  await screenshot('spec-kit-plugin-zh-narrow');
+  assert.ok(await evaluate(`document.querySelector('#settings-modal').scrollWidth <= document.querySelector('#settings-modal').clientWidth+1`),'Narrow settings does not overflow');
+  await evaluate(`document.querySelector('#speckit-enabled').click()`);
+  await waitFor(`document.querySelector('#speckit-form').disabled && !document.querySelector('#speckit-enabled').disabled`);
+  assert.equal(specKitEnabled,false);
+  await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+  await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+  await waitFor(`!document.querySelector('#settings-modal').open`);
+  console.log('PASS: Spec Kit plugin enable, preview, validation, invalidation, launch, bilingual narrow layout and disable');
 
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));

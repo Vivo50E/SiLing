@@ -168,3 +168,10 @@ html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-mo
 }
 .si-title { font-size: var(--ui-font-size); }
 .ui-dialog .modal-head, .modal > .modal-head, .modal > .modal-foot { background: transparent; }
+
+/* Optional plugins share Settings navigation, but operate on host projects. */
+#settings-section-plugins h3, #settings-section-plugins p { margin: 0; }
+#speckit-form { display: grid; gap: 12px; }
+#speckit-form .speckit-path { grid-template-columns: minmax(0, 1fr); }
+#speckit-cwd { width: 100%; min-width: 0; box-sizing: border-box; }
+#speckit-stage { max-width: 100%; }

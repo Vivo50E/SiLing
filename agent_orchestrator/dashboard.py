@@ -61,6 +61,7 @@ from typing import Any, Callable, Optional
 from urllib.parse import quote, urlparse
 
 from . import artifacts, session_lifecycle
+from .plugins import Plugins
 from .workflows import DispatchRejected, Workflows, validate as validate_workflow
 from .agent_cli import resolve_agent_cli
 from .browser_open import open_system_browser, system_browser_available, validate_web_url
@@ -11257,6 +11258,33 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                                     lambda rid: _lookup_run_light(outputs_dir, rid), stop_workflow_child,
                                     find_workflow_attempt)
         except (ValueError, KeyError, OSError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    plugins = Plugins(outputs_dir)
+
+    @app.get("/api/plugins")
+    async def get_plugins():
+        return {"plugins": [plugins.status()]}
+
+    @app.post("/api/plugins/spec-kit/{action}")
+    async def post_speckit(action: str, request: Request):
+        raw = await request.body()
+        if len(raw) > 100000:
+            raise HTTPException(413, "Plugin request is too large")
+        try:
+            body = json.loads(raw)
+            if not isinstance(body, dict):
+                raise ValueError("JSON body must be an object")
+            if action == "configure":
+                if type(body.get("enabled")) is not bool:
+                    raise ValueError("enabled must be a boolean")
+                return plugins.status(body["enabled"])
+            if action == "prepare":
+                return plugins.prepare(body)
+            if action == "launch":
+                return plugins.launch(body, _spawn_delegated_session)
+            raise HTTPException(404, "Unknown plugin action")
+        except (ValueError, OSError) as exc:
             raise HTTPException(400, str(exc)) from exc
 
     @app.post("/api/delegate")

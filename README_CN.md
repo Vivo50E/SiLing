@@ -620,3 +620,7 @@ Dashboard-first 是主要支持的体验。由于各 agent CLI 暴露的 session
 多用户部署。旧版 YAML recipe runner 仍为高级用户保留。
 
 SiLing 采用 [MIT License](LICENSE)。
+
+## 可选 Spec Kit 插件
+
+在 **设置 → 插件 → Spec Kit** 启用插件，填写本机项目目录。可预览提示词，并在独立的 Claude、Codex 或 Cursor 会话中执行初始化或单个规格阶段；每个阶段完成后审阅结果再继续。[使用说明与限制](docs/spec-kit-plugin.md)。

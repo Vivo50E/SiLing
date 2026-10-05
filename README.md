@@ -726,3 +726,7 @@ project targets trusted local developer machines rather than hosted multi-user
 deployments. The older YAML recipe runner remains available for advanced use.
 
 SiLing is released under the [MIT License](LICENSE).
+
+## Optional Spec Kit plugin
+
+Open **Settings → Plugins → Spec Kit**, enable the plugin, and enter a local project directory. Preview and launch Setup or a single specification stage in a separate Claude, Codex, or Cursor session. Review each result before proceeding. [Usage and limitations](docs/spec-kit-plugin.md).

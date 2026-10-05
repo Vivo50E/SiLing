@@ -2923,10 +2923,31 @@
           <button data-settings-section="notifications" data-ui-icon="bell"><span data-i18n="notifications">Notifications</span></button>
           <button data-settings-section="browsing" data-ui-icon="folder"><span data-i18n="browsing">Browsing &amp; files</span></button>
           <button data-settings-section="connections" data-ui-icon="connection"><span data-i18n="connections">Connections &amp; updates</span></button>
+          <button data-settings-section="plugins" data-ui-icon="folder"><span data-ui-message="Plugins">Plugins</span></button>
           <button data-settings-section="about" data-ui-icon="info"><span data-ui-message="About%20SiLing">About SiLing</span></button>
         </nav>
-        <label class="settings-mobile-nav"><span class="ui-secondary" data-i18n="settings">Settings</span><select id="settings-section-picker" aria-label="Settings section" data-ui-label=Settings%20section><option value="appearance" data-i18n="appearance">Appearance</option><option value="terminal" data-i18n="terminal">Terminal</option><option value="notifications" data-i18n="notifications">Notifications</option><option value="browsing" data-i18n="browsing">Browsing &amp; files</option><option value="connections" data-i18n="connections">Connections &amp; updates</option></select></label>
+        <label class="settings-mobile-nav"><span class="ui-secondary" data-i18n="settings">Settings</span><select id="settings-section-picker" aria-label="Settings section" data-ui-label=Settings%20section><option value="appearance" data-i18n="appearance">Appearance</option><option value="terminal" data-i18n="terminal">Terminal</option><option value="notifications" data-i18n="notifications">Notifications</option><option value="browsing" data-i18n="browsing">Browsing &amp; files</option><option value="connections" data-i18n="connections">Connections &amp; updates</option><option value="plugins" data-ui-message="Plugins">Plugins</option></select></label>
         <div class="settings-content">
+        <section class="settings-section" id="settings-section-plugins" hidden>
+          <h2 data-ui-message="Plugins">Plugins</h2>
+          <h3>Spec Kit</h3>
+          <p class="ui-secondary" data-ui-message="Optional%20plugin%20for%20local%20projects.%20Each%20stage%20opens%20a%20separate%20agent%20session.">Optional plugin for local projects. Each stage opens a separate agent session.</p>
+          <p class="ui-secondary" data-ui-message="The%20plugin%20switch%20is%20saved%20on%20the%20Dashboard%20host%20and%20shared%20by%20its%20clients.">The plugin switch is saved on the Dashboard host and shared by its clients.</p>
+          <label class="settings-row"><span data-ui-message="Enable%20Spec%20Kit">Enable Spec Kit</span><input id="speckit-enabled" type="checkbox" disabled></label>
+          <fieldset id="speckit-form" disabled style="border:0;padding:0;min-width:0">
+            <label class="settings-row speckit-path"><span data-ui-message="Project%20directory">Project directory</span><input id="speckit-cwd" type="text" placeholder="/absolute/project/path"></label>
+            <label class="settings-row"><span data-ui-message="Agent">Agent</span><select id="speckit-agent"><option value="claude">Claude</option><option value="codex">Codex</option><option value="cursor">Cursor</option></select></label>
+            <label class="settings-row"><span data-ui-message="Stage">Stage</span><select id="speckit-stage"><option value="setup" data-ui-message="Setup%20%2F%20repair%20missing%20files">Setup / repair missing files</option><option value="constitution" data-ui-message="Constitution">Constitution</option><option value="specify" data-ui-message="Specify">Specify</option><option value="clarify" data-ui-message="Clarify">Clarify</option><option value="plan" data-ui-message="Plan">Plan</option><option value="tasks" data-ui-message="Tasks">Tasks</option><option value="analyze" data-ui-message="Analyze">Analyze</option><option value="checklist" data-ui-message="Checklist">Checklist</option><option value="implement" data-ui-message="Implement">Implement</option></select></label>
+            <label for="speckit-request" data-ui-message="Stage%20request">Stage request</label>
+            <textarea id="speckit-request" rows="4" maxlength="16000" style="width:100%;box-sizing:border-box"></textarea>
+            <p class="ui-secondary" data-ui-message="Review%20the%20prompt%20before%20starting.%20Setup%20may%20download%20Spec%20Kit%3B%20stages%20can%20modify%20project%20files%20and%20use%20your%20agent%20subscription.">Review the prompt before starting. Setup may download Spec Kit; stages can modify project files and use your agent subscription.</p>
+            <button id="speckit-prepare" data-ui-message="Check%20project%20and%20preview%20prompt">Check project and preview prompt</button>
+            <pre id="speckit-project" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
+            <pre id="speckit-preview" hidden style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow:auto" tabindex="0"></pre>
+            <button id="speckit-launch" disabled data-ui-message="Start%20reviewed%20stage">Start reviewed stage</button>
+          </fieldset>
+          <p id="speckit-status" role="status" aria-live="polite"></p>
+        </section>
         <section class="settings-section" id="settings-section-about" hidden>
           <h2 data-ui-message="About%20SiLing">About SiLing</h2>
           <p>司令 · SiLing</p>
@@ -3495,6 +3516,7 @@
   function openSettingsModal() {
     syncSettingsControls();
     if ($("settings-section-picker").value === "about") refreshAboutVersion();
+    if ($("settings-section-picker").value === "plugins") refreshPlugins();
     settingsModal.hidden = false;
     settingsModal.showModal();
     (window.innerWidth <= 600 ? $("settings-section-picker") : settingsModal.querySelector('[aria-current="true"]')).focus({ preventScroll: true });
@@ -3519,7 +3541,9 @@
         section.hidden = section.id !== `settings-section-${button.dataset.settingsSection}`;
       });
       $("settings-section-picker").value = button.dataset.settingsSection;
+      $("settings-save-status").hidden = button.dataset.settingsSection === "plugins";
       if (button.dataset.settingsSection === "about") refreshAboutVersion();
+      if (button.dataset.settingsSection === "plugins") refreshPlugins();
     });
   });
   $("settings-section-picker").addEventListener("change", event => {
@@ -3529,6 +3553,111 @@
   aboutOption.value = "about";
   ui.setMessage(aboutOption, "About SiLing");
   $("settings-section-picker").append(aboutOption);
+  let specKitPreview = null;
+  let specKitBusy = false;
+  let specKitRevision = 0;
+  function invalidateSpecKit() {
+    specKitRevision++;
+    specKitPreview = null;
+    $("speckit-launch").disabled = true;
+    $("speckit-preview").hidden = true;
+    $("speckit-project").textContent = "";
+  }
+  function specKitBody() {
+    return {cwd: $("speckit-cwd").value.trim(), agent: $("speckit-agent").value,
+      stage: $("speckit-stage").value, request: $("speckit-request").value};
+  }
+  function specKitError(error) {
+    delete $("speckit-status").dataset.uiMessage;
+    $("speckit-status").textContent = error.message;
+  }
+  async function refreshPlugins() {
+    if (specKitBusy) return;
+    specKitBusy = true;
+    $("speckit-enabled").disabled = true;
+    try {
+      const data = await api("/api/plugins");
+      const enabled = data.plugins.find(p => p.id === "spec-kit")?.enabled === true;
+      $("speckit-enabled").checked = enabled;
+      $("speckit-form").disabled = !enabled;
+      if (!enabled) invalidateSpecKit();
+    } catch (error) {
+      $("speckit-form").disabled = true;
+      invalidateSpecKit();
+      specKitError(error);
+    } finally {
+      specKitBusy = false;
+      $("speckit-enabled").disabled = false;
+    }
+  }
+  $("speckit-enabled").addEventListener("change", async () => {
+    if (specKitBusy) return;
+    specKitBusy = true;
+    $("speckit-enabled").disabled = true;
+    $("speckit-form").disabled = true;
+    invalidateSpecKit();
+    try {
+      const result = await api("/api/plugins/spec-kit/configure", {method: "POST", body: {enabled: $("speckit-enabled").checked}});
+      $("speckit-form").disabled = !result.enabled;
+      ui.setMessage($("speckit-status"), result.enabled ? "Plugin enabled" : "Plugin disabled");
+    } catch (error) {
+      $("speckit-enabled").checked = !$("speckit-enabled").checked;
+      specKitError(error);
+    } finally {
+      specKitBusy = false;
+      $("speckit-enabled").disabled = false;
+    }
+  });
+  for (const id of ["speckit-cwd", "speckit-agent", "speckit-stage", "speckit-request"]) {
+    $(id).addEventListener("input", invalidateSpecKit);
+    $(id).addEventListener("change", invalidateSpecKit);
+  }
+  $("speckit-prepare").addEventListener("click", async () => {
+    if (specKitBusy) return;
+    invalidateSpecKit();
+    const revision = specKitRevision;
+    const body = specKitBody();
+    specKitBusy = true;
+    $("speckit-prepare").disabled = true;
+    $("speckit-enabled").disabled = true;
+    ui.setMessage($("speckit-status"), "Checking project…");
+    try {
+      const result = await api("/api/plugins/spec-kit/prepare", {method: "POST", body});
+      if (revision !== specKitRevision) return;
+      specKitPreview = {...body, preview_id: result.preview_id, idempotency_key: Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, "0")).join("")};
+      $("speckit-preview").textContent = result.delegation.prompt;
+      $("speckit-preview").hidden = false;
+      $("speckit-project").textContent = `${ui.message("Specify CLI")}: ${result.project.specify_cli || ui.message("Not found; Setup can install locally")}\n${ui.message("Installed stages")}: ${Object.entries(result.project.stages).filter(([,v])=>v).map(([k])=>k).join(", ") || "—"}`;
+      $("speckit-launch").disabled = false;
+      $("speckit-status").textContent = "";
+      delete $("speckit-status").dataset.uiMessage;
+    } catch (error) { specKitError(error); }
+    finally {
+      specKitBusy = false;
+      $("speckit-prepare").disabled = false;
+      $("speckit-enabled").disabled = false;
+    }
+  });
+  $("speckit-launch").addEventListener("click", async () => {
+    if (specKitBusy || !specKitPreview) return;
+    specKitBusy = true;
+    $("speckit-form").disabled = true;
+    $("speckit-enabled").disabled = true;
+    ui.setMessage($("speckit-status"), "Starting stage…");
+    try {
+      const result = await api("/api/plugins/spec-kit/launch", {method: "POST", body: specKitPreview});
+      invalidateSpecKit();
+      delete $("speckit-status").dataset.uiMessage;
+      $("speckit-status").textContent = `${ui.message("Session created; open it from Sessions")}: ${result.run_id}`;
+      await refreshList();
+    } catch (error) { specKitError(error); }
+    finally {
+      specKitBusy = false;
+      $("speckit-form").disabled = !$("speckit-enabled").checked;
+      $("speckit-enabled").disabled = false;
+    }
+  });
+
   let aboutRequest = 0;
   async function refreshAboutVersion() {
     const request = ++aboutRequest;
