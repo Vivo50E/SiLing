@@ -1,0 +1,25 @@
+/* Mobile reading surface. Desktop layout and stored pane preferences are separate. */
+.app.mobile .main { display: flex; flex-direction: column; }
+.app.mobile .topbar-global { flex: 0 0 auto; }
+#mobile-reader[hidden], #mobile-reader [hidden] { display: none !important; }
+#mobile-reader { flex: 1; min-height: 0; min-width: 0; overflow: hidden; color: var(--text); background: var(--bg); }
+#mobile-reader section { height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 12px; padding-bottom: max(12px, env(safe-area-inset-bottom)); box-sizing: border-box; }
+#mobile-reader h2, #mobile-reader p { margin: 0; overflow-wrap: anywhere; }
+#mobile-reader h2 { font-size: 18px; }
+#mobile-reader button, #mobile-reader input, #mobile-reader select { min-height: 44px; min-width: 44px; font: inherit; box-sizing: border-box; color: var(--text); background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; }
+#mobile-reader button { cursor: pointer; }
+#mobile-reader :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#mobile-reader-filters { display: flex; gap: 8px; }
+#mobile-reader-search { flex: 1; width: 0; }
+#mobile-reader-filter { max-width: 48%; }
+#mobile-reader-list { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 3px; }
+#mobile-reader .mobile-session { width: 100%; display: flex; flex-direction: column; text-align: start; gap: 8px; margin-bottom: 8px; padding: 14px; overflow-wrap: anywhere; }
+#mobile-reader .mobile-session span, #mobile-reader-meta { font-size: 12px; color: var(--text-dim); }
+#mobile-reader-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+#mobile-reader-actions button { flex: 1 1 auto; }
+#mobile-reader-notice { font-size: 13px; }
+#mobile-reader-output { flex: 1; min-height: 80px; margin: 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font: 13px/1.5 ui-monospace, monospace; user-select: text; -webkit-user-select: text; }
+#mobile-reader-terminal { flex: 1; min-height: 120px; }
+#mobile-reader iframe { width: 100%; height: 100%; border: 0; }
+.app.mobile #grid, .app.mobile #pane-group-bar, .app.mobile #pane-nav-rail { display: none !important; }
+.app.mobile #btn-layout-menu, .app.mobile #btn-workspace-menu, .app.mobile #pill-count { display: none; }

@@ -49,8 +49,8 @@ SiLing 的版权声明。
 Mission Control、远程节点和实验性工作区同步等核心能力继承自 Agent Orchestrator，
 并非 SiLing 从零新增。
 
-**当前边界**：UI 改造按阶段推进，手机专用单会话工作流、服务端全局设置编辑器
-仍在计划中，详见 [UI/UX 当前规格与基线](docs/uiux-improvement-spec.md)。
+**当前边界**：UI 改造按阶段推进，手机已默认使用会话列表和单会话只读快照；
+更完整的手机输入体验与服务端全局设置编辑器仍待实现，详见 [UI/UX 当前规格与基线](docs/uiux-improvement-spec.md)。
 
 ## Dashboard 概览
 
@@ -363,8 +363,13 @@ CLI 优先从服务 PATH 查找，再检查 `~/.local/bin`；后台启动使用�
 
 [Spec Kit UI/UX 需求契约](specs/001-uiux-improvements/spec.md)和
 [当前实现基线](specs/001-uiux-improvements/baseline.md)区分需求、已有实现与待验收项。
-[首批实施报告](docs/uiux-implementation-status.md)保留为历史证据；手机单任务模式与
-服务端设置编辑仍在计划中。参与改进见 [Spec Kit 工作流](specs/README.md)。
+[首批实施报告](docs/uiux-implementation-status.md)保留为历史证据。
+[手机阅读增量](specs/001-uiux-improvements/plan.md)新增列表、搜索、需要关注筛选、
+带来源／读取时间／截断说明的有界输出，以及 Files 和返回导航。阅读默认不连接终端；
+点击「打开交互终端」才连接一个显示。返回只断开显示，不结束 Agent。
+缩窄窗口保留桌面草稿与布局，恢复桌面时重连被暂停的显示。快照读取时间不是 Agent
+最后输出时间；刷新失败保留旧快照并标记可能过期。完整手机键盘／真机验收与
+服务端设置编辑仍待完成。参与改进见 [Spec Kit 工作流](specs/README.md)。
 
 ### 查看司令版本
 
@@ -633,6 +638,6 @@ SiLing 采用 [MIT License](LICENSE)。
 
 在 **设置 → 浏览与文件 → 网页链接默认打开方式** 选择内部 iframe、新建网页面板或外部浏览器。[打开行为说明](docs/desktop-browser.md#default-web-link-destination)。
 
-密集桌面布局保持整屏显示。高度较小的 pane 将次要工具收进 **⋯** 菜单，把空间留给终端；选择 **编写消息** 可放大面板并继续编辑保留的草稿。放大后恢复完整工具栏。移动端仍使用纵向滚动布局。
+密集桌面布局保持整屏显示。高度较小的 pane 将次要工具收进 **⋯** 菜单，把空间留给终端；选择 **编写消息** 可放大面板并继续编辑保留的草稿。放大后恢复完整工具栏。小于 820px 的窄屏使用手机列表与单会话阅读视图，不再堆叠桌面终端。
 
 Cursor 启动时使用同步整帧重绘（需 tmux 3.7+），避免小 pane 显示历史重放的中间过程。更新 SiLing 后，已有 Cursor 进程需重启／恢复才能启用。[原因、验证与启用说明](docs/cursor-redraw.md)。

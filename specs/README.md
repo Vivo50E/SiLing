@@ -51,5 +51,7 @@ These are **agent skills**, not `specify clarify` shell subcommands.
 Only Codex integration is bundled here; Claude/Cursor integration may be staged
 separately using the [Dashboard plugin guide](../docs/spec-kit-plugin.md).
 
-本次只执行 constitution → specify → clarify 质量复查；未生成实现计划/任务。
-后续每个切片需要独立审阅，不自动串联实施、提交、发布或运行版本更新。
+初始化只执行 constitution → specify → clarify 质量复查。
+2026-10-05 经用户明确要求开始实施后，US2-A1 手机阅读切片进入
+[Plan](001-uiux-improvements/plan.md) → [Tasks](001-uiux-improvements/tasks.md) → Analyze → Implement。
+这不代表其他故事已获实施验收；后续每个切片仍需独立审阅，运行版本更新仍需单独批准。

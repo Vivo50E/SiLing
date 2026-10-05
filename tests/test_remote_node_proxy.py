@@ -107,12 +107,15 @@ def _fake_remote_node() -> FastAPI:
         return {"ok": True, "run_id": run_id, "received": body}
 
     @app.get("/api/sessions/{run_id}/read")
-    def read(run_id: str, lines: int = 200, position: str = "tail"):
+    def read(run_id: str, lines: int = 200, position: str = "tail", max_chars: int = 32000):
         return {
             "ok": True,
             "run_id": run_id,
             "source": "tmux",
             "requested_lines": lines,
+            "max_chars": max_chars,
+            "observed_at": 1234567890,
+            "truncated": True,
             "position": position,
             "text": "remote tail\n",
         }
@@ -283,11 +286,14 @@ class RemoteNodeProxyTest(unittest.TestCase):
 
                     read = client.get(
                         f"/api/sessions/{run_id}/read",
-                        params={"lines": 17, "position": "head"},
+                        params={"lines": 17, "position": "head", "max_chars": 12000},
                     )
                     self.assertEqual(read.status_code, 200)
                     self.assertEqual(read.json()["text"], "remote tail\n")
                     self.assertEqual(read.json()["requested_lines"], 17)
+                    self.assertEqual(read.json()["max_chars"], 12000)
+                    self.assertEqual(read.json()["observed_at"], 1234567890)
+                    self.assertTrue(read.json()["truncated"])
                     self.assertEqual(
                         parse_qualified_run_id(read.json()["run_id"]),
                         ("dev", "remote-run 1"),
