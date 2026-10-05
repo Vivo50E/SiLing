@@ -625,4 +625,6 @@ SiLing 采用 [MIT License](LICENSE)。
 
 在 **设置 → 插件 → Spec Kit** 启用插件，填写本机项目目录。可预览提示词，并在独立的 Claude、Codex 或 Cursor 会话中执行初始化或单个规格阶段；每个阶段完成后审阅结果再继续。[使用说明与限制](docs/spec-kit-plugin.md)。
 
-面板 **⋯ → 断开 SSH** 可结束卡住的前台 SSH 客户端并保留本地 shell。**⋯ → 切换面板类型** 可在原位置打开 Terminal、Claude、Codex 或 Cursor，原会话保留在后台。[详细说明](docs/pane-types-and-ssh.md)。
+面板 **⋯ → 断开 SSH** 可结束卡住的前台 SSH 客户端并保留本地 shell。**⋯ → 切换面板类型** 可在原位置打开 Terminal、Claude、Codex 或 Cursor，并明确选择结束旧会话或后台保留；标题栏 **后台 N** 可管理关联会话。[详细说明](docs/pane-types-and-ssh.md)。
+
+在 **设置 → 浏览与文件 → 网页链接默认打开方式** 选择内部 iframe、新建网页面板或外部浏览器。[打开行为说明](docs/desktop-browser.md#default-web-link-destination)。

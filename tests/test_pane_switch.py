@@ -133,3 +133,71 @@ print('Output: ' + str(folder))
             result = client.get(f'/api/sessions/{remote_id}/ssh-control', headers=self.headers)
             self.assertEqual(result.json(), {'token':'remote-token'})
             inspect.assert_not_called()
+
+    def test_stop_choice_creates_first_then_stops_only_the_source(self):
+        live = [True]
+        def graceful(session, agent, timeout_s):
+            self.assertTrue(self.counter.exists(), 'New session must exist before stopping old one')
+            self.assertEqual(session, 'original-shell')
+            live[0] = False
+            return {'ok': True}
+        with patch.object(dashboard, 'tmux_alive', side_effect=lambda *_: live[0]), patch.object(
+            dashboard, '_lookup_run', return_value={**self.metadata, 'run_id': 'source::source'}
+        ), patch.object(dashboard, 'tmux_capture', return_value=''), patch.object(
+            dashboard, '_discover_resume_metadata', return_value={}
+        ), patch.object(dashboard, '_graceful_stop_agent', side_effect=graceful) as stop:
+            response = self.post({**self.body, 'source_action': 'stop'})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['source_stop_status'], 'stopped')
+        self.assertFalse(response.json()['source_preserved'])
+        stop.assert_called_once()
+        replay = self.post({**self.body, 'source_action': 'stop'})
+        self.assertTrue(replay.json()['replayed'])
+        self.assertEqual(self.counter.read_text(), '1')
+
+    def test_failed_stop_is_reported_and_related_sessions_survive_reload(self):
+        from agent_orchestrator.pane_relations import annotate
+        with patch.object(dashboard, 'tmux_alive', return_value=True), patch.object(
+            dashboard, '_lookup_run', return_value={**self.metadata, 'run_id': 'source::source'}
+        ), patch.object(dashboard, 'tmux_capture', return_value=''), patch.object(
+            dashboard, '_discover_resume_metadata', return_value={}
+        ), patch.object(dashboard, '_graceful_stop_agent', return_value={'ok':False, 'reason':'busy'}):
+            response = self.post({**self.body, 'source_action': 'stop'})
+        self.assertEqual(response.status_code, 200, response.text)
+        result = response.json()
+        self.assertEqual(result['source_stop_status'], 'failed')
+        self.assertTrue(result['source_preserved'])
+        self.assertTrue(result['source_stop_warning'])
+        self.kill.assert_not_called()
+        rows = [{'run_id':'source::source'}, {'run_id':result['run_id']}, {'run_id':'unrelated'}]
+        annotate(rows, self.outputs / '.pane-switches.json')
+        self.assertEqual(rows[0]['related_run_ids'], [result['run_id']])
+        self.assertEqual(rows[1]['related_run_ids'], ['source::source'])
+        self.assertNotIn('related_run_ids', rows[2])
+        snapshot = {'sessions': rows, 'ready': True, 'scanning': False, 'updated_at': 0,
+                    'age_s': 0, 'scan_duration_s': 0, 'error': ''}
+        with patch.object(self.app.state.session_snapshots, 'snapshot', return_value=snapshot):
+            listed = self.client.get('/api/sessions', headers=self.headers)
+        self.assertEqual(listed.status_code, 200, listed.text)
+        child = next(row for row in listed.json()['sessions'] if row['run_id'] == result['run_id'])
+        self.assertEqual(child['related_run_ids'], ['source::source'])
+
+
+    def test_failed_new_session_never_stops_original(self):
+        (self.scripts / 'run.sh').write_text('#!/bin/sh\nexit 1\n')
+        with patch.object(dashboard, '_graceful_stop_agent') as stop:
+            response = self.post({**self.body, 'source_action':'stop'})
+        self.assertEqual(response.status_code, 500)
+        stop.assert_not_called()
+        self.kill.assert_not_called()
+
+    def test_relation_graph_includes_older_receipts_and_switch_chains(self):
+        from agent_orchestrator.pane_relations import annotate
+        path = self.outputs / '.pane-switches.json'
+        path.write_text(json.dumps({'old': {'result': {'switched_from':'a','run_id':'b'}},
+                                    'new': {'result': {'switched_from':'b','run_id':'c'}},
+                                    'pending': {'status':'starting'}}))
+        rows = [{'run_id':name} for name in 'abc']
+        annotate(rows, path)
+        self.assertEqual(rows[2]['related_run_ids'], ['a','b'])
+        self.assertEqual(rows[0]['related_run_ids'], ['b','c'])

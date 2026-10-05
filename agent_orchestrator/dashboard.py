@@ -60,7 +60,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Optional
 from urllib.parse import quote, urlparse
 
-from . import artifacts, session_lifecycle
+from . import artifacts, session_lifecycle, pane_relations
 from .plugins import Plugins
 from .workflows import DispatchRejected, Workflows, validate as validate_workflow
 from .agent_cli import resolve_agent_cli
@@ -8666,7 +8666,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                 result.setdefault("node_id", node_id)
             return result
         if isinstance(value, list):
-            if parent_key in {"affected_run_ids", "slots"}:
+            if parent_key in {"affected_run_ids", "slots", "related_run_ids"}:
                 return [
                     qualify_run_id(node_id, item)
                     if isinstance(item, str) and item else item
@@ -8702,7 +8702,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                 content=await request.body(),
                 timeout=httpx.Timeout(
                     connect=node.connect_timeout_seconds,
-                    read=max(60.0 if path.endswith("/restart") else 30.0,
+                    read=max(60.0 if path.endswith(("/restart", "/switch-type")) else 30.0,
                              node.request_timeout_seconds),
                     write=max(30.0, node.request_timeout_seconds),
                     pool=node.connect_timeout_seconds,
@@ -9621,6 +9621,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             *native_activity.apply(snapshot["sessions"]),
             *remote_nodes.sessions(),
         ]
+        pane_relations.annotate(sessions, outputs_dir / ".pane-switches.json")
         for row in sessions:
             row["lifecycle"] = session_lifecycle.project(row, snapshot.get("updated_at"))
         try:
@@ -11196,6 +11197,9 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             agent = body.get("agent")
             if agent not in ("claude", "codex", "cursor", "terminal"):
                 raise ValueError("Choose Claude, Codex, Cursor or Terminal")
+            action = body.get("source_action", "keep")
+            if action not in ("keep", "stop"):
+                raise ValueError("Choose whether to keep or stop the original session")
             key = body.get("request_id")
             if not isinstance(key, str) or not 1 <= len(key) <= 240:
                 raise ValueError("A switch request_id is required")
@@ -11214,7 +11218,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         cwd = _resolve_session_cwd(body.get("cwd") or source.get("cwd") or "")
         label = body.get("label") or source.get("display_name") or source.get("task") or agent
         theme = _normalize_terminal_theme(str(body.get("terminal_theme") or source.get("terminal_theme") or ""))
-        material = {"source": run_id, "agent": agent, "cwd": cwd, "label": label,
+        material = {"source": run_id, "source_action": action, "agent": agent, "cwd": cwd, "label": label,
                     "model": body.get("model", ""), "effort": body.get("effort", ""), "theme": theme}
         digest = hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
         receipt = hashlib.sha256((run_id + "\0" + key).encode()).hexdigest()
@@ -11235,10 +11239,29 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         linked = _copy_linked_folders_to_spawned_run(
             outputs_dir, source, result, exclude_run_id=run_id, label=str(label))
         result = {**result, "switched_from": run_id, "source_preserved": True,
+                  "source_action": action, "source_stop_status": "pending" if action == "stop" else "kept",
                   "linked_folders_copied": linked.get("copied", 0),
                   "linked_folders_warning": linked.get("warning", "")}
+        # Save the new session before attempting to stop the old one. A lost
+        # response must never launch a duplicate or repeat a destructive step.
         with edit_json(path, create=True) as data:
             data[receipt].update(status="started", result=result)
+        if action == "stop":
+            try:
+                if tmux_alive(str(source.get("tmux_session") or "")):
+                    stopped = await asyncio.to_thread(post_stop, run_id, 12.0)
+                else:
+                    stopped = {"ok": True}
+                ended = not await asyncio.to_thread(tmux_alive, str(source.get("tmux_session") or ""))
+                result["source_preserved"] = not ended
+                result["source_stop_status"] = "stopped" if ended else "failed"
+                if not ended:
+                    result["source_stop_warning"] = "The original session could not be stopped. Manage it from Related sessions."
+            except Exception:
+                result["source_stop_status"] = "failed"
+                result["source_stop_warning"] = "Unable to confirm that the original session stopped. Check Related sessions."
+            with edit_json(path, create=True) as data:
+                data[receipt].update(result=result)
         session_snapshots.request_refresh()
         return {**result, "replayed": False}
 

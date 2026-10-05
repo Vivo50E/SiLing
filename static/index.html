@@ -2814,7 +2814,12 @@
         <button class="modal-close" id="new-close" title="Close" data-ui-title=Close>×</button>
       </div>
       <div class="modal-body">
-        <p id="new-switch-help" class="ui-secondary" hidden data-ui-message="The%20original%20session%20stays%20in%20the%20background.%20A%20new%20session%20replaces%20it%20in%20this%20pane%3B%20open%20the%20original%20from%20Sessions.">The original session stays in the background. A new session replaces it in this pane; open the original from Sessions.</p>
+        <p id="new-switch-help" class="ui-secondary" hidden data-ui-message="The%20new%20session%20uses%20this%20pane.%20Choose%20whether%20the%20original%20should%20keep%20running%20or%20stop%20after%20startup%20succeeds.">The new session uses this pane. Choose whether the original should keep running or stop after startup succeeds.</p>
+        <label class="fld" id="new-switch-action-field" hidden><span data-ui-message="Original%20session">Original session</span><select id="new-switch-action" required>
+          <option value="" data-ui-message="Choose%20what%20happens%20to%20the%20original%20session">Choose what happens to the original session</option>
+          <option value="keep" data-ui-message="Keep%20running%20in%20background">Keep running in background</option>
+          <option value="stop" data-ui-message="Stop%20after%20the%20new%20session%20starts">Stop after the new session starts</option>
+        </select></label>
         <p id="new-switch-host-help" class="ui-secondary" hidden data-ui-message="The%20new%20session%20runs%20on%20the%20selected%20Dashboard%20node%2C%20not%20inside%20an%20SSH%20connection.">The new session runs on the selected Dashboard node, not inside an SSH connection.</p>
         <label class="fld" id="new-node-field" hidden>
           <span><span data-ui-message=Run%20on>Run on</span></span>
@@ -2976,15 +2981,8 @@
         <section class="settings-section" id="settings-section-browsing" hidden>
           <h2 data-i18n="browsing">Browsing &amp; files</h2>
           <p class="ui-secondary" data-i18n="scope">Saved in this browser only.</p>
-        <label class="settings-row" for="settings-open-links-internally">
-          <span>
-            <span class="settings-row-title"><span data-ui-message=Open%20web%20links%20inside%20SiLing>Open web links inside SiLing</span></span>
-            <span class="settings-row-help"><span data-ui-message=Open%20terminal%2C%20Markdown%2C%20and%20Linked%20Items%20HTTP(S)%20links%20as%20Projects%20tabs.%20Sites%20that%20block%20embedding%20can%20still%20be%20opened%20with%20Open%20in%20browser.>
-              Open terminal, Markdown, and Linked Items HTTP(S) links as Projects tabs.
-              Sites that block embedding can still be opened with Open in browser.
-            </span></span>
-          </span>
-          <input id="settings-open-links-internally" type="checkbox" />
+        <label class="settings-row" for="settings-open-links-internally"><span><span class="settings-row-title" data-ui-message="Default%20web%20link%20destination">Default web link destination</span><span class="settings-row-help" data-ui-message="Applies%20to%20web%20links%20in%20terminals%2C%20Markdown%20and%20Files.%20Desktop%20web%20panes%20use%20the%20native%20browser%3B%20web%20clients%20use%20an%20iframe.">Applies to web links in terminals, Markdown and Files. Desktop web panes use the native browser; web clients use an iframe.</span></span>
+          <select id="settings-open-links-internally"><option value="iframe" data-ui-message="Internal%20iframe">Internal iframe</option><option value="pane" data-ui-message="New%20web%20pane">New web pane</option><option value="external" data-ui-message="External%20browser">External browser</option></select>
         </label>
         <label class="settings-row" for="settings-system-browser">
           <span>
@@ -3381,7 +3379,10 @@
   const PANEL_OPACITY_KEY = "siling_panel_opacity";
   const GLOBAL_TERMINAL_THEME_KEY = "orch_global_terminal_theme";
   const DEFAULT_TERMINAL_THEME = "soft-dark";
-  let openLinksInternally = localStorage.getItem(OPEN_LINKS_INTERNALLY_KEY) === "1";
+  const WEB_LINK_TARGET_KEY = "siling_web_link_target";
+  const savedWebTarget = localStorage.getItem(WEB_LINK_TARGET_KEY);
+  let webLinkTarget = ["iframe", "pane", "external"].includes(savedWebTarget) ? savedWebTarget
+    : localStorage.getItem(OPEN_LINKS_INTERNALLY_KEY) === "1" ? "iframe" : "external";
   function normalizePanelOpacity(value) {
     const parsed = Number.parseInt(value, 10);
     if (!Number.isFinite(parsed)) return 100;
@@ -3492,7 +3493,7 @@
   const panelOpacityValue = $("settings-panel-opacity-value");
 
   function syncSettingsControls() {
-    internalLinksSetting.checked = openLinksInternally;
+    internalLinksSetting.value = webLinkTarget;
     $("settings-system-browser").disabled = !systemBrowserAvailable;
     $("settings-system-browser").checked = systemBrowserAvailable && useSystemBrowser;
     panelOpacitySetting.value = String(panelOpacityPercent);
@@ -3755,10 +3756,11 @@
   $("settings-close").addEventListener("click", closeSettingsModal);
   $("settings-close-2").addEventListener("click", closeSettingsModal);
   internalLinksSetting.addEventListener("change", () => {
-    openLinksInternally = internalLinksSetting.checked;
+    webLinkTarget = internalLinksSetting.value;
+    persistBrowserSetting(WEB_LINK_TARGET_KEY, webLinkTarget);
     persistBrowserSetting(
       OPEN_LINKS_INTERNALLY_KEY,
-      openLinksInternally ? "1" : "0",
+      webLinkTarget === "external" ? "0" : "1",
     );
   });
   panelOpacitySetting.addEventListener("input", () => {
@@ -4426,9 +4428,15 @@
   ];
 
   const browserPanes = window.SiLingBrowserPanes({
-    ui, slots: () => slots,
+    ui, slots: () => slots, external: openExternalWebUrl,
     place: (id, index) => {
-      const target = Number.isInteger(index) ? index : slots.indexOf(null);
+      let target = Number.isInteger(index) ? index : slots.indexOf(null);
+      if (target < 0 && !Number.isInteger(index)) {
+        const larger = Array.from($("layout-picker").querySelectorAll("button"))
+          .map(button => button.dataset.layout).filter(name => layoutSize(name) > slots.length)
+          .sort((a, b) => layoutSize(a) - layoutSize(b))[0];
+        if (larger) { setLayoutAndSlots(larger, [...slots, id]); return true; }
+      }
       if (target < 0 || target >= slots.length || slots[target]) return false;
       slots[target] = id;
       saveSlots(); renderList(); renderGrid();
@@ -6634,6 +6642,63 @@
     if (lifecycle) dot.tabIndex = 0;
   }
 
+  const relatedStops = new Set();
+  function relatedSessions(runId) {
+    const row = sessions.find(s => s.run_id === runId);
+    const ids = new Set(row?.related_run_ids || []);
+    return sessions.filter(s => ids.has(s.run_id));
+  }
+  function renderRelatedSessions(card, runId) {
+    const list = card.querySelector(".related-session-list");
+    list.replaceChildren();
+    const relatives = relatedSessions(runId);
+    if (!relatives.length) { ui.setMessage(list, "No related sessions"); return; }
+    delete list.dataset.uiMessage;
+    for (const row of relatives) {
+      const entry = document.createElement("div");
+      entry.className = "related-session-row";
+      const title = document.createElement("strong");
+      title.textContent = sessionTitle(row);
+      const state = document.createElement("span");
+      state.className = "ui-secondary";
+      ui.setMessage(state, row.remote && row.node_online === false ? "Connection unavailable" : !row.alive ? "Ended" : slots.includes(row.run_id) ? "Open in another pane" : "Running in background");
+      const view = document.createElement("button");
+      ui.setMessage(view, "View session");
+      view.onclick = () => {
+        card.querySelector(".pane-related-menu").close();
+        const existing = slotOf(row.run_id);
+        if (existing >= 0) { highlightPaneForSession(row.run_id); return; }
+        const here = slotOf(runId);
+        if (here < 0) return;
+        if (paneZoomState?.card === card) closePaneZoom();
+        slots[here] = row.run_id;
+        saveSlots(); renderList(); renderGrid();
+      };
+      const stop = document.createElement("button");
+      ui.setMessage(stop, "Terminate session");
+      stop.disabled = relatedStops.has(row.run_id) || !row.alive || !!(row.remote && row.node_online === false);
+      stop.onclick = async () => {
+        if (relatedStops.has(row.run_id)) return;
+        relatedStops.add(row.run_id);
+        try { await stopSession(row.run_id, stop); }
+        finally { relatedStops.delete(row.run_id); }
+        await refreshList();
+        if (card.isConnected) renderRelatedSessions(card, runId);
+      };
+      entry.append(title, state, view, stop);
+      list.append(entry);
+    }
+  }
+  function updateRelatedBadge(ctrl) {
+    const button = ctrl.cardEl.querySelector(".btn-related-sessions");
+    if (!button) return;
+    const relatives = relatedSessions(ctrl.runId);
+    const background = relatives.filter(row => row.alive && row.node_online !== false && !slots.includes(row.run_id)).length;
+    button.hidden = !relatives.length;
+    button.classList.toggle("has-background", background > 0);
+    ui.setMessage(button, background ? "Background {count}" : "Related {count}", {count: background || relatives.length});
+    if (ctrl.cardEl.querySelector(".pane-related-menu")?.open && !ctrl.cardEl.querySelector(".related-session-list").contains(document.activeElement)) renderRelatedSessions(ctrl.cardEl, ctrl.runId);
+  }
   function updatePaneHeader(ctrl, fresh) {
     if (!ctrl || !ctrl.cardEl || !fresh) return;
     const wasAlive = ctrl.session?.alive;
@@ -6643,6 +6708,7 @@
     ctrl.session = Object.assign({}, ctrl.session || {}, fresh);
     const s = ctrl.session;
     const card = ctrl.cardEl;
+    updateRelatedBadge(ctrl);
     const dot = card.querySelector(".pane-drag-region .dot");
     applySessionDotVisual(dot, s);
     updatePaneInstantActivityClass(ctrl, s);
@@ -7419,6 +7485,7 @@
       if (!currentIds.has(id) && !markPaneCached(ctrl)) closePane(id);
     }
     prunePaneCache();
+    for (const ctrl of paneCtrls.values()) updateRelatedBadge(ctrl);
 
     // Handle the "no layout" degenerate case up front.
     if (!slots.length) {
@@ -7787,6 +7854,7 @@
           <select class="pane-state-select" aria-label="Role, priority or manual flag" data-ui-label=Role%2C%20priority%20or%20manual%20flag title="${escapeHtml(panelStateControlTitle(s.panel_state))}" data-state="${escapeHtml(s.panel_state || "")}">
             ${panelStateOptionsHtml(s.panel_state)}
           </select>
+          <button class="btn-related-sessions" hidden><span data-ui-message="Related%20sessions">Related sessions</span></button>
           <button class="btn-folders" title="Linked task files and folders" data-ui-title=Linked%20task%20files%20and%20folders aria-label="Linked task files and folders" data-ui-label=Linked%20task%20files%20and%20folders><span data-ui-message=files>files</span></button>
           <button class="btn-zoom" title="Open a larger pane view" data-ui-title=Open%20a%20larger%20pane%20view aria-label="Zoom pane" data-ui-label=Zoom%20pane>${ui.icon("zoom")}</button>
           <button class="btn-pane-more" data-i18n-label="more">${ui.icon("more")}</button>
@@ -7803,6 +7871,10 @@
         <button class="btn-link-folder" title="Link a folder, file, or URL to this pane" data-ui-title=Link%20a%20folder%2C%20file%2C%20or%20URL%20to%20this%20pane><span data-ui-message=Link>Link</span></button>
           <button class="btn-sync-project" ${s.remote ? "hidden" : ""} title="Sync this session's project and publish a remote resume handoff when idle (Shift-click: sync safe items now)" data-ui-title=Sync%20this%20session%27s%20project%20and%20publish%20a%20remote%20resume%20handoff%20when%20idle%20(Shift-click%3A%20sync%20safe%20items%20now)><span data-ui-message=Sync>Sync</span></button>
       </div>
+      <dialog class="ui-dialog pane-related-menu" aria-label="Related sessions" data-ui-label="Related%20sessions">
+        <div class="modal-head"><h2 data-ui-message="Related%20sessions">Related sessions</h2><button data-dialog-close data-ui-label="Close">×</button></div>
+        <div class="modal-body related-session-list"></div>
+      </dialog>
       <dialog class="ui-dialog pane-menu" id="pane-menu-${++paneMenuSerial}" aria-label="Pane actions" data-ui-label=Pane%20actions>
         <div class="modal-head"><h2>${ui.agentBadge(s.agent)} ${escapeHtml(sessionTitle(s))}</h2><button class="ui-icon-button" data-dialog-close aria-label="Close" data-ui-label=Close>${ui.icon("close")}</button></div>
         <div class="modal-body">
@@ -7838,6 +7910,7 @@
     paneGroups.decorate(card, s);
     const paneMenu = card.querySelector(".pane-menu");
     const moveSelect = card.querySelector(".pane-move-select");
+    ui.wireDialog(card.querySelector(".pane-related-menu"), card.querySelector(".btn-related-sessions"), () => renderRelatedSessions(card, runId));
     card.querySelector(".btn-switch-type").addEventListener("click", () => openSwitchPaneModal(runId));
     card.querySelector(".btn-disconnect-ssh").addEventListener("click", async event => {
       const button = event.currentTarget;
@@ -9891,7 +9964,12 @@
   function openPreferredWebUrl(rawUrl) {
     const url = normalizedHttpUrl(rawUrl);
     if (!url) return false;
-    if (openLinksInternally) return openProjectsBrowserUrl(url);
+    if (webLinkTarget === "iframe") return openProjectsBrowserUrl(url);
+    if (webLinkTarget === "pane") {
+      if (!browserPanes.canOpen(url)) { alert(ui.message("This address cannot be opened in a web pane.")); return true; }
+      if (!browserPanes.open(url)) alert(ui.message("All panes are occupied. Free a pane or choose a larger layout."));
+      return true;
+    }
     return openExternalWebUrl(url);
   }
 
@@ -12918,6 +12996,7 @@
     }
     openNewSessionModal(slotOf(runId));
     paneSwitchSource = source;
+    $("new-switch-action").value = "";
     paneSwitchRequestId = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, "0")).join("");
     $("new-kind").value = "new";
     $("new-node").value = nodeId;
@@ -13137,6 +13216,7 @@
     const isTerminal = $("new-agent").value === "terminal";
     const remoteNode = selectedRemoteNode();
     $("new-switch-help").hidden = !paneSwitchSource;
+    $("new-switch-action-field").hidden = !paneSwitchSource;
     $("new-switch-host-help").hidden = !paneSwitchSource;
     $("new-standard-help").hidden = !!paneSwitchSource;
     $("new-kind").closest("label").hidden = !!paneSwitchSource;
@@ -13242,6 +13322,8 @@
           };
       if (switchSource) {
         if (body.agent === switchSource.agent) throw new Error(ui.message("Choose a different pane type"));
+        body.source_action = $("new-switch-action").value;
+        if (!["keep", "stop"].includes(body.source_action)) throw new Error(ui.message("Choose whether to keep or stop the original session"));
         body.request_id = switchRequestId;
         body.terminal_theme = terminalThemeValue(switchSource.terminal_theme);
       }
@@ -13250,6 +13332,8 @@
         switchSource ? `/api/sessions/${encodeURIComponent(switchSource.run_id)}/switch-type` : isResume ? "/api/resume" : "/api/create",
         { method: "POST", body },
       );
+      if (switchSource && result.source_stop_warning) alert(ui.message(result.source_stop_warning));
+      if (switchSource && result.source_stop_status === "pending") alert(ui.message("The original session is still stopping. Check Related sessions for its status."));
       const newRunId = String(result?.run_id || "");
       if (requestedSlot !== null && newRunId) {
         pendingRecoveredSessions.set(newRunId, {

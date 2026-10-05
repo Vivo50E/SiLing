@@ -452,6 +452,7 @@ class DashboardFederationTest(unittest.TestCase):
                         "online": True,
                         "sessions": [{
                             "run_id": "remote-run",
+                            "related_run_ids": ["original-run"],
                             "display_name": "Remote task",
                             "alive": True,
                         }],
@@ -462,6 +463,8 @@ class DashboardFederationTest(unittest.TestCase):
                     reconnect_payload = client.get(
                         "/api/nodes/dev/reconnect"
                     ).json()
+                    remote_row = next(row for row in sessions_payload['sessions'] if row.get('remote_run_id') == 'remote-run')
+                    self.assertEqual(remote_row['related_run_ids'], [qualify_run_id('dev', 'original-run')])
 
             self.assertEqual(config_payload["remote_nodes"][0]["id"], "dev")
             self.assertEqual(

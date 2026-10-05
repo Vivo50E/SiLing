@@ -5,6 +5,18 @@ The optional Electron desktop client displays websites in independent Chromium
 embedding can still load as a top-level page. The existing Python Dashboard and
 tmux sessions remain unchanged; closing this client does not stop Agents.
 
+## Default web link destination
+
+In **Settings → Browsing & files → Default web link destination**, choose:
+
+- **Internal iframe**: open the existing Projects browser overlay.
+- **New web pane**: open alongside session panes. Electron uses its existing native browser; an ordinary web client uses a sandboxed iframe. Existing panes are preserved, and a full grid expands to the next supported layout when possible. At maximum capacity, free a pane before retrying.
+- **External browser**: preserve the existing browser/macOS opening behavior.
+
+The choice is saved on this client and applies to terminal, Markdown and Files web links. Existing internal/external preferences migrate automatically. Browser pane addresses and layout are also saved on this client. Ordinary web iframes cannot bypass embedding restrictions and their sandbox may prevent login/storage features; use external opening or Electron's native web pane for those sites. Web iframe panes provide address navigation, reload, external opening, resize, move and close; native desktop panes also provide browser back/forward controls.
+
+中文：在 **设置 → 浏览与文件 → 网页链接默认打开方式** 选择「内部 iframe」「新建网页面板」或「外部浏览器」。偏好保存在当前客户端。新网页面板优先使用空位，满时自动扩展到下一个布局，不覆盖会话；最大布局无空位时会提示。Electron 使用原生网页面板，普通浏览器使用受限 iframe；无法嵌入或登录受限的网站可外部打开。
+
 ## Build and install SiLing.app (macOS)
 
 Use Node.js 22.12+ and the macOS command-line tools. From the repository root:

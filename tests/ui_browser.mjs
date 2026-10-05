@@ -56,6 +56,7 @@ let truncatePreview = false;
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   requests.push({ method: req.method, path: url.pathname });
+  if (url.pathname === '/fixture-web-page') {res.setHeader('Content-Type','text/html');return res.end('<!doctype html><title>Isolated web pane</title><p>Web pane fixture</p>');}
   if (url.pathname.startsWith('/fixture-tty/')) {
     frameLoads++;
     res.setHeader('Content-Type', 'text/html');
@@ -801,11 +802,11 @@ try {
   await evaluate(`{const s=document.querySelector('#settings-system-browser');s.checked=false;s.dispatchEvent(new Event('change'));}silingOpenWebUrl(${JSON.stringify(nativeUrl)},document.querySelector('.pane iframe').contentWindow)`);
   assert.deepEqual(await evaluate('webOpens'),[nativeUrl],'Opt-out uses browser window.open');
   assert.equal(await evaluate(`localStorage.getItem('siling_system_browser')`),'0');
-  await evaluate(`{const s=document.querySelector('#settings-system-browser');s.checked=true;s.dispatchEvent(new Event('change'));const i=document.querySelector('#settings-open-links-internally');i.checked=true;i.dispatchEvent(new Event('change'));}silingOpenWebUrl(location.origin+'/fixture-tty/web',document.querySelector('.pane iframe').contentWindow)`);
+  await evaluate(`{const s=document.querySelector('#settings-system-browser');s.checked=true;s.dispatchEvent(new Event('change'));const i=document.querySelector('#settings-open-links-internally');i.value='iframe';i.dispatchEvent(new Event('change'));}silingOpenWebUrl(location.origin+'/fixture-tty/web',document.querySelector('.pane iframe').contentWindow)`);
   assert.equal(await evaluate(`document.querySelector('#projects-browser-modal').hidden`),false,'Internal setting takes precedence');
   assert.equal(systemBrowserOpens.length,2);
   failBrowserOpen=true;
-  await evaluate(`{const i=document.querySelector('#settings-open-links-internally');i.checked=false;i.dispatchEvent(new Event('change'));}silingOpenWebUrl(${JSON.stringify(nativeUrl)},document.querySelector('.pane iframe').contentWindow)`);
+  await evaluate(`{const i=document.querySelector('#settings-open-links-internally');i.value='external';i.dispatchEvent(new Event('change'));}silingOpenWebUrl(${JSON.stringify(nativeUrl)},document.querySelector('.pane iframe').contentWindow)`);
   for(let i=0;i<50;i++){if(await evaluate('webAlerts.length>0'))break;await pause(50);}
   assert.equal(systemBrowserOpens.length,3,'One request, without automatic retries');
   assert.equal(await evaluate('webAlerts.length'),1,'System failure is visible');
@@ -1059,7 +1060,9 @@ try {
   assert.equal(await evaluate(`document.querySelector('#new-switch-help').hidden`),false);
   assert.equal(await evaluate(`document.querySelector('#new-submit').hidden`),true);
   await screenshot('switch-pane-en');
-  await evaluate(`document.querySelector('#new-cwd').value='/fixture/project';document.querySelector('#new-submit-bg').click();document.querySelector('#new-submit-bg').click()`);
+  await evaluate(`document.querySelector('#new-submit-bg').click()`);
+  assert.equal(switchRequests.length,0,'Switch requires an explicit disposition choice');
+  await evaluate(`document.querySelector('#new-switch-action').value='keep';document.querySelector('#new-cwd').value='/fixture/project';document.querySelector('#new-submit-bg').click();document.querySelector('#new-submit-bg').click()`);
   for(let i=0;i<60&&!pendingSwitch;i++) await pause(50);
   assert.ok(pendingSwitch);
   assert.equal(switchRequests.length,1);
@@ -1070,11 +1073,22 @@ try {
   for(let i=0;i<60&&!pendingSwitch;i++) await pause(50);
   assert.equal(switchRequests[1].request_id,switchRequests[0].request_id,'Retry retains identity');
   sessions.push({...sessions.find(row=>row.run_id===shellId),run_id:'fixture-switched-agent',agent:'claude',tmux_session:'fixture-switched-agent',alive:true});
+  sessions.find(row=>row.run_id===shellId).related_run_ids=['fixture-switched-agent'];
+  sessions.find(row=>row.run_id==='fixture-switched-agent').related_run_ids=[shellId];
   pendingSwitch.end(JSON.stringify({run_id:'fixture-switched-agent',source_preserved:true}));pendingSwitch=undefined;
   await waitFor(`JSON.parse(localStorage.getItem('orch_slots'))[${originalPaneSlot}] === 'fixture-switched-agent'`);
   await waitFor(`!!document.querySelector('[data-run-id="fixture-switched-agent"] iframe')`);
   assert.equal(sessions.find(row=>row.run_id===shellId).alive,true);
   assert.equal(requests.filter(r=>/\/(stop|kill)$/.test(r.path)).length,existingStops,'Switch never stops the source');
+  await waitFor(`document.querySelector('[data-run-id="fixture-switched-agent"] .btn-related-sessions').textContent === 'Background 1'`);
+  await evaluate(`document.querySelector('[data-run-id="fixture-switched-agent"] .btn-related-sessions').click()`);
+  assert.ok(await evaluate(`document.querySelector('[data-run-id="fixture-switched-agent"] .related-session-list').textContent.includes('Running in background')`));
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('[data-run-id="fixture-0"] .btn-related-sessions')).display`),'none','Unrelated panes do not show a misleading zero badge');
+  await screenshot('related-background-sessions');
+  await evaluate(`document.querySelector('[data-run-id="fixture-switched-agent"] .related-session-row button').click()`);
+  assert.equal(await evaluate(`JSON.parse(localStorage.getItem('orch_slots'))[${originalPaneSlot}]`),shellId);
+  await evaluate(`document.querySelector('${shellSelector} .btn-related-sessions').click();document.querySelector('${shellSelector} .related-session-row button').click()`);
+  assert.equal(await evaluate(`JSON.parse(localStorage.getItem('orch_slots'))[${originalPaneSlot}]`),'fixture-switched-agent');
   await evaluate(`document.querySelector('[data-run-id="fixture-switched-agent"] .btn-pane-more').click();document.querySelector('[data-run-id="fixture-switched-agent"] .btn-switch-type').click()`);
   assert.equal(await evaluate(`document.querySelector('#new-agent').value`),'terminal','Agent can switch to a shell');
   assert.equal(await evaluate(`document.querySelector('#new-model-field').hidden`),true);
@@ -1086,17 +1100,51 @@ try {
   await screenshot('switch-pane-zh-narrow');
   await evaluate(`document.querySelector('#new-close').click()`);
   await viewport(1280,900);
-  await evaluate(`document.querySelector('[data-run-id="fixture-switched-agent"] .btn-pane-more').click();document.querySelector('[data-run-id="fixture-switched-agent"] .btn-switch-type').click();document.querySelector('#new-submit-bg').click()`);
+  await evaluate(`document.querySelector('[data-run-id="fixture-switched-agent"] .btn-pane-more').click();document.querySelector('[data-run-id="fixture-switched-agent"] .btn-switch-type').click();document.querySelector('#new-switch-action').value='stop';document.querySelector('#new-submit-bg').click()`);
   for(let i=0;i<60&&!pendingSwitch;i++) await pause(50);
   assert.ok(pendingSwitch);
+  assert.equal(switchRequests.at(-1).source_action,'stop');
   const movedSlot=(originalPaneSlot+1)%4;
   await evaluate(`document.querySelector('#new-close').click();document.querySelector('[data-run-id="fixture-switched-agent"] .btn-pane-more').click();const move=document.querySelector('[data-run-id="fixture-switched-agent"] .pane-move-select');move.value='${movedSlot}';move.dispatchEvent(new Event('change'))`);
   assert.equal(await evaluate(`JSON.parse(localStorage.getItem('orch_slots'))[${movedSlot}]`),'fixture-switched-agent');
   sessions.push({...sessions.find(row=>row.run_id===shellId),run_id:'fixture-switched-shell',agent:'terminal',tmux_session:'fixture-switched-shell',alive:true});
-  pendingSwitch.end(JSON.stringify({run_id:'fixture-switched-shell',source_preserved:true}));pendingSwitch=undefined;
+  sessions.find(row=>row.run_id==='fixture-switched-shell').related_run_ids=[shellId,'fixture-switched-agent'];
+  pendingSwitch.end(JSON.stringify({run_id:'fixture-switched-shell',source_preserved:true,source_stop_status:'failed',source_stop_warning:'The original session could not be stopped. Manage it from Related sessions.'}));pendingSwitch=undefined;
   await waitFor(`JSON.parse(localStorage.getItem('orch_slots'))[${movedSlot}] === 'fixture-switched-shell'`);
   assert.equal(requests.filter(r=>/\/(stop|kill)$/.test(r.path)).length,existingStops);
+  assert.ok(await evaluate(`switchAlerts.some(text=>text.includes('旧会话未能结束'))`));
   console.log('PASS: SSH inspect/confirmation, both pane type directions, failure preservation, idempotent retry and moved-pane replacement');
+
+  await evaluate(`document.querySelector('#btn-settings').click();document.querySelector('[data-settings-section="browsing"]').click();const target=document.querySelector('#settings-open-links-internally');target.value='pane';target.dispatchEvent(new Event('change'));`);
+  assert.equal(await evaluate(`localStorage.getItem('siling_web_link_target')`),'pane');
+  await screenshot('web-link-destination-settings');
+  await evaluate(`document.querySelector('#settings-close').click()`);
+  const slotsBeforeWeb=await evaluate(`JSON.parse(localStorage.getItem('orch_slots'))`);
+  // The type switch above starts a fresh terminal iframe asynchronously.
+  // Wait for its initial document before measuring unrelated web-pane navigation.
+  await waitFor(`Array.from(document.querySelectorAll('.pane iframe')).every(f=>f.contentDocument?.querySelector('textarea'))`);
+  const loadsBeforeWeb=frameLoads;
+  // localhost is a different origin from the Dashboard's 127.0.0.1 binding.
+  const webUrl=`http://localhost:${server.address().port}/fixture-web-page`;
+  await evaluate(`silingOpenWebUrl(${JSON.stringify(webUrl)},document.querySelector('.pane iframe').contentWindow)`);
+  await waitFor(`!!document.querySelector('.browser-card iframe')`);
+  const webPane=await evaluate(`document.querySelector('.browser-card').dataset.runId`);
+  const slotsWithWeb=await evaluate(`JSON.parse(localStorage.getItem('orch_slots'))`);
+  assert.ok(slotsBeforeWeb.filter(Boolean).every(id=>slotsWithWeb.includes(id)),'Opening a web pane preserves occupied slots');
+  assert.equal(frameLoads,loadsBeforeWeb,'Opening a web pane does not reload terminal frames');
+  assert.equal(await evaluate(`document.querySelector('.browser-card iframe').src`),webUrl);
+  assert.ok(!(await evaluate(`document.querySelector('.browser-card iframe').sandbox.value`)).includes('allow-same-origin'));
+  await evaluate(`window.keptWebFrame=document.querySelector('.browser-card iframe');const language=document.querySelector('[data-appearance="language"]');language.value='en';language.dispatchEvent(new Event('change'));`);
+  assert.equal(await evaluate(`keptWebFrame===document.querySelector('.browser-card iframe')`),true,'Translation preserves the web page');
+  await screenshot('web-pane-alongside-terminal');
+  await cdp('Page.reload');
+  await waitFor(`!!document.querySelector('.browser-card iframe')`);
+  assert.equal(await evaluate(`document.querySelector('.browser-card iframe').src`),webUrl,'Web pane restores after refresh');
+  await waitFor(`!!document.querySelector('.btn-related-sessions.has-background')`);
+  assert.equal(await evaluate(`localStorage.getItem('siling_web_link_target')`),'pane');
+  await evaluate(`document.querySelector('.browser-card [data-browser-action="close"]').click()`);
+  assert.equal(await evaluate(`JSON.parse(localStorage.getItem('orch_slots')).includes('${webPane}')`),false);
+  console.log('PASS: explicit old-session choice, visible background relations, navigation, failed-stop warning and new web-pane routing');
 
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));

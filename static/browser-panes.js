@@ -1,8 +1,9 @@
-/* Desktop-only native views. No Electron APIs are exposed to website content. */
+/* Native desktop views and sandboxed web-client iframes share pane placement. */
 (() => {
-  window.SiLingBrowserPanes = function ({ ui, slots, place, clear, setSlot, drag, zoom, unzoom, swap }) {
+  window.SiLingBrowserPanes = function ({ ui, slots, place, clear, setSlot, drag, zoom, unzoom, swap, external }) {
     const bridge = window.silingDesktop;
-    const enabled = bridge?.version === 1;
+    const native = bridge?.version === 1;
+    const enabled = true;
     const key = 'siling_browser_panes_v1';
     const records = new Map();
     const cards = new Map();
@@ -47,11 +48,40 @@
       };
       return zh() ? (known[value] || (value.startsWith('Page failed to load (') ? value.replace('Page failed to load', '网页加载失败') : value)) : value;
     }
+    function validUrl(raw) {
+      try {
+        const url = new URL(raw);
+        return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password
+          && url.origin !== location.origin && raw.length <= 16384 ? url.href : '';
+      } catch { return ''; }
+    }
+    function frame(card, url) {
+      const surface = card.querySelector('.browser-surface');
+      let iframe = surface.querySelector('iframe');
+      if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.title = t('Web page', '网页');
+        // Opaque origin keeps an embedded page isolated even if it redirects
+        // back to the authenticated Dashboard. No desktop bridge is exposed.
+        iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-popups');
+        iframe.referrerPolicy = 'no-referrer';
+        surface.replaceChildren(iframe);
+      }
+      iframe.src = url;
+      card.querySelector('.title').textContent = url;
+      status(card, t('Some sites block embedding. Use Open externally if needed.', '部分网站禁止嵌入，可使用“外部打开”。'));
+    }
     async function command(id, action, url) {
       const card = cards.get(id);
       if (!card) return;
       try {
-        await bridge.request({ id, action, url });
+        if (native) await bridge.request({ id, action, url });
+        else if (action === 'external') { external(records.get(id).url); return; }
+        else if (action === 'navigate' || action === 'reload') {
+          url = validUrl(action === 'reload' ? records.get(id).url : url);
+          if (!url) throw Error('Invalid URL');
+          frame(card, url);
+        }
         if (action === 'navigate' && records.has(id)) {
           records.get(id).url = url; save();
           const input = card.querySelector('.browser-address');
@@ -87,8 +117,14 @@
       card.querySelector('.browser-go').textContent = t('Go', '前往');
       card.querySelector('.browser-move').title = t('Move / swap with pane', '移动 / 交换面板');
       card.querySelector('.browser-move').setAttribute('aria-label', t('Move / swap with pane', '移动 / 交换面板'));
-      card.querySelector('.browser-surface').textContent = t('Enter a web address above. Desktop browser panes stay on this device.', '在上方输入网址。桌面浏览器面板仅保存在此设备。');
-      status(card, errorText(records.get(id)?.error || ''));
+      if (native || !card.querySelector('.browser-surface iframe')) {
+        card.querySelector('.browser-surface').textContent = t('Enter a web address above. Browser panes stay on this device.', '在上方输入网址。浏览器面板仅保存在此设备。');
+      }
+      if (!native) for (const name of ['back', 'forward', 'stop']) card.querySelector(`[data-browser-action="${name}"]`).hidden = true;
+      const iframe = card.querySelector('.browser-surface iframe');
+      if (iframe) iframe.title = t('Web page', '网页');
+      status(card, errorText(records.get(id)?.error || '') || (!native && iframe
+        ? t('Some sites block embedding. Use Open externally if needed.', '部分网站禁止嵌入，可使用“外部打开”。') : ''));
     }
     function ensure(id, index) {
       if (!isBrowser(id)) return null;
@@ -119,6 +155,7 @@
           if (!event.target.closest('button, select, input')) zoom(card);
         });
         label(card, id);
+        if (!native && records.get(id).url) frame(card, records.get(id).url);
         document.getElementById('grid').appendChild(card);
         drag(card);
       }
@@ -138,13 +175,14 @@
       for (const id of records.keys()) if (!slots().includes(id)) records.delete(id);
       save();
     }
-    function add(index) {
-      if (!enabled) return;
-      const id = 'browser~' + crypto.randomUUID();
-      records.set(id, { id, url: '' });
-      if (!place(id, index)) { records.delete(id); return; }
+    function add(index, url = '') {
+      if (url && !validUrl(url)) return false;
+      const id = 'browser~' + Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
+      records.set(id, { id, url });
+      if (!place(id, index)) { records.delete(id); return false; }
       save();
       cards.get(id)?.querySelector('.browser-address').focus();
+      return true;
     }
     function emptyButton(card, index) {
       if (!enabled) return;
@@ -156,7 +194,7 @@
       card.querySelector('.empty-slot-inner').appendChild(button);
     }
     async function sync() {
-      if (!enabled || busy) return;
+      if (!native || busy) return;
       const modal = !!document.querySelector('dialog[open], .modal-scrim:not([hidden]), #grid.drag-active');
       const zoomed = document.querySelector('.zoomed-pane');
       const panes = [...cards].map(([id, card]) => {
@@ -177,7 +215,7 @@
       catch { for (const card of cards.values()) status(card, t('Desktop browser unavailable. Check the address or reload the Dashboard.', '桌面浏览器暂不可用，请检查网址或刷新 Dashboard。')); }
       finally { busy = false; }
     }
-    if (enabled) {
+    if (native) {
       bridge.onState(state => {
         const card = cards.get(state.id);
         const record = records.get(state.id);
@@ -202,13 +240,13 @@
       new MutationObserver(() => { void sync(); }).observe(document.body, {
         subtree: true, attributes: true, attributeFilter: ['hidden', 'open', 'class', 'style'],
       });
-      new MutationObserver(() => {
-        for (const [id, card] of cards) label(card, id);
-        document.querySelectorAll('.new-browser-pane').forEach(button => {
-          button.textContent = t('Open browser pane', '打开浏览器面板');
-        });
-      }).observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] });
     }
-    return { enabled, isBrowser, ensure, reconcile, emptyButton, add };
+    new MutationObserver(() => {
+      for (const [id, card] of cards) label(card, id);
+      document.querySelectorAll('.new-browser-pane').forEach(button => {
+        button.textContent = t('Open browser pane', '打开浏览器面板');
+      });
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] });
+    return { enabled, isBrowser, ensure, reconcile, emptyButton, add, canOpen: url => !!validUrl(url), open: url => add(undefined, url) };
   };
 })();

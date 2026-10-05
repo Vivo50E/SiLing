@@ -12,9 +12,11 @@ This adds a recovery action; ordinary Ctrl+C continues to behave as terminal inp
 
 ## Switch pane type
 
-Choose **Switch pane type**, select Terminal, Claude, Codex or Cursor, check the project directory and click **Switch type**. This starts a new session in the same pane position. The previous session remains running in the background and can be reopened from Sessions. Its history stays with the original session; its linked files and palette are carried to the new session. An agent's conversation is not converted into a different agent's native conversation.
+Choose **Switch pane type**, select Terminal, Claude, Codex or Cursor, check the project directory and click **Switch type**. Choose **Keep running in background** or **Stop after the new session starts**; the form requires a choice. This starts a new session in the same pane position. Stop is attempted only after the new session exists. If stopping fails, a warning reports that the original may still be running; use Related sessions to inspect it and explicitly terminate it. No force kill is automatic. Its history stays with the original session; its linked files and palette are carried to the new session. An agent's conversation is not converted into a different agent's native conversation.
 
 Switching a Terminal pane to an agent starts that agent on the same **Dashboard node**, not inside an existing SSH connection. An SSH shell is still a separate remote connection; to manage an agent directly on that machine, configure it as a Remote Node. Both nodes need the updated Dashboard to use these controls.
+
+The pane header shows **Background N** for related live sessions that are not displayed in another pane. Click it to view their status, open a related session in this slot, or terminate it. Ended relatives remain available under **Related N**. Relationships are stored on the server and survive browser refreshes; earlier pane-switch receipts are also recognized. Remote nodes must be online for their status to be known.
 
 Failed starts keep the original pane. Repeated submissions of the same request reuse the recorded result. If startup was interrupted and the result is uncertain, check Sessions before reopening the switch form. If the user moved the source pane while startup was pending, the new session follows it; if the source was removed, only a free slot may be used.
 
@@ -23,6 +25,8 @@ Failed starts keep the original pane. Repeated submissions of the same request r
 在 pane 标题栏的 **⋯** 菜单中操作：
 
 - **断开 SSH**：适用于普通 Terminal。确认后直接终止当前前台 SSH 客户端，不等待远程响应；本地 shell 和 pane 保留。远程命令可能因连接断开而中断。不会停止后台 SSH 隧道或其他 pane，也不会改变普通 Ctrl+C 的含义。若使用 `exec ssh` 替换了本地 shell，则拒绝此操作，可使用原有的结束／重新打开终端功能。
-- **切换面板类型**：选择 Terminal／Claude／Codex／Cursor，检查工作目录后点击「切换类型」。新会话放到原 pane 位置；原会话保留在后台，可从会话列表重新打开。Files 和配色会继承，聊天历史仍属于原会话。
+- **切换面板类型**：选择 Terminal／Claude／Codex／Cursor，检查工作目录后点击「切换类型」。必须选择「保留在后台运行」或「新会话启动后结束旧会话」。新会话放到原 pane 位置；只有新会话启动成功才尝试结束旧会话。结束失败会明确提示，不会自动强杀。Files 和配色会继承，聊天历史仍属于原会话。
 
 从 SSH Terminal 切换到 Agent，启动位置是该 pane 所属的 Dashboard 节点，不会自动进入 SSH 远程机器。启动失败保留原 pane；不确定是否已启动时，先检查会话列表，再重新打开切换表单。
+
+新 pane 标题栏显示 **后台 N**，点开可查看、打开或结束关联会话。已结束的会话显示在「关联 N」中。关联关系保存在服务端，刷新页面后仍在；旧版切换记录也能识别。

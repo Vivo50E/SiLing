@@ -25,7 +25,7 @@ const wait = async (check, label) => {
   throw Error('Timed out: ' + label);
 };
 const evaluate = source => window.webContents.executeJavaScript(source, true);
-async function sendInput(contents, event) {
+async function sendInput(contents, event, selector = null) {
   // sendInputEvent requires the containing BrowserWindow to be focused.
   // A DOM input.focus() alone does not activate a background CI/test window.
   window.show();
@@ -34,6 +34,10 @@ async function sendInput(contents, event) {
   await wait(() => window.isFocused(), 'fixture window focus');
   contents.focus();
   await wait(() => contents.isFocused(), 'native input focus');
+  // Activating a macOS window can restore the previous focused control.
+  // Focus the fixture field after native window/view activation, then send
+  // the actual keyboard event (never assign its value programmatically).
+  if (selector) await contents.executeJavaScript(`document.querySelector(${JSON.stringify(selector)}).focus()`);
   contents.sendInputEvent(event);
 }
 
@@ -123,7 +127,7 @@ async function run() {
   await web.executeJavaScript(`location.hash='fixture-hash'`, true);
   await wait(() => evaluate(`document.querySelector('.browser-address').value.endsWith('#fixture-hash')`), 'in-page address updates');
   await web.executeJavaScript(`document.querySelector('input').focus()`);
-  await sendInput(web, { type: 'char', keyCode: 'x' });
+  await sendInput(web, { type: 'char', keyCode: 'x' }, 'input');
   await wait(() => web.executeJavaScript(`document.querySelector('input').value==='x'`), 'direct typing');
   await evaluate(`document.querySelector('[data-browser-action="zoom"]').click()`);
   await wait(() => pane.view.getBounds().width > 700, 'native zoom bounds');
@@ -164,7 +168,7 @@ async function run() {
   await wait(() => host.panes.size === 1 && [...host.panes.values()][0].view.webContents.getURL().endsWith('/restored'), 'Dashboard reload restores browser address');
   await wait(() => [...host.panes.values()][0].view.getVisible(), 'restored pane visible');
   const restoredContents = [...host.panes.values()][0].view.webContents;
-  await evaluate(`document.querySelector('.new-browser-pane').click()`);
+  await evaluate(`const preference=document.querySelector('#settings-open-links-internally');preference.value='pane';preference.dispatchEvent(new Event('change'));silingOpenWebUrl(${JSON.stringify(website+'/preference')},document.querySelector('.pane iframe').contentWindow)`);
   await evaluate(`{const card=[...document.querySelectorAll('.browser-card')].at(-1);card.querySelector('input').value=${JSON.stringify(website + '/another')};card.querySelector('form').requestSubmit();}`);
   await wait(() => host.panes.size === 2, 'two independent browser panes');
   await evaluate(`[...document.querySelectorAll('.browser-card')].at(-1).querySelector('[data-browser-action="close"]').click()`);

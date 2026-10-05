@@ -177,3 +177,10 @@ html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-mo
 #speckit-stage { max-width: 100%; }
 
 #new-switch-help, #new-switch-host-help { margin: 0; }
+
+.btn-related-sessions.has-background { border-color: var(--accent); color: var(--accent); }
+.related-session-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.related-session-row strong, .related-session-row span { grid-column: 1 / -1; overflow-wrap: anywhere; }
+.browser-surface iframe { display: block; width: 100%; height: 100%; border: 0; background: white; }
+
+.btn-related-sessions[hidden] { display: none !important; }
