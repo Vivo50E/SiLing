@@ -12,6 +12,8 @@
     "Delivery could not be confirmed. Check the terminal before sending again.": "无法确认发送结果。再次发送前请检查终端。",
     "Host resources": "主机资源",
     "Memory": "内存",
+    "Mem": "内存",
+    "Disk": "磁盘",
     "Output disk": "产出磁盘",
     "Resource request failed": "资源请求失败",
     "Partial data": "部分指标不可用",

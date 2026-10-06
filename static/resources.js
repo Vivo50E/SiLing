@@ -32,8 +32,10 @@
     const heading = node("span", summary); heading.className = "resource-summary-heading";
     const summaryTitle = node("strong", heading);
     const summaryStatus = node("small", heading);
+    const indicator = node("span", summary, "!"); indicator.className = "resource-summary-indicator";
+    indicator.setAttribute("aria-hidden", "true");
     const miniFields = [
-      ["cpu", "CPU"], ["memory", "Memory"], ["outputs_disk", "Output disk"],
+      ["cpu", "CPU"], ["memory", "Mem"], ["outputs_disk", "Disk"],
     ].map(([key, label]) => {
       const card = node("span", summary); card.className = "resource-mini"; card.dataset.summaryMetric = key;
       const ring = node("span", card); ring.className = "resource-ring"; ring.setAttribute("aria-hidden", "true");
@@ -104,6 +106,7 @@
         : fields.some(field => field.card.dataset.status === "stale") ? "stale"
         : fields.some(field => field.card.dataset.status !== "fresh") ? "partial" : "fresh";
       summary.dataset.status = state;
+      indicator.textContent = state === "disabled" ? "–" : "!";
       summaryTitle.textContent = t("Host resources");
       const statusLabel = {disabled:"Disabled", unavailable:"Resource request failed", stale:"Stale",
         partial:last ? "Partial data" : "Loading snapshot…", fresh:"Every 5s"}[state];
@@ -119,7 +122,7 @@
         mini.ring.style.setProperty("--resource-fill", `${percent ?? 0}%`);
         mini.card.title = [detail.title.textContent, detail.value.textContent, detail.meta.textContent].join(" · ");
       }
-      summary.title = [host.textContent, notice.textContent, t("Memory used = total − available. Disk usage is for the output volume."), t("Open resource details")].join("\n");
+      summary.title = [host.textContent, t(statusLabel), notice.textContent, t("Memory used = total − available. Disk usage is for the output volume."), t("Open resource details")].join("\n");
       summary.setAttribute("aria-label", [host.textContent, t(statusLabel),
         ...miniFields.map(field => `${t(field.label)} ${field.value.textContent}`), t("Open resource details")].join(" · "));
     }
