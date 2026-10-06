@@ -147,9 +147,13 @@ try {
   const clearThenRender='process.stdout.write("\\x1b[2J\\x1b[3J\\x1b[H");setTimeout(()=>process.stdout.write("CLEAR_REPAINT_FINISHED\\n"),200)';
   const hook=process.env.CURSOR_TEST_HOOK || path.join(root,'scripts/cursor-sync-output.cjs');
   tmux('send-keys','-t','check',`env SILING_CURSOR_SYNC_ONCE=1 NODE_OPTIONS=${shellQuote('--require="'+hook+'"')} node -e ${shellQuote(clearThenRender)}`,'Enter');
-  await pause(700);
+  for(let attempt=0;attempt<50;attempt++){
+    if(tmux('capture-pane','-t','check','-p').split('\n').some(line=>line.trim()==='CLEAR_REPAINT_FINISHED'))break;
+    await pause(100);
+  }
+  await pause(200);
   assert.equal(await evaluate('window.blankPaints'),0,'Separate erase/repaint writes must not publish a blank browser frame');
-  assert.ok(tmux('capture-pane','-t','check','-p').includes('CLEAR_REPAINT_FINISHED'));
+  assert.ok(tmux('capture-pane','-t','check','-p').split('\n').some(line=>line.trim()==='CLEAR_REPAINT_FINISHED'));
   await evaluate('window.blankObserver.dispose()');
   console.log('PASS: clear-then-render stays visible across the complete terminal pipeline');
 
@@ -275,7 +279,11 @@ finally:
   await evaluate(`window.frameElement.dataset.fileContext='true';window.silingFileContextForRow=()=> 'historical-ssh-context';`);
   tmux('send-keys','-t','check',"printf '%s\\n' 'reports/relative-result.md'",'Enter');
   await pause(500);
-  const relativeCell=await evaluate(`(()=>{const b=term.buffer.active;const r=document.querySelector('.xterm-screen').getBoundingClientRect();for(let y=b.viewportY;y<b.length;y++){if(b.getLine(y).translateToString(true)==='reports/relative-result.md')return{x:r.x+2.5*r.width/term.cols,y:r.y+(y-b.viewportY+.5)*r.height/term.rows};}})()`);
+  let relativeCell;
+  for(let attempt=0;attempt<50 && !relativeCell;attempt++){
+    relativeCell=await evaluate(`(()=>{const b=term.buffer.active;const r=document.querySelector('.xterm-screen').getBoundingClientRect();for(let y=b.viewportY;y<b.length;y++){if(b.getLine(y).translateToString(true)==='reports/relative-result.md')return{x:r.x+2.5*r.width/term.cols,y:r.y+(y-b.viewportY+.5)*r.height/term.rows};}})()`);
+    if(!relativeCell)await pause(100);
+  }
   assert.ok(relativeCell);
   await cdp('Input.dispatchMouseEvent',{type:'mouseMoved',...relativeCell,buttons:0});
   assert.ok(await evaluate(`document.querySelector('.siling-link-highlight')?.children.length>0`));
