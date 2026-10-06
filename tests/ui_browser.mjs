@@ -69,6 +69,11 @@ const server = http.createServer((req, res) => {
     if (resourceMode === 'error') {res.writeHead(503); return res.end('{}');}
     if (resourceMode === 'unauthorized') {res.writeHead(401); return res.end('{}');}
     if (resourceMode === 'delay') {delayedResource = () => res.end('{}'); return;}
+    if (['dependency_missing','dependency_unavailable'].includes(resourceMode)) {
+      return res.end(JSON.stringify({schema_version:1, enabled:true, host:'fixture-host', scope:'dashboard_host',
+        metrics:Object.fromEntries(['cpu','memory','swap','outputs_disk','projects_disk'].map(key=>[key,
+          {value:null,observed_at:null,age_s:null,status:'unavailable',source:'psutil',error:resourceMode}]))}));
+    }
     const metric = value => ({value, observed_at:Date.now()/1000, age_s:0,
       status:resourceMode === 'disabled' ? 'disabled' : 'fresh', source:'psutil', error:''});
     return res.end(JSON.stringify({schema_version:1, enabled:resourceMode !== 'disabled',
@@ -77,7 +82,7 @@ const server = http.createServer((req, res) => {
         memory:metric({total_bytes:8589934592,available_bytes:2147483648}),
         swap:metric({total_bytes:1073741824,used_bytes:0}),
         outputs_disk:metric({total_bytes:100000000000,free_bytes:50000000000}),
-        projects_disk:{value:null,observed_at:null,age_s:null,status:'unknown',error:'unavailable',source:'psutil'}}}));
+        projects_disk:{value:null,observed_at:null,age_s:null,status:resourceMode==='path_missing'?'unavailable':'unknown',error:resourceMode==='path_missing'?'path_missing':'unavailable',source:'psutil'}}}));
   }
   if (url.pathname.endsWith('/read')) {
     res.setHeader('Content-Type','application/json');

@@ -463,7 +463,11 @@ This first increment is observation only: native memory pressure, session rankin
 remote aggregation, trends and pressure alerts are not implemented. Nonzero swap
 alone does not prove exhaustion; archiving does not release running agents.
 Install updated `requirements.txt` in the Dashboard environment for `psutil`;
-a missing collector dependency shows unavailable without preventing startup.
+a missing collector dependency shows an explicit `psutil` installation hint without
+preventing startup. Install into the interpreter/virtualenv actually used by the
+Dashboard, not a different shell Python; collection retries automatically without
+restarting agents. A missing configured project directory is reported separately;
+it does not mean the host disk is unavailable, and monitoring never creates it.
 Set `ORCH_RESOURCE_MONITOR_ENABLED=0` before an explicitly approved service
 restart to disable collection. The setting is service-wide, not browser-local.
 

@@ -2,6 +2,13 @@
 (() => {
   const zh = {
     "Host resources": "主机资源",
+    "Resource collector needs psutil. Install requirements.txt in the Dashboard's Python environment; collection retries automatically.": "资源采集器缺少 psutil。请在 Dashboard 使用的 Python 环境中安装 requirements.txt；采集会自动重试。",
+    "Some resource metrics could not be collected — see the reason below": "部分资源指标采集失败 — 请查看下方原因",
+    "Missing dependency: psutil": "缺少依赖：psutil",
+    "Cannot load psutil — repair the Dashboard's Python environment": "无法加载 psutil — 请修复 Dashboard 的 Python 环境",
+    "Configured directory does not exist": "配置的目录不存在",
+    "Permission denied while collecting this metric": "采集此指标时权限不足",
+    "Collection failed": "采集失败",
     "Dashboard host: {host}": "Dashboard 主机：{host}",
     "CPU — all cores, 0–100%": "CPU — 全部核心归一化，0–100%",
     "Memory — available / total": "内存 — 可用 / 总量",

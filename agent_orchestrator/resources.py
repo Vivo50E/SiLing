@@ -24,7 +24,14 @@ MAX_AGE = 15.0
 def collect(outputs: str, projects: str, provider=None) -> dict:
     """Run only in the disposable child; injected provider enables OS fixtures."""
     if provider is None:
-        import psutil as provider
+        try:
+            import psutil as provider
+        except (ImportError, OSError) as exc:
+            error = ("dependency_missing" if isinstance(exc, ModuleNotFoundError)
+                     and exc.name == "psutil" else "dependency_unavailable")
+            # Return a safe protocol result, never raw import paths or stderr.
+            return {key: {"value": None, "observed_at": None, "error": error}
+                    for key in METRICS}
 
     def cpu():
         values = provider.cpu_times()._asdict()
@@ -52,9 +59,12 @@ def collect(outputs: str, projects: str, provider=None) -> dict:
                       ("projects_disk", lambda: disk(projects))):
         try:
             result[key] = {"value": read(), "observed_at": time.time(), "error": ""}
-        except Exception:
+        except Exception as exc:
             # Do not return paths, environment or raw exception messages.
-            result[key] = {"value": None, "observed_at": None, "error": "unavailable"}
+            error = ("path_missing" if isinstance(exc, FileNotFoundError)
+                     else "permission_denied" if isinstance(exc, PermissionError)
+                     else "unavailable")
+            result[key] = {"value": None, "observed_at": None, "error": error}
     return result
 
 
@@ -165,7 +175,8 @@ class ResourceMonitor:
                 item["age_s"] = round(age, 2) if age is not None else None
                 item["status"] = (
                     "disabled" if not self.enabled else
-                    "unknown" if observed is None else
+                    ("unknown" if item["error"] in {"pending", "warming_up"}
+                     else "unavailable") if observed is None else
                     "stale" if age >= MAX_AGE else
                     "unavailable" if item["error"] else "fresh"
                 )

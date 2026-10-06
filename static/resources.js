@@ -42,8 +42,13 @@
       title.textContent = t("Host resources"); close.setAttribute("aria-label", t("Close"));
       refresh.textContent = t("Refresh snapshot"); refresh.disabled = !!controller;
       host.textContent = t("Dashboard host: {host}", {host:last?.host || t("unknown")});
+      const metrics = Object.values(last?.metrics || {});
+      const missingDependency = metrics.some(metric => metric?.error === "dependency_missing");
+      const collectionFailed = metrics.some(metric => metric?.error && !["pending", "warming_up"].includes(metric.error));
       notice.textContent = last?.enabled === false ? t("Resource monitoring disabled on the server")
         : failed ? t("Resource request failed — previous values are not live")
+        : missingDependency ? t("Resource collector needs psutil. Install requirements.txt in the Dashboard's Python environment; collection retries automatically.")
+        : collectionFailed ? t("Some resource metrics could not be collected — see the reason below")
         : !last ? t("Loading snapshot…") : t("Read-only · sampled every 5 seconds");
       help.textContent = t("This Dashboard host only, not your phone or remote nodes. Native memory pressure is unavailable; available memory and nonzero swap are not pressure verdicts. No alerts or automatic session controls. Archiving does not free running agents.");
       const elapsed = Math.max(0, (Date.now() - receivedWall) / 1000,
@@ -63,8 +68,13 @@
         const labels = {fresh:"Observed", stale:"Stale", unavailable:"Metric unavailable", unknown:"unknown", disabled:"Disabled"};
         const when = Number(metric?.observed_at);
         const time = when > 0 ? new Date(when * 1000).toLocaleTimeString(document.documentElement.lang) : "—";
-        const reason = metric?.error === "timeout" ? t("Collection timed out")
-          : metric?.error === "warming_up" ? t("Waiting for two CPU samples") : "";
+        const reasons = {timeout:"Collection timed out", warming_up:"Waiting for two CPU samples",
+          dependency_missing:"Missing dependency: psutil",
+          dependency_unavailable:"Cannot load psutil — repair the Dashboard's Python environment",
+          path_missing:"Configured directory does not exist",
+          permission_denied:"Permission denied while collecting this metric",
+          unavailable:"Collection failed"};
+        const reason = Object.hasOwn(reasons, metric?.error) ? t(reasons[metric.error]) : "";
         field.meta.textContent = [t(labels[state] || "unknown"), time, metric?.source || "", reason].filter(Boolean).join(" · ");
       }
     }

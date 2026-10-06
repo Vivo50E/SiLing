@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -26,6 +27,50 @@ def sample(at=100, total=100, idle=40):
 class ResourceTests(unittest.TestCase):
     def setUp(self):
         self.monitor = resources.ResourceMonitor(Path("/fixture/output"), Path("/fixture/project"))
+
+    def test_real_worker_without_site_packages_reports_missing_dependency(self):
+        # -S reproduces an actual interpreter without installed psutil, even
+        # when the developer/test environment has all dependencies installed.
+        completed = subprocess.run(
+            [sys.executable, "-S", resources.__file__, "/fixture/output", "/fixture/project"],
+            capture_output=True, text=True, timeout=5,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        sample_data = json.loads(completed.stdout)
+        self.assertTrue(all(item["error"] == "dependency_missing" for item in sample_data.values()))
+        self.assertNotIn("Traceback", completed.stderr)
+        with patch.object(resources.subprocess, "run", return_value=completed):
+            self.monitor._sample()
+        for item in self.monitor.snapshot()["metrics"].values():
+            self.assertEqual(item["status"], "unavailable")
+            self.assertEqual(item["error"], "dependency_missing")
+            self.assertIsNone(item["observed_at"])
+            self.assertIsNone(item["value"])
+
+    def test_missing_dependency_retains_old_evidence_and_can_recover(self):
+        self.monitor._accept(sample())
+        failed = {key: {"value": None, "error": "dependency_missing"} for key in resources.METRICS}
+        self.monitor._accept(failed)
+        item = self.monitor.snapshot()["metrics"]["memory"]
+        self.assertEqual(item["observed_at"], 100)
+        self.assertEqual(item["value"]["available_bytes"], 300)
+        self.assertEqual(item["error"], "dependency_missing")
+        self.monitor._accept(sample(time.time()))
+        self.assertEqual(self.monitor.snapshot()["metrics"]["memory"]["status"], "fresh")
+
+    def test_import_failure_is_sanitized_and_distinct_from_missing_package(self):
+        import builtins
+        original = builtins.__import__
+        for failure in (ImportError("private native module path"),
+                        ModuleNotFoundError("private path", name="other_dependency")):
+            def import_module(name, *args, **kwargs):
+                if name == "psutil":
+                    raise failure
+                return original(name, *args, **kwargs)
+            with patch.object(builtins, "__import__", side_effect=import_module):
+                data = resources.collect("/fixture/output", "/fixture/project")
+            self.assertTrue(all(item["error"] == "dependency_unavailable" for item in data.values()))
+            self.assertNotIn("private", json.dumps(data))
 
     def test_cpu_normalized_deltas_not_first_sample_zero(self):
         self.monitor._accept(sample())
@@ -97,7 +142,7 @@ class ResourceTests(unittest.TestCase):
             self.assertNotIn("private-command", json.dumps(self.monitor.snapshot()))
         with patch.object(resources.subprocess, "run", return_value=SimpleNamespace(stdout='{"cpu": 9}')):
             self.monitor._sample()
-        self.assertEqual(self.monitor.snapshot()["metrics"]["cpu"]["status"], "unknown")
+        self.assertEqual(self.monitor.snapshot()["metrics"]["cpu"]["status"], "unavailable")
 
     def test_unsupported_platform_does_not_invent_observations(self):
         self.monitor.platform = "Unsupported"
@@ -126,13 +171,14 @@ class ResourceTests(unittest.TestCase):
             provider.cpu_count.return_value = 8
             provider.virtual_memory.return_value = SimpleNamespace(total=1000, available=200)
             provider.swap_memory.side_effect = PermissionError("secret")
-            provider.disk_usage.side_effect = [SimpleNamespace(total=2000, free=500), OSError("private")]
+            provider.disk_usage.side_effect = [SimpleNamespace(total=2000, free=500), FileNotFoundError("private")]
             value = resources.collect("output-fixture", "project-fixture", provider)
             self.assertEqual(value["cpu"]["value"]["total"], expected)
             self.assertEqual(value["memory"]["value"]["available_bytes"], 200)
             self.assertEqual(value["outputs_disk"]["value"]["free_bytes"], 500)
             self.assertIsNone(value["projects_disk"]["observed_at"])
-            self.assertEqual(value["swap"]["error"], "unavailable")
+            self.assertEqual(value["swap"]["error"], "permission_denied")
+            self.assertEqual(value["projects_disk"]["error"], "path_missing")
             self.assertNotIn("secret", json.dumps(value))
 
     def test_api_is_authenticated_cached_no_store_and_not_public_health(self):
