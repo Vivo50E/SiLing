@@ -708,9 +708,11 @@ refreshed on startup, every five minutes, and whenever the button is clicked.
 Updates require a clean working tree and a fast-forward path. The first click
 runs the complete suite against the exact candidate—upstream code is tested in
 a temporary detached worktree without changing local files. After tests pass,
-the button becomes **approve update**; the second click performs the exact
-verified fast-forward and restarts the Dashboard. Changing either commit
-invalidates the approval token. The workflow never applies uncommitted code,
+an approval reminder opens even if Settings was closed, showing the verified
+branch and commit. Choose **Approve and restart** to apply it, or **Later**
+to keep working; the **approve update** button in Settings remains available.
+Approval performs the exact verified fast-forward and restarts the Dashboard.
+Changing either commit invalidates the approval token. The workflow never applies uncommitted code,
 force-merges, or rebases user work.
 
 Verification uses the Dashboard's Python runtime for both the suite and nested

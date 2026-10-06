@@ -3357,6 +3357,15 @@
       </div>
     </dialog>
 
+    <dialog class="ui-dialog" id="self-update-reminder" aria-labelledby="self-update-reminder-title" aria-describedby="self-update-reminder-help" style="width:min(520px,90vw);max-height:85vh;overflow:auto;box-sizing:border-box">
+      <div class="modal-head"><h2 id="self-update-reminder-title" data-ui-message="Update%20tests%20passed">Update tests passed</h2></div>
+      <div class="modal-body">
+        <p id="self-update-reminder-candidate" style="overflow-wrap:anywhere"></p>
+        <p id="self-update-reminder-help" data-ui-message="The%20verified%20update%20is%20ready%20for%20approval.%20Applying%20it%20restarts%20the%20Dashboard%3B%20agent%20sessions%20keep%20running.">The verified update is ready for approval. Applying it restarts the Dashboard; agent sessions keep running.</p>
+        <div class="panel-actions"><button id="self-update-later" autofocus data-ui-message="Later">Later</button><button id="self-update-approve" data-ui-message="Approve%20and%20restart">Approve and restart</button></div>
+      </div>
+    </dialog>
+
     <div id="pane-group-bar"></div>
     <div class="grid" id="grid">
       <div class="empty-state" id="empty-state"><span data-ui-message=Click%20a%20session%20on%20the%20left%2C>
@@ -3868,6 +3877,23 @@
   let selfUpdateStatus = { available: false, candidates: [] };
   let selfUpdateVerification = null;
   let selfUpdatePhase = "idle";
+  let selfUpdateActionBusy = false;
+  const selfUpdateReminder = $("self-update-reminder");
+  ui.containDialogFocus(selfUpdateReminder);
+  $("self-update-later").addEventListener("click", () => selfUpdateReminder.close());
+  selfUpdateReminder.addEventListener("close", () => {
+    (settingsModal.open ? $("btn-self-update") : $("btn-settings")).focus({preventScroll:true});
+  });
+  $("self-update-approve").addEventListener("click", () => runSelfUpdate(true));
+
+  function showSelfUpdateReminder() {
+    if (!verificationStillMatches()) return;
+    const candidate = eligibleSelfUpdateCandidate();
+    $("self-update-reminder-candidate").textContent = `${candidate.branch} · ${candidate.short_head || candidate.head}`;
+    $("self-update-approve").disabled = false;
+    selfUpdateReminder.showModal();
+    $("self-update-later").focus({preventScroll:true});
+  }
 
   function eligibleSelfUpdateCandidate() {
     return (selfUpdateStatus.candidates || []).find(item => item.eligible) || null;
@@ -3888,6 +3914,7 @@
     const button = $("btn-self-update");
     if (selfUpdateVerification && !verificationStillMatches()) {
       selfUpdateVerification = null;
+      if (selfUpdateReminder.open) selfUpdateReminder.close();
       if (selfUpdatePhase === "verified") selfUpdatePhase = "idle";
     }
     button.classList.toggle("available", pending.length > 0 && selfUpdatePhase === "idle");
@@ -3945,60 +3972,73 @@
     }
   }
 
-  $("btn-self-update").addEventListener("click", async () => {
-    const button = $("btn-self-update");
-    if (selfUpdatePhase === "failed") selfUpdatePhase = "idle";
-    await pollSelfUpdateStatus(false, selfUpdatePhase !== "verified");
-    const candidate = eligibleSelfUpdateCandidate();
-    if (!candidate) return;
+  async function runSelfUpdate(approveOnly = false) {
+    if (selfUpdateActionBusy) return;
+    selfUpdateActionBusy = true;
+    $("self-update-approve").disabled = true;
+    try {
+      const button = $("btn-self-update");
+      if (selfUpdatePhase === "failed") selfUpdatePhase = "idle";
+      await pollSelfUpdateStatus(false, selfUpdatePhase !== "verified");
+      const candidate = eligibleSelfUpdateCandidate();
+      if (!candidate) return;
+      // A reminder approves only the candidate it displayed, never a fresh verification.
+      if (approveOnly && !verificationStillMatches()) return;
 
-    if (!verificationStillMatches()) {
-      selfUpdatePhase = "verifying";
-      selfUpdateVerification = null;
+      if (!verificationStillMatches()) {
+        selfUpdatePhase = "verifying";
+        selfUpdateVerification = null;
+        renderSelfUpdateStatus();
+        try {
+          const result = await api("/api/self-update/verify", {
+            method: "POST",
+            headers: { "X-Orch-Self-Update": "reviewed" },
+            body: { branch: candidate.branch },
+          });
+          if (!result.ok || !result.verification_token) {
+            throw new Error(result.output || "Tests failed");
+          }
+          selfUpdateVerification = result;
+          selfUpdatePhase = "verified";
+          renderSelfUpdateStatus();
+          showSelfUpdateReminder();
+        } catch (e) {
+          selfUpdatePhase = "failed";
+          renderSelfUpdateStatus();
+          button.title = "Verification failed: " + e.message;
+        }
+        return;
+      }
+
+      selfUpdatePhase = "applying";
+      if (selfUpdateReminder.open) selfUpdateReminder.close();
       renderSelfUpdateStatus();
       try {
-        const result = await api("/api/self-update/verify", {
+        await api("/api/self-update/apply", {
           method: "POST",
           headers: { "X-Orch-Self-Update": "reviewed" },
-          body: { branch: candidate.branch },
+          body: {
+            branch: candidate.branch,
+            verification_token: selfUpdateVerification.verification_token,
+            confirmation: "APPROVE",
+            restart: true,
+          },
         });
-        if (!result.ok || !result.verification_token) {
-          throw new Error(result.output || "Tests failed");
-        }
-        selfUpdateVerification = result;
-        selfUpdatePhase = "verified";
-        renderSelfUpdateStatus();
+        button.textContent = ui.message("restarting…");
+        button.title = "Update applied. Dashboard is restarting; active tmux sessions continue running.";
       } catch (e) {
+        selfUpdateVerification = null;
         selfUpdatePhase = "failed";
         renderSelfUpdateStatus();
-        button.title = "Verification failed: " + e.message;
+        button.title = "Apply failed: " + e.message;
+        await pollSelfUpdateStatus(true);
       }
-      return;
+    } finally {
+      selfUpdateActionBusy = false;
+      $("self-update-approve").disabled = false;
     }
-
-    selfUpdatePhase = "applying";
-    renderSelfUpdateStatus();
-    try {
-      await api("/api/self-update/apply", {
-        method: "POST",
-        headers: { "X-Orch-Self-Update": "reviewed" },
-        body: {
-          branch: candidate.branch,
-          verification_token: selfUpdateVerification.verification_token,
-          confirmation: "APPROVE",
-          restart: true,
-        },
-      });
-      button.textContent = ui.message("restarting…");
-      button.title = "Update applied. Dashboard is restarting; active tmux sessions continue running.";
-    } catch (e) {
-      selfUpdateVerification = null;
-      selfUpdatePhase = "failed";
-      renderSelfUpdateStatus();
-      button.title = "Apply failed: " + e.message;
-      await pollSelfUpdateStatus(true);
-    }
-  });
+  }
+  $("btn-self-update").addEventListener("click", () => runSelfUpdate());
 
   // ---------- Read-only workspace sync status ----------
   let syncStatus = { enabled: false };

@@ -587,8 +587,10 @@ Dashboard 顶部的 **apply update** 会同时发现两类更新：位于独立 
 
 更新要求工作区干净且能够 fast-forward。第一次点击会针对精确候选运行完整测试；
 upstream 代码会在临时 detached worktree 中测试，不会提前改变本地文件。测试通过后
-按钮变为 **approve update**，第二次点击才执行已验证 commit 的 fast-forward 并
-重启 Dashboard。任一 commit 变化都会使批准令牌失效。该流程不会应用未提交代码、
+即使已关闭设置，也会弹出批准提醒并显示已验证的分支和 commit。选择
+**批准并重启** 应用更新，或选择 **稍后** 继续工作；设置里的 **approve update**
+按钮仍可用于批准。批准后才执行已验证 commit 的 fast-forward 并重启 Dashboard。
+任一 commit 变化都会使批准令牌失效。该流程不会应用未提交代码、
 force merge 或 rebase 用户工作。
 
 验证测试及其 Python CLI 子进程统一使用 Dashboard 的 Python 运行环境，即使临时

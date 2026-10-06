@@ -26,6 +26,9 @@ const sessions = ['claude', 'codex', 'terminal', 'cursor', 'custom-agent'].map((
   tmux_session: `fixture-${i}`, terminal_theme: 'soft-dark', panel_state: i === 0 ? 'p0' : '',
   remote: i === 4, node_id: i === 4 ? 'fixture-remote' : '', node_online: i !== 4,
 }));
+let updateHead = "b".repeat(40), updateMode = "ok", updateReply;
+const updateApplies = [];
+const updateCandidate = () => ({eligible:true,branch:"agent/self-improve-fixture",head:updateHead,short_head:updateHead.slice(0,7),target_head:"a".repeat(40),ahead:1});
 const requests = [];
 const mobileInputs = [];
 let mobileInputMode = 'ok', mobileInputReply;
@@ -77,6 +80,19 @@ let truncatePreview = false;
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   requests.push({ method: req.method, path: url.pathname });
+  if (url.pathname.startsWith('/api/self-update')) {
+    res.setHeader('Content-Type','application/json');
+    if (url.pathname.endsWith('/verify')) {
+      const candidate = updateCandidate();
+      const reply = () => res.end(JSON.stringify(updateMode === 'failed' ? {ok:false,output:'Fixture tests failed'} : {...candidate,candidate_head:candidate.head,ok:true,verification_token:'fixture-'+candidate.head,expires_in_seconds:600}));
+      if (updateMode === 'delay') {updateReply=reply;return;}
+      reply();return;
+    }
+    if (url.pathname.endsWith('/apply')) {
+      let raw='';req.on('data',c=>raw+=c);req.on('end',()=>{updateApplies.push(JSON.parse(raw));res.end('{"ok":true}');});return;
+    }
+    return res.end(JSON.stringify({available:true,candidates:[updateCandidate()]}));
+  }
   if (url.pathname.endsWith('/input')) {
     res.setHeader('Content-Type','application/json');
     let raw='';req.on('data',chunk=>raw+=chunk);req.on('end',()=>{
@@ -874,6 +890,45 @@ try {
     {method:'POST',path:'/api/sessions/fixture-2/folders'},
     {method:'POST',path:'/api/sessions/fixture-2/ssh-file'},
   ], 'Only three boots, nine explicit mobile inputs and clicked files may mutate other state');
+  // Completion must remain visible after Settings closes, without automatic approval.
+  updateMode='delay';
+  await evaluate(`document.querySelector('#btn-settings').click();document.querySelector('#btn-self-update').click();document.querySelector('#btn-self-update').click();`);
+  for(let i=0;i<100&&!updateReply;i++) await pause(50);
+  assert.ok(updateReply,'Verification starts');
+  await evaluate(`document.querySelector('#settings-close-2').click()`);
+  updateReply(); updateMode='ok';
+  await waitFor(`document.querySelector('#self-update-reminder').open`);
+  assert.equal(requests.filter(r=>r.path==='/api/self-update/verify').length,1,'Repeated clicks do not duplicate verification');
+  assert.ok(await evaluate(`document.querySelector('#self-update-reminder-candidate').textContent.includes('bbbbbbb')`));
+  assert.equal(await evaluate(`document.activeElement.id`),'self-update-later','Completion focuses the safe dismissal');
+  assert.equal(updateApplies.length,0,'Completion never auto-applies');
+  await screenshot('update-reminder-desktop');
+  await evaluate(`document.querySelector('#self-update-later').click()`);
+  await pause(200);
+  assert.equal(await evaluate(`document.querySelector('#self-update-reminder').open`),false,'Later dismisses the reminder');
+  assert.ok(await evaluate(`document.querySelector('#btn-self-update').classList.contains('verified')`),'Later preserves approval in Settings');
+  updateHead='c'.repeat(40);
+  await evaluate(`document.querySelector('#btn-self-update').click()`);
+  await waitFor(`document.querySelector('#self-update-reminder').open`);
+  updateHead='d'.repeat(40);
+  await evaluate(`document.querySelector('#self-update-approve').click()`);
+  await waitFor(`!document.querySelector('#self-update-reminder').open`);
+  assert.equal(updateApplies.length,0,'A stale reminder cannot approve a changed commit');
+  assert.equal(requests.filter(r=>r.path==='/api/self-update/verify').length,2,'Stale approval does not start new verification');
+  updateMode='failed';
+  await evaluate(`document.querySelector('#btn-self-update').click()`);
+  await waitFor(`document.querySelector('#btn-self-update').classList.contains('failed')`);
+  assert.equal(await evaluate(`document.querySelector('#self-update-reminder').open`),false,'Failed verification never offers approval');
+  updateMode='ok';
+  await viewport(320,740);
+  await evaluate(`document.querySelector('#btn-self-update').click()`);
+  await waitFor(`document.querySelector('#self-update-reminder').open`);
+  assert.ok(await evaluate(`(()=>{const r=document.querySelector('#self-update-reminder').getBoundingClientRect();return r.x>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight;})()`),'Approval reminder fits a narrow viewport');
+  await screenshot('update-reminder-mobile');
+  await evaluate(`document.querySelector('#self-update-approve').click();document.querySelector('#self-update-approve').click()`);
+  await waitFor(`!document.querySelector('#self-update-reminder').open`);
+  for(let i=0;i<100&&!updateApplies.length;i++) await pause(50);
+  assert.deepEqual(updateApplies,[{branch:'agent/self-improve-fixture',verification_token:'fixture-'+updateHead,confirmation:'APPROVE',restart:true}],'Explicit approval applies exactly once with the verified token');
   // Hold a real UI request open, fill its intended slot, then return the result.
   await viewport(1280, 800);
   await evaluate(`document.querySelector('[data-run-id="fixture-1"] .btn-pane-more').click();document.querySelector('[data-run-id="fixture-1"] .btn-unpin').click();`);
