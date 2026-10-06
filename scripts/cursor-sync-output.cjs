@@ -139,4 +139,10 @@ if (process.env.SILING_CURSOR_SYNC_ONCE === '1') {
   if (previous) process.env.NODE_OPTIONS = previous;
   else delete process.env.NODE_OPTIONS;
   install(process.stdout);
+  if (process.env.ORCH_AGENT_TYPE === 'cursor' || process.env.ORCH_AGENT_TYPE === 'agent') {
+    const index = process.argv.indexOf('--resume');
+    if (index >= 0) require('./cursor-model-state.cjs').install({
+      runDir: process.env.ORCH_RUN_DIR, conversationId: process.argv[index + 1]
+    });
+  }
 }
