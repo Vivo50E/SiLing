@@ -25,6 +25,7 @@
 | AGENT-01 | FR-022、US6 | [agentBadge](../../static/ui-foundation.js)、[未知名称/图标测试](../../tests/test_ui_foundation.py)、[历史美化报告](../../docs/uiux-visual-polish.md) | 已有五种形状及安全名称回退；全部展示位置一致性待验收。原文建议 Lucide 不再作为新增依赖要求。 |
 | STATE-01 | FR-010/013、US3 | [生命周期投影](../../agent_orchestrator/session_lifecycle.py)、[生命周期测试](../../tests/test_session_lifecycle.py)、[重启测试](../../tests/test_agent_restart.py) | 执行/连接/来源/时间/尝试链路已有；人工角色/优先级/标记仍共享 `panel_state`。展示可分开，持久化仍互斥；不能宣称数据迁移已完成。 |
 | STATE-02 | FR-011/012、US3 | [原生活动](../../agent_orchestrator/native_activity.py)、[活动测试](../../tests/test_native_activity.py)、Dashboard 现有提醒 | 原生观察和提醒不等于统一待处理中心或 300 秒心跳契约；统一事件确认、过期检查属于计划。 |
+| RESOURCE-01（新增） | FR-030/031/032/033、US3-A6/A7/A8/A9、SC-012/013 | [现有 health/会话接口](../../agent_orchestrator/dashboard.py)、[生命周期投影](../../agent_orchestrator/session_lifecycle.py)、[认证测试](../../tests/test_dashboard_security.py) | 2026-10-05 新增需求，尚未实现。health 仅有服务/快照状态，busy/原生活动不是 CPU/内存指标。需主机概览、尽力而为的会话归属、资源告警/过期证据及有界采集；详细指标不能直接扩充进公开 health。 |
 | MOBILE-01 | FR-007、US2 | [手机控制器](../../static/mobile-reader.js)、[计划](plan.md)、[测试](../../tests/mobile_browser.mjs) | 2026-10-05 增量新增列表 → 单会话只读 → 返回、单个显式终端、时间/来源/截断证据与桌面状态隔离；真机验收仍待完成，不等于整个 US2 完成。 |
 | MOBILE-02 | FR-008/009/026、US2 | [终端按键测试](../../tests/test_terminal_keys.py)、[浏览器样本](../../tests/ui_browser.mjs) | 输入基础不代表软键盘、安全区、草稿隔离和未知发送结果全链路通过。计划/待真机验证。 |
 | FILE-01 | FR-014/015/016、US4 | [产出契约](../../agent_orchestrator/artifacts.py)、[产出测试](../../tests/test_artifacts.py)、[SSH Files 测试](../../tests/test_ssh_files.py)、[Markdown 对比度记录](../../docs/markdown-preview-contrast.md) | 用途、来源和验证状态已有；手机列表/详情导航和六类资源矩阵待验收。 |
@@ -45,6 +46,10 @@ B 对应 US2/4；C 对应 US3 和 US5 的服务配置部分。
 用户随后要求插入 Archive 需求：下一候选切片为 **US1-A8/A9/A10 手动会话归档**，桌面优先、手机兼容。
 这次只扩充需求；现有 plan/tasks/validation 仍只证明手机阅读切片，不计入归档完成度。
 “归档不停止 Agent”和共享作用域为建议默认，先确认语义再为此切片单独做计划与数据兼容设计。
+
+用户又补充 **US3-A6–A9 多会话资源压力监控**：与归档分开排期，先交付主机只读指标/新鲜度，
+再验证占用归属和告警。不能用“归档”代替释放进程资源，也不能把 5 分钟任务心跳当作资源采样。
+采样周期、告警默认值和开销预算需在此切片的计划中确认；本轮没有启用资源采集或做负载压测。
 
 选定切片后才运行 `$speckit-plan` → `$speckit-tasks` → `$speckit-analyze`；
 每项任务关联 FR/US/SC 与行为测试。原有契约和数据结构作为研究输入，不把全项目推倒重写。

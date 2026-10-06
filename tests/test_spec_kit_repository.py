@@ -102,6 +102,21 @@ class SpecKitRepositoryTests(unittest.TestCase):
                     self.assertTrue(resolved.is_relative_to(ROOT.resolve()))
                     self.assertTrue(resolved.exists(), str(resolved))
 
+    def test_acceptance_scenario_ids_are_unique_and_references_resolve(self):
+        text = (ROOT / FEATURE / "spec.md").read_text()
+        defined = re.findall(r"^\d+\. \*\*(US\d+-A\d+) Given\*\*", text, re.M)
+        self.assertTrue(defined)
+        self.assertEqual(len(defined), len(set(defined)))
+        self.assertEqual(set(re.findall(r"\bUS\d+-A\d+\b", text)), set(defined))
+
+    def test_baseline_requirement_references_exist_in_the_current_contract(self):
+        spec = (ROOT / FEATURE / "spec.md").read_text()
+        baseline = (ROOT / FEATURE / "baseline.md").read_text()
+        for prefix in ("FR", "SC"):
+            defined = set(re.findall(rf"^- \*\*({prefix}-\d{{3}})\*\*:", spec, re.M))
+            referenced = set(re.findall(rf"\b{prefix}-\d{{3}}\b", baseline))
+            self.assertFalse(referenced - defined, referenced - defined)
+
     def test_spec_landing_page_counts_track_the_current_contract(self):
         spec = (ROOT / FEATURE / "spec.md").read_text()
         landing = (ROOT / "docs/uiux-improvement-spec.md").read_text()
