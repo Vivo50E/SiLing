@@ -5,14 +5,17 @@ SC-004 remains partially accepted. Contract: [mobile-compose-plan.md](mobile-com
 
 ## Automated evidence
 
-- Initial `make verify PYTHON=<project-venv>/bin/python`: 481 tests passed,
-  warnings as errors, plus repository/Python/Shell/JavaScript/JSON checks.
-  Final integration verification is pending below.
+- Final integrated `make verify PYTHON=<project-venv>/bin/python`: all 481 tests
+  passed in 162.912s, warnings as errors, plus repository/Python/Shell/JavaScript/JSON
+  checks (Python 3.13.5). No skips. The initial implementation also passed 481 tests.
 - Eight new backend tests cover authentication before delivery, exact multiline
   Unicode input, strict key/body/size validation, missing/ended/archived targets,
   sanitized failures, and no retry or trailing Enter after an unknown paste.
 - Remote HTTP/WebSocket regression additionally verifies qualified-target input
   forwarding and rejection by older nodes without legacy-send fallback or retries.
+- Full `UI_BROWSER=<Chromium> node tests/ui_browser.mjs` passed after integration
+  with the concurrent pane-priority setting, including archives, resources,
+  groups, Files, private input, restart/recovery and desktop preferences.
 - `UI_MOBILE_COMPOSE_ONLY=1 UI_BROWSER=<Chromium> node tests/ui_browser.mjs`
   passed: separate drafts, Files/back, captured target and late response isolation,
   double-click protection, 401 without auth replay, offline/reconnect, explicit
@@ -29,6 +32,10 @@ SC-004 remains partially accepted. Contract: [mobile-compose-plan.md](mobile-com
   The browser harness now waits for inventory before choosing its initial session;
   its mutation budget includes only the nine explicit input attempts and extra
   reload required by this increment. No navigation-driven sends are allowed.
+- An earlier full-browser attempt failed an existing archive reload assertion
+  after switching back to desktop; the final integrated run passed without
+  changing archive production code or its assertions. A transient regression
+  remains worth monitoring rather than claiming that one pass proves no flakiness.
 - Optional `tests/terminal_browser.mjs` passed synchronization, resize, palette,
   direct input, Shift+Enter and hard-wrapped web-link checks, then failed the
   existing “Bare SSH path fragments are visible” assertion. The unchanged base
