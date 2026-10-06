@@ -1,0 +1,12 @@
+#resource-dialog { width: min(680px, 94vw); max-height: 88dvh; overflow: auto; }
+#btn-resources-mobile { display: none; min-width: 44px; min-height: 44px; }
+.app.mobile #btn-resources-mobile { display: inline-flex; }
+#resource-dialog .modal-body { overflow-wrap: anywhere; }
+#resource-dialog button { min-height: 44px; min-width: 44px; }
+.resource-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.resource-grid section { border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.resource-grid h3 { font-size: 13px; margin: 0 0 8px; font-weight: 500; }
+.resource-grid strong { font-size: 18px; color: var(--text); }
+.resource-grid p, .resource-help { font-size: 12px; line-height: 1.6; }
+.resource-grid [data-status="stale"], .resource-grid [data-status="unavailable"] { border-style: dashed; }
+@media (max-width: 540px) { .resource-grid { grid-template-columns: minmax(0, 1fr); } }

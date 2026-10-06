@@ -8,6 +8,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { checkMobileReader } from './mobile_browser.mjs';
+import { checkResources } from './resources_browser.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const executable = process.env.UI_BROWSER;
@@ -25,6 +26,8 @@ const sessions = ['claude', 'codex', 'terminal', 'cursor', 'custom-agent'].map((
 }));
 const requests = [];
 let readerMode = 'ok';
+let resourceMode = 'ok';
+let delayedResource;
 let delayedRead;
 let delayTty = false;
 const delayedTtys = [];
@@ -61,6 +64,21 @@ let truncatePreview = false;
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   requests.push({ method: req.method, path: url.pathname });
+  if (url.pathname === '/api/resources') {
+    res.setHeader('Content-Type', 'application/json');
+    if (resourceMode === 'error') {res.writeHead(503); return res.end('{}');}
+    if (resourceMode === 'unauthorized') {res.writeHead(401); return res.end('{}');}
+    if (resourceMode === 'delay') {delayedResource = () => res.end('{}'); return;}
+    const metric = value => ({value, observed_at:Date.now()/1000, age_s:0,
+      status:resourceMode === 'disabled' ? 'disabled' : 'fresh', source:'psutil', error:''});
+    return res.end(JSON.stringify({schema_version:1, enabled:resourceMode !== 'disabled',
+      host:'fixture-host <literal>', scope:'dashboard_host', interval_s:5, max_age_s:15,
+      metrics:{cpu:metric({percent:37.5,logical_cpus:8}),
+        memory:metric({total_bytes:8589934592,available_bytes:2147483648}),
+        swap:metric({total_bytes:1073741824,used_bytes:0}),
+        outputs_disk:metric({total_bytes:100000000000,free_bytes:50000000000}),
+        projects_disk:{value:null,observed_at:null,age_s:null,status:'unknown',error:'unavailable',source:'psutil'}}}));
+  }
   if (url.pathname.endsWith('/read')) {
     res.setHeader('Content-Type','application/json');
     if (readerMode === 'delay') {readerMode='ok';delayedRead=()=>res.end(JSON.stringify({ok:true,text:'WRONG LATE SESSION',source:'tmux'}));return;}
@@ -273,7 +291,7 @@ try {
   });
   const cdp = (method, params = {}) => new Promise((resolve, reject) => {
     const id = ++serial;
-    const timeout = setTimeout(() => { pending.delete(id); reject(Error(`CDP timed out: ${method}`)); }, 12000);
+    const timeout = setTimeout(() => { pending.delete(id); reject(Error(`CDP timed out: ${method} ${(params.expression || '').slice(0, 180)}`)); }, 12000);
     pending.set(id, { resolve, reject, timeout }); ws.send(JSON.stringify({ id, method, params }));
   });
   const evaluate = async expression => {
@@ -1160,6 +1178,8 @@ try {
   // The type switch above starts a fresh terminal iframe asynchronously.
   // Wait for its initial document before measuring unrelated web-pane navigation.
   await waitFor(`Array.from(document.querySelectorAll('.pane iframe')).every(f=>f.contentDocument?.querySelector('textarea'))`);
+  // A preceding type switch updates slots before its terminal has loaded.
+  await waitFor(`!!document.querySelector('[data-run-id="fixture-switched-shell"] iframe')?.contentDocument?.querySelector('textarea')`);
   const loadsBeforeWeb=frameLoads;
   // localhost is a different origin from the Dashboard's 127.0.0.1 binding.
   const webUrl=`http://localhost:${server.address().port}/fixture-web-page`;
@@ -1228,6 +1248,16 @@ try {
   assert.equal(requests.filter(r=>r.path.endsWith('/tty')).length,ttyBefore+2,'Queued desktop attachments cancel on mobile resize');
   assert.equal(await evaluate(`document.querySelectorAll('#grid iframe').length`),0,'Late desktop replies cannot install frames');
   console.log('PASS: queued and late desktop terminal attachments are suppressed after mobile resize');
+  // Resource clock/visibility fixtures use a fresh page and four live displays;
+  // do not perturb earlier layout/group tests with synthetic wake events.
+  sessions.slice(0,4).forEach(session=>{session.alive=true;});
+  await evaluate(`localStorage.setItem('orch_slots',JSON.stringify(['fixture-0','fixture-1','fixture-2','fixture-3']))`);
+  await viewport(1280,900);
+  await cdp('Page.reload');
+  await waitFor(`document.querySelectorAll('.pane iframe').length===4`);
+  await waitFor(`[...document.querySelectorAll('.pane iframe')].every(f=>f.contentDocument?.querySelector('textarea'))`);
+  await checkResources({evaluate, waitFor, viewport, screenshot, pause, cdp, requests,
+    mode:value=>{resourceMode=value;}, delayed:()=>delayedResource, frameLoads:()=>frameLoads});
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));
   }

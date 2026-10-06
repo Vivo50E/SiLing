@@ -2749,8 +2749,8 @@
   }
 </style>
 <link rel="stylesheet" href="/static/ui-foundation.css?v=6" />
-<script src="/static/ui-messages.js?v=6"></script>
-<script src="/static/ui-foundation.js?v=9"></script>
+<script src="/static/ui-messages.js?v=7"></script>
+<script src="/static/ui-foundation.js?v=10"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=2" />
 <script src="/static/pane-groups.js?v=3"></script>
 <script src="/static/terminal-files.js?v=3"></script>
@@ -2759,6 +2759,8 @@
 <script src="/static/browser-panes.js?v=1"></script>
 <link rel="stylesheet" href="/static/mobile-reader.css?v=1">
 <script src="/static/mobile-reader.js?v=1"></script>
+<link rel="stylesheet" href="/static/resources.css?v=1">
+<script src="/static/resources.js?v=1"></script>
 </head>
 <body>
 
@@ -3292,6 +3294,7 @@
       </div>
       <button class="ui-button" id="btn-layout-menu" data-ui-icon="grid" data-i18n-label="layout"><span data-i18n="layout">Layout</span></button>
       <button class="ui-button" id="btn-workspace-menu" data-ui-icon="workspace" data-i18n-label="workspace"><span data-i18n="workspace">Workspace</span></button>
+      <button class="ui-button" id="btn-resources-mobile" data-ui-icon="resources" aria-label="Host resources" data-ui-label=Host%20resources title="Host resources" data-ui-title=Host%20resources><span data-ui-message=Host%20resources>Host resources</span></button>
       <button class="ui-button" id="btn-settings" data-ui-icon="settings" data-i18n-label="settings"><span data-i18n="settings">Settings</span></button>
     </div>
     <dialog class="ui-dialog" id="layout-menu" aria-labelledby="layout-menu-title">
@@ -3324,6 +3327,7 @@
       </div>
       <button id="btn-clear-pins" title="Clear all pinned panes; sessions keep running" data-ui-title=Clear%20all%20pinned%20panes%3B%20sessions%20keep%20running><span data-ui-message=Close%20all%20panes%20(keep%20sessions)>Close all panes (keep sessions)</span></button>
       <button id="btn-workflows" data-ui-message=Workflows>Workflows</button>
+      <button id="btn-resources" data-ui-message=Host%20resources>Host resources</button>
       <button id="btn-open-notes" title="Open daily report (⌘D)" data-ui-title=Open%20daily%20report%20(%E2%8C%98D)><span data-ui-message=Daily%20report>Daily report</span></button>
       </div>
     </dialog>
@@ -3804,6 +3808,7 @@
   }
 
   async function api(path, opts = {}) {
+    const {promptForToken = true, ...requestOptions} = opts;
     const headers = Object.assign({}, opts.headers || {});
     if (TOKEN) headers["Authorization"] = "Bearer " + TOKEN;
     const rawBody = isRawRequestBody(opts.body);
@@ -3811,8 +3816,9 @@
       headers["Content-Type"] = "application/json";
       opts.body = JSON.stringify(opts.body);
     }
-    const res = await fetch(path, Object.assign({}, opts, { headers }));
+    const res = await fetch(path, Object.assign({}, requestOptions, { body: opts.body, headers }));
     if (res.status === 401) {
+      if (!promptForToken) throw new Error("unauthorized");
       const t = prompt(ui.message("Dashboard token?"));
       if (t) { TOKEN = t; localStorage.setItem("orch_token", t); return api(path, opts); }
       throw new Error("unauthorized");
@@ -3836,6 +3842,8 @@
   }
 
   function authQS() { return TOKEN ? "?token=" + encodeURIComponent(TOKEN) : ""; }
+
+  window.SilingResources.create({trigger:$("btn-resources"), mobileTrigger:$("btn-resources-mobile"), returnFocus:$("btn-workspace-menu"), api, ui});
 
   // ---------- Approve and apply Agent or Git upstream updates ----------
   let selfUpdateStatus = { available: false, candidates: [] };

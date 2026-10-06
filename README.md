@@ -448,6 +448,25 @@ reconnects suspended displays. Snapshot time is not last agent-output time; fail
 the previous snapshot with a stale warning. Full phone keyboard/device acceptance and
 service-wide settings editing remain pending. See [the Spec Kit workflow](specs/README.md).
 
+### Inspect host resources
+
+Open **Workspace → Host resources** on desktop, or the **Host resources** chip
+icon in the phone toolbar, for this Dashboard
+host's CPU (all cores normalized to 0–100%), available/total memory, used/total
+swap and free space on its output/project volumes. This is not the phone's or
+remote nodes' resource usage. Missing directories/metrics show unknown.
+The server samples once every five seconds, shared by all viewers; each sample
+has a two-second timeout. Failed metrics retain their original time and become
+stale after 15 seconds. Refresh reads the cache; it does not start another sampler.
+
+This first increment is observation only: native memory pressure, session rankings,
+remote aggregation, trends and pressure alerts are not implemented. Nonzero swap
+alone does not prove exhaustion; archiving does not release running agents.
+Install updated `requirements.txt` in the Dashboard environment for `psutil`;
+a missing collector dependency shows unavailable without preventing startup.
+Set `ORCH_RESOURCE_MONITOR_ENABLED=0` before an explicitly approved service
+restart to disable collection. The setting is service-wide, not browser-local.
+
 ### Check the SiLing version
 
 Open **Settings → About SiLing** on desktop or mobile to see the running version

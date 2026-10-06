@@ -16,3 +16,5 @@ websockets>=12.0
 Pillow>=10,<13
 # Native FSEvents/inotify updates for read-only workspace sync status
 watchdog>=4.0,<7
+# Read-only host resource collector (isolated from API handlers).
+psutil>=7.2.2,<8

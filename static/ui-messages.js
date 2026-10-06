@@ -1,6 +1,23 @@
 /* Authored Dashboard copy only. Never translate terminal output or user data. */
 (() => {
   const zh = {
+    "Host resources": "主机资源",
+    "Dashboard host: {host}": "Dashboard 主机：{host}",
+    "CPU — all cores, 0–100%": "CPU — 全部核心归一化，0–100%",
+    "Memory — available / total": "内存 — 可用 / 总量",
+    "Swap — used / total": "Swap — 已用 / 总量",
+    "Output volume — free / total": "产出目录所在卷 — 剩余 / 总量",
+    "Project volume — free / total": "项目目录所在卷 — 剩余 / 总量",
+    "Resource monitoring disabled on the server": "服务端已关闭资源监控",
+    "Resource request failed — previous values are not live": "资源请求失败 — 之前的数值不代表实时状态",
+    "Read-only · sampled every 5 seconds": "只读 · 每 5 秒采样",
+    "This Dashboard host only, not your phone or remote nodes. Native memory pressure is unavailable; available memory and nonzero swap are not pressure verdicts. No alerts or automatic session controls. Archiving does not free running agents.": "仅统计此 Dashboard 主机，不是手机或远端节点。系统原生内存压力指标暂不可用；可用内存和非零 Swap 不等于压力判定。此版本不含告警或自动会话控制。归档不会释放仍在运行的 Agent 资源。",
+    "Observed": "已观测",
+    "Stale": "已过期",
+    "Metric unavailable": "指标不可用",
+    "Disabled": "已关闭",
+    "Collection timed out": "采集超时",
+    "Waiting for two CPU samples": "等待两次 CPU 采样",
     "Search sessions": "搜索会话",
     "Session filter": "会话筛选",
     "All sessions": "所有会话",

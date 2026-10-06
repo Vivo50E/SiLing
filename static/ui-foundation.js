@@ -56,6 +56,7 @@
     bellOff: "m3 3 18 18M7 7v7l-2 3h12M10 4a5 5 0 0 1 7 5v3M10 21h4",
     bellBlocked: "M5 17h14l-2-3V9a5 5 0 0 0-10 0v5zM10 21h4M12 8v3M12 13v.1",
     activity: "M3 12h4l3-7 4 14 3-7h4",
+    resources: "M6 6h12v12H6zM9 9h6v6H9zM9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4",
     palette: "M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-4 2 2 0 0 1 1-4h3a3 3 0 0 0 3-3 9 9 0 0 0-9-7ZM7 10h.1M10 7h.1M15 7h.1",
     connection: "M8 12h8M8 7H6a5 5 0 0 0 0 10h2M16 7h2a5 5 0 0 1 0 10h-2",
     "agent-claude": "M12 3v18M3 12h18M6 6l12 12M6 18 18 6",

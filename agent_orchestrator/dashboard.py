@@ -72,6 +72,7 @@ from .dashboard_network import build_access_url, list_local_ipv4, pick_best_ip
 from .json_store import edit_json, write_json
 from .local_settings import dashboard_token, require_dashboard_auth
 from .native_activity import NativeActivityService
+from .resources import ResourceMonitor
 from .pane_groups import PaneGroups
 from .remote_nodes import (
     RemoteNodeReconnectManager,
@@ -8445,6 +8446,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         refresh_callback=remote_nodes.request_refresh,
     )
     native_activity = NativeActivityService()
+    resources = ResourceMonitor(outputs_dir, projects_dir)
     self_updates = SelfUpdateManager(PROJECT_DIR)
     # Freeze the service's build identity. A later fetch/checkout is not a
     # running-code update until the Dashboard has actually restarted.
@@ -8500,6 +8502,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        resources.start()
         native_activity.start()
         sync_status.start()
         session_snapshots.start()
@@ -8554,6 +8557,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         try:
             yield
         finally:
+            resources.stop()
             stop_event = app.state.active_snapshot_autosave_stop
             thread = app.state.active_snapshot_autosave_thread
             if isinstance(stop_event, threading.Event):
@@ -8587,6 +8591,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
     app.state.active_snapshot_autosave_thread = None
     app.state.session_snapshots = session_snapshots
     app.state.native_activity = native_activity
+    app.state.resources = resources
     app.state.sync_status = sync_status
     app.state.remote_nodes = remote_nodes
     app.state.remote_node_reconnect = remote_node_reconnect
@@ -8851,6 +8856,10 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             "sync_status": sync_status.health_status(),
             "remote_nodes": remote_nodes.public_status(),
         }
+
+    @app.get("/api/resources")
+    def host_resources():
+        return JSONResponse(resources.snapshot(), headers={"Cache-Control": "no-store"})
 
     @app.get("/api/version")
     def dashboard_version():
