@@ -4428,6 +4428,14 @@
   const paneGroups = window.SiLingPaneGroups({
     api, ui, sessions: () => sessions, language: () => document.documentElement.lang,
     changed: () => { renderList(); paneGroups.applyVisibility(); },
+    arrange: rank => {
+      const occupied = slots.filter(Boolean).map((id, index) => ({id, index, rank: rank(id)}));
+      occupied.sort((a, b) => a.rank - b.rank || a.index - b.index);
+      slots = normalizeSlotsForLayout(occupied.map(item => item.id), slots.length);
+      saveSlots();
+      renderList();
+      renderGrid();
+    },
     refresh: async () => {
       if (refreshListInFlight) await refreshListInFlight;
       return await refreshList();

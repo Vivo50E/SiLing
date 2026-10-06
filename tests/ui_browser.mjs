@@ -411,10 +411,30 @@ try {
     assert.equal(frameLoads, groupFrames, 'Filtering never reloads a terminal iframe');
     assert.ok(await evaluate(`(()=>{const bar=document.querySelector('#pane-group-bar').getBoundingClientRect();const main=document.querySelector('.main').getBoundingClientRect();return bar.right<=main.right+1&&bar.left>=main.left&&bar.top>=document.querySelector('.topbar-global').getBoundingClientRect().bottom-1})()`), 'Group bar occupies its own row within the workbench');
     await screenshot('project-group-filter');
+    await evaluate(`window.groupCard=document.querySelector('[data-run-id="fixture-0"]');window.groupFrame=groupCard.querySelector('iframe');document.querySelector('#group-auto-layout').checked=true;document.querySelector('#group-auto-layout').dispatchEvent(new Event('change'))`);
+    assert.equal(await evaluate(`document.querySelector('#grid').style.getPropertyValue('--group-cols')`), '2');
+    assert.equal(await evaluate(`document.querySelector('#grid').style.getPropertyValue('--group-rows')`), '1');
+    assert.equal(await evaluate(`getComputedStyle(document.querySelector('#grid')).gridTemplateRows.split(' ').length`), 1, 'Group panes fill one row');
+    await screenshot('group-auto-layout');
+    assert.equal(await evaluate(`localStorage.getItem('orch_slots')`), oldSlots, 'Auto fit preserves global slots');
+    assert.equal(await evaluate(`localStorage.getItem('siling_group_auto_layout')`), 'true');
+    assert.ok(await evaluate(`groupCard===document.querySelector('[data-run-id="fixture-0"]') && groupFrame===groupCard.querySelector('iframe')`), 'Auto fit preserves terminal nodes');
+    await evaluate(`document.querySelector('[data-group-filter="all"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('#grid').classList.contains('group-auto-layout')`), false, 'All restores manual layout');
+    await evaluate(`document.querySelector('#group-auto-layout').checked=false;document.querySelector('#group-auto-layout').dispatchEvent(new Event('change'));document.querySelector('[data-group-filter="project-fixture"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('#grid').classList.contains('group-auto-layout')`), false, 'Disabled preference preserves manual grid');
+
     await evaluate(`document.querySelector('[data-group-filter="ungrouped"]').click();document.querySelector('[data-group-filter="all"]').click()`);
     assert.equal(await evaluate(`document.querySelectorAll('#grid .pane-card.group-hidden').length`), 0);
     await evaluate(`document.querySelector('[data-run-id="fixture-2"] .btn-pane-more').click();const gs=document.querySelector('[data-run-id="fixture-2"] .pane-group-select');gs.value='project-fixture';gs.dispatchEvent(new Event('change'))`);
     await waitFor(`document.querySelector('[data-run-id="fixture-2"] .pane-group-badge').textContent==='Project <A>'`);
+    await evaluate(`document.querySelector('[data-run-id="fixture-2"] .pane-menu').close();document.querySelector('[data-run-id="fixture-3"] .btn-pane-more').click();const arrangeMove=document.querySelector('[data-run-id="fixture-3"] .pane-move-select');arrangeMove.value='2';arrangeMove.dispatchEvent(new Event('change'))`);
+    assert.deepEqual(await evaluate(`JSON.parse(localStorage.getItem('orch_slots')).filter(Boolean)`), ['fixture-0','fixture-1','fixture-3','fixture-2']);
+    await evaluate(`document.querySelector('#btn-arrange-groups').click()`);
+    assert.deepEqual(await evaluate(`JSON.parse(localStorage.getItem('orch_slots')).filter(Boolean)`), ['fixture-0','fixture-1','fixture-2','fixture-3'], 'Groups stay contiguous with ungrouped panes last');
+    assert.ok(await evaluate(`groupCard===document.querySelector('[data-run-id="fixture-0"]') && groupFrame===groupCard.querySelector('iframe')`), 'Arrange retains iframe nodes');
+    assert.equal(frameLoads, groupFrames, 'Arrange does not reload terminal frames');
+
     await evaluate(`document.querySelector('[data-run-id="fixture-2"] .pane-menu').close();document.querySelector('#btn-pane-groups').click();document.querySelector('[data-edit-group="project-fixture"]').click();document.querySelector('#group-name').value='Renamed'`);
     assert.equal(await evaluate(`document.querySelector('#group-hex').value`),'#12abef','Saved custom color reopens accurately');
     failGroupSave = true;

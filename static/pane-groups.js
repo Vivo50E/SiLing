@@ -3,15 +3,34 @@
   const colors = {blue: "#589bf1", teal: "#39b5a4", purple: "#ad87e5", orange: "#dc9744", pink: "#d47ead", gray: "#8b96a4"};
   const palette = [...Object.values(colors), "#ef6464", "#edb84d", "#81bd57", "#39bde0", "#6575df", "#c86bdd"];
   const colorValue = value => /^#[0-9a-f]{6}$/i.test(value || "") ? value.toLowerCase() : colors[value] || colors.blue;
-  window.SiLingPaneGroups = ({api, ui, sessions, language, changed, refresh, beforeFilter}) => {
+  window.SiLingPaneGroups = ({api, ui, sessions, language, changed, refresh, beforeFilter, arrange}) => {
     const $ = id => document.getElementById(id);
     const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
     const t = (en, zh) => language() === "zh" ? zh : en;
     let groups = [], members = {}, available = false, pending = false, filter = "all", storageError = "";
-    let editing = "", draftColor = colors.blue;
+    let editing = "", draftColor = colors.blue, autoLayout = false;
+    try { autoLayout = localStorage.getItem("siling_group_auto_layout") === "true"; } catch (_) {}
     try { filter = localStorage.getItem("siling_group_filter") || "all"; } catch (_) {}
     const bar = $("pane-group-bar");
-    bar.innerHTML = '<div id="pane-group-tabs" role="group"></div><button id="btn-pane-groups"></button><span id="pane-group-status" role="status"></span>';
+    bar.innerHTML = '<div id="pane-group-tabs" role="group"></div><button id="btn-arrange-groups" type="button"></button><button id="btn-pane-groups"></button><span id="pane-group-status" role="status"></span>';
+    const setting = document.createElement("div");
+    setting.innerHTML = '<label class="settings-row"><span id="group-auto-layout-label"></span><input id="group-auto-layout" type="checkbox" aria-describedby="group-auto-layout-help"></label><p id="group-auto-layout-help" class="ui-secondary"></p>';
+    $("settings-section-appearance").appendChild(setting);
+    $("group-auto-layout").checked = autoLayout;
+    $("group-auto-layout").addEventListener("change", event => {
+      beforeFilter();
+      autoLayout = event.target.checked;
+      try { localStorage.setItem("siling_group_auto_layout", String(autoLayout)); } catch (_) {}
+      applyVisibility();
+    });
+    $("btn-arrange-groups").addEventListener("click", () => {
+      if (!available) return;
+      beforeFilter();
+      arrange(id => {
+        const index = groups.findIndex(group => group.id === members[id]);
+        return index < 0 ? groups.length : index;
+      });
+    });
     const dialog = document.createElement("dialog");
     dialog.id = "pane-groups-dialog";
     dialog.className = "ui-dialog";
@@ -70,6 +89,11 @@
         $("pane-group-tabs").innerHTML = markup;
         if (focused) [...$("pane-group-tabs").children].find(b => b.dataset.groupFilter === focused)?.focus();
       }
+      $("btn-arrange-groups").textContent = t("Arrange by group", "按分组整理");
+      $("btn-arrange-groups").disabled = !available;
+      $("btn-arrange-groups").title = t("Group open panes in tab order; ungrouped panes last", "按分组标签顺序排列已打开的面板，未分组放最后");
+      $("group-auto-layout-label").textContent = t("Fit layout when entering a group", "进入分组时自动调整布局");
+      $("group-auto-layout-help").textContent = t("Size the desktop grid to open panes in the selected group. All restores your original layout. Saved in this browser.", "按所选分组已打开的面板数量调整桌面网格；回到全部恢复原布局。仅保存在当前浏览器。");
       $("btn-pane-groups").textContent = t("Manage groups", "管理分组");
       $("btn-pane-groups").disabled = !available;
     }
@@ -260,6 +284,16 @@
         card.inert = hide;
         if (hide) card.setAttribute("aria-hidden", "true"); else card.removeAttribute("aria-hidden");
       }
+      const count = cards.filter(card => card.dataset.runId && !card.classList.contains("group-hidden")).length;
+      const fit = autoLayout && available && filter !== "all" && count > 0;
+      const grid = $("grid");
+      if (fit) {
+        const sizes = [[1,1],[2,1],[3,1],[2,2],[3,2],[4,2],[3,3],[4,3],[5,3],[4,4]];
+        const [cols, rows] = sizes.find(([c,r]) => c*r >= count) || [4, Math.ceil(count/4)];
+        grid.style.setProperty("--group-cols", cols);
+        grid.style.setProperty("--group-rows", rows);
+      }
+      grid.classList.toggle("group-auto-layout", fit);
       document.querySelectorAll("#pane-nav-rail [data-slot]").forEach(dot => {
         const card = cards.find(c => c.dataset.slot === dot.dataset.slot);
         dot.hidden = !!card?.classList.contains("group-hidden");

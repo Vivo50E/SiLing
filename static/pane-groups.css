@@ -73,3 +73,9 @@
   .group-assignment-actions { flex-wrap: wrap; }
   #group-assign { flex-basis: 100%; }
 }
+
+/* Group fitting changes presentation only; global slots and iframe nodes stay put. */
+.app:not(.mobile) #grid.group-auto-layout {
+  grid-template-columns: repeat(var(--group-cols), minmax(0, 1fr));
+  grid-template-rows: repeat(var(--group-rows), minmax(0, 1fr));
+}
