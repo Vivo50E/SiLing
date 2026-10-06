@@ -20,6 +20,7 @@
 | --- | --- | --- | --- |
 | NAV-01 | FR-001、US1 | [Dashboard](../../static/index.html)、[分组](../../static/pane-groups.js)、[分组测试](../../tests/test_pane_groups.py) | 工作区/搜索/分组已有；统一组合筛选、布局收藏及全部宽度验收仍需补齐。部分覆盖。 |
 | PANE-01 | FR-002/003/004/006、US1 | [UI 基础](../../static/ui-foundation.js)、[UI 测试](../../tests/test_ui_foundation.py)、[浏览器脚本](../../tests/ui_browser.mjs) | 窄标题/菜单/空槽创建/响应后落位已有；请求期间预占位、未知结果重试及完整竞争场景需验证/补齐。部分覆盖。 |
+| ARCHIVE-01（新增） | FR-027/028/029、US1-A8/A9/A10、SC-011 | [现有关闭/删除入口](../../static/index.html)、[日志整理与会话接口](../../agent_orchestrator/dashboard.py) | 2026-10-05 新增需求，尚未实现。关闭 pane 只收起显示；`organize` 启动 Agent 整理日志，legacy `archived` 也不代表手动归档标记。需独立实现可逆逐会话归档、共享状态、草稿保护及已归档入口，不能复用删除 run 目录代替。 |
 | VISUAL-01 | FR-023/024/026、US6 | [样式](../../static/ui-foundation.css)、[语言目录](../../static/ui-messages.js)、[UI 测试](../../tests/test_ui_foundation.py) | 深浅主题、密度、字体、原生 SVG 图标、语言和偏好已有；跨所有首方页面的语言/对比度/触控尺寸仍待验收。不是重新选图标库。 |
 | AGENT-01 | FR-022、US6 | [agentBadge](../../static/ui-foundation.js)、[未知名称/图标测试](../../tests/test_ui_foundation.py)、[历史美化报告](../../docs/uiux-visual-polish.md) | 已有五种形状及安全名称回退；全部展示位置一致性待验收。原文建议 Lucide 不再作为新增依赖要求。 |
 | STATE-01 | FR-010/013、US3 | [生命周期投影](../../agent_orchestrator/session_lifecycle.py)、[生命周期测试](../../tests/test_session_lifecycle.py)、[重启测试](../../tests/test_agent_restart.py) | 执行/连接/来源/时间/尝试链路已有；人工角色/优先级/标记仍共享 `panel_state`。展示可分开，持久化仍互斥；不能宣称数据迁移已完成。 |
@@ -40,6 +41,10 @@ B 对应 US2/4；C 对应 US3 和 US5 的服务配置部分。
 
 2026-10-05 用户明确要求开始实施，已选择 **US2 的“手机列表 → 单会话只读输出 → 返回”**
 切片，并保留显式终端入口。实施前代码基点为 `ba39252`；不捎带新的监控中心或通用服务配置。
+
+用户随后要求插入 Archive 需求：下一候选切片为 **US1-A8/A9/A10 手动会话归档**，桌面优先、手机兼容。
+这次只扩充需求；现有 plan/tasks/validation 仍只证明手机阅读切片，不计入归档完成度。
+“归档不停止 Agent”和共享作用域为建议默认，先确认语义再为此切片单独做计划与数据兼容设计。
 
 选定切片后才运行 `$speckit-plan` → `$speckit-tasks` → `$speckit-analyze`；
 每项任务关联 FR/US/SC 与行为测试。原有契约和数据结构作为研究输入，不把全项目推倒重写。
