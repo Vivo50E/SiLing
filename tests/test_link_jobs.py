@@ -120,6 +120,15 @@ class LinkJobTests(unittest.TestCase):
         self.assertEqual(len(job['errors']), 2)
         self.assertNotIn('secret', json.dumps(job))
 
+    def test_controlled_path_errors_are_visible_without_leaking_arbitrary_errors(self):
+        def register(raw):
+            terminal_files.resolve_path(raw, {'host': 'remote', 'cwd': '/project'})
+        self.submit(lambda text, cancel: ['~/report.md'], register)
+        job = self.done()
+        self.assertEqual(job['status'], 'failed')
+        self.assertEqual(job['errors'][0]['path'], '~/report.md')
+        self.assertIn('absolute remote path', job['errors'][0]['error'])
+
     def test_queued_cancellation_and_shutdown_do_not_call_extractor(self):
         gates = [threading.Event(), threading.Event()]
         started = [threading.Event(), threading.Event()]
@@ -192,11 +201,12 @@ class LinkJobAPITests(unittest.TestCase):
             report.write_text('fixture report')
             (root / 'session.json').write_text('{}')
             source = {'run_dir':str(root), 'kind':'run', 'tmux_session':'fixture', 'cwd':str(root)}
-            with patch.object(dashboard.TtydManager, '_sweep_orphans', return_value=0), \
+            with patch.dict('os.environ', {'HOME': str(root)}), \
+                    patch.object(dashboard.TtydManager, '_sweep_orphans', return_value=0), \
                     patch.object(dashboard, '_lookup_run_light', side_effect=lambda *_: {**source, **json.loads((root / 'session.json').read_text())}), \
                     patch.object(dashboard, '_is_allowed_linked_folder', return_value=True), \
                     patch.object(terminal_files, 'detect_environment', return_value={'host':'','cwd':str(root),'source':'fixture'}), \
-                    patch.object(terminal_files, 'model_paths', return_value=['report.md']), \
+                    patch.object(terminal_files, 'model_paths', return_value=['~/report.md']), \
                     patch.object(dashboard, 'tmux_send_key') as send:
                 app = dashboard.create_app(root, token='fixture-token', ttyd_enabled=False, remote_nodes_enabled=False)
                 with TestClient(app) as client:
@@ -204,7 +214,7 @@ class LinkJobAPITests(unittest.TestCase):
                     headers = {'Authorization':'Bearer fixture-token'}
                     self.assertEqual(client.post(prefix+'link-jobs', json={}).status_code, 401)
                     context = client.get(prefix+'file-context', headers=headers).json()['current']
-                    body = {'text':'report.md','context_id':context['id'],'request_id':'fixture-request'}
+                    body = {'text':'~/report.md','context_id':context['id'],'request_id':'fixture-request'}
                     response = client.post(prefix+'link-jobs', headers=headers, json=body)
                     self.assertEqual(response.status_code, 200, response.text)
                     job_id = response.json()['id']
@@ -222,6 +232,17 @@ class LinkJobAPITests(unittest.TestCase):
                     self.assertEqual(client.post('/api/sessions/other/link-jobs/'+job_id+'/cancel', headers=headers).status_code, 404)
                     self.assertEqual(client.post(prefix+'discover-files', headers=headers,
                                                  json={**body, 'intelligent':True}).status_code, 400)
+                    with patch.object(terminal_files, 'model_paths', return_value=['~/missing.html']):
+                        client.post(prefix+'link-jobs', headers=headers,
+                                    json={**body, 'text':'~/missing.html', 'request_id':'missing-request'})
+                        for _ in range(100):
+                            missing = client.get(prefix+'link-jobs', headers=headers).json()['jobs'][0]
+                            if missing['status'] not in ACTIVE:
+                                break
+                            time.sleep(.01)
+                    self.assertEqual(missing['status'], 'failed', missing)
+                    self.assertIn('File not found', missing['errors'][0]['error'])
+                    self.assertEqual(missing['errors'][0]['path'], '~/missing.html')
                     # A queued SSH task keeps its chosen host even after the pane context changes.
                     remote = client.put(prefix+'file-context', headers=headers,
                                         json={'mode':'ssh','host':'fixture-host','cwd':'/remote/project'}).json()['current']

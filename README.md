@@ -375,6 +375,9 @@ programs launched inside SSH; the program does not need to call `siling link-fil
   verifies file-shaped paths and adds readable files to Files. It does not call
   a model. Disable it in the same dialog. Relative path clicks use their recorded
   directory; existing absolute links and URLs continue to work.
+- Local `~/...` paths resolve against the Dashboard user’s home directory, independent
+  of the selected base directory. SSH `~` paths require an absolute remote path.
+  Background identification shows each failed path and its verification reason.
 - Without a selection, use **Read current terminal output**, review the text and
   host/directory, then identify files. Reading does not call the model; long output
   is limited to its last 16000 characters. You can also paste or edit the text.

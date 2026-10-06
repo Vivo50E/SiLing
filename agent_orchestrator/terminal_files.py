@@ -151,17 +151,26 @@ def get_context(directory: Path, context_id: str) -> dict:
     return result
 
 
+class FileLinkError(ValueError):
+    """Controlled path validation message safe to show in background Link results."""
+
+
 def resolve_path(raw: str, ctx: dict) -> str:
-    if not isinstance(raw, str) or not raw or len(raw) > 8192 or any(ord(c) < 32 for c in raw):
-        raise ValueError('Invalid file path')
+    if not isinstance(raw, str) or not raw.strip() or len(raw) > 8192 or any(ord(c) < 32 or ord(c) == 127 for c in raw):
+        raise FileLinkError('Invalid file path')
     raw = re.sub(r'(?::\d+(?::\d+)?|#L\d+(?:C\d+)?)$', '', raw.strip())
     if raw.startswith('//') or '://' in raw:
-        raise ValueError('Not a file path')
+        raise FileLinkError('Not a file path')
+    if raw.startswith('~'):
+        if ctx.get('host'):
+            raise FileLinkError('Use an absolute remote path instead of ~, or a path relative to the remote base directory')
+        try:
+            raw = str(Path(raw).expanduser())
+        except RuntimeError as exc:
+            raise FileLinkError('Unable to resolve the local home directory; use an absolute path') from exc
     if not raw.startswith('/'):
         if not ctx.get('cwd'):
-            raise ValueError('Set the remote base directory to resolve relative file paths')
-        if raw.startswith('~'):
-            raise ValueError('Use an absolute path or a path relative to the base directory')
+            raise FileLinkError('Set the base directory to resolve relative file paths')
         raw = posixpath.join(ctx['cwd'], raw)
     return posixpath.normpath(raw)
 

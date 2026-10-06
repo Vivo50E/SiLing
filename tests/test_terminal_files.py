@@ -70,6 +70,46 @@ class TerminalFilesTests(unittest.TestCase):
         for raw in ['//host/a.md','https://example.test/a.md','bad\nfile.md']:
             with self.assertRaises(ValueError):files.resolve_path(raw,{'cwd':'/tmp'})
 
+    def test_home_path_uses_local_home_instead_of_base_directory(self):
+        raw = '~/Documents/OSS/project/eli5-hidden-state.html'
+        self.assertEqual(files.extract_paths(raw), [raw])
+        with patch.dict(os.environ, {'HOME': str(self.root)}):
+            for ctx in ({'host': '', 'cwd': '/another/project'}, {'host': '', 'cwd': ''}):
+                self.assertEqual(files.resolve_path(raw + ':12:3', ctx),
+                                 str(self.root / 'Documents/OSS/project/eli5-hidden-state.html'))
+
+    def test_remote_home_is_never_expanded_using_local_account(self):
+        for raw in ('~/report.md', '~someone/report.md'):
+            for cwd in ('', '/remote/project'):
+                with self.assertRaisesRegex(ValueError, 'absolute remote path'):
+                    files.resolve_path(raw, {'host': 'dev', 'cwd': cwd})
+
+    def test_local_home_file_discovery_click_and_html_preview(self):
+        client, headers = self.client()
+        report = self.root / 'Documents/OSS/project/eli5-hidden-state.html'
+        report.parent.mkdir(parents=True)
+        report.write_text('<html><body>fixture</body></html>')
+        self.stack.enter_context(patch.dict(os.environ, {'HOME': str(self.root)}))
+        self.stack.enter_context(patch.object(dashboard, 'tmux_alive', return_value=True))
+        self.stack.enter_context(patch.object(dashboard, 'tmux_get_cwd', return_value='/unrelated'))
+        self.stack.enter_context(patch.object(files, 'detect_environment',
+                                            return_value={'host': '', 'cwd': '/unrelated', 'source': 'tmux'}))
+        prefix = '/api/sessions/tmux%3A%3Afixture/'
+        ctx = client.get(prefix + 'file-context', headers=headers).json()['current']['id']
+        raw = '~/Documents/OSS/project/eli5-hidden-state.html'
+        for automatic in (True, False):
+            response = client.post(prefix + 'discover-files', headers=headers,
+                                   json={'context_id': ctx, 'text': raw, 'automatic': automatic})
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()['errors'], [])
+            self.assertEqual(response.json()['files'][0]['source_path'], str(report))
+        response = client.post(prefix + 'terminal-file', headers=headers,
+                               json={'context_id': ctx, 'path': raw + '#L12'})
+        self.assertEqual(response.status_code, 200, response.text)
+        preview = client.get(prefix + 'folders/file', headers=headers,
+                             params={'folder': str(report), 'rel': ''})
+        self.assertEqual(preview.json()['kind'], 'html')
+
     def test_model_cannot_use_tools_or_invent_path(self):
         output={'structured_output':{'paths':['reports/test.md','/secret/token','reports/test.md']}}
         with patch.object(files,'resolve_agent_cli',return_value='/fixture/claude'), patch.object(files.subprocess,'run',return_value=subprocess.CompletedProcess([],0,json.dumps(output),'')) as run:

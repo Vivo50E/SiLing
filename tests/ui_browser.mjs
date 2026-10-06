@@ -894,6 +894,16 @@ try {
   assert.equal(linkSubmissions[0].source,'fixture-2');
   assert.equal(linkSubmissions[0].context_id,'fixture-context');
   assert.equal(frameLoads,beforeFileContextFrames,'File context dialog preserves terminal frames');
+  linkJobs.get('fixture-2').status='failed';
+  linkJobs.get('fixture-2').errors=[
+    {path:'~/missing.html',error:'File not found; check the path and selected base directory'},
+    {path:'<img src=x onerror=alert(1)>',error:'File could not be verified or linked'},
+  ];
+  await waitFor(`document.querySelector('dialog[open] [data-jobs]').textContent.includes('~/missing.html')`);
+  assert.ok(await evaluate(`document.querySelector('dialog[open] [data-jobs]').textContent.includes('File not found')`),'Background failures expose a useful per-path reason');
+  assert.equal(await evaluate(`document.querySelectorAll('dialog[open] [data-jobs] img').length`),0,'Path error text cannot inject HTML');
+  linkJobs.get('fixture-2').status='running';linkJobs.get('fixture-2').errors=[];
+  await waitFor(`!document.querySelector('dialog[open] [data-jobs]').textContent.includes('~/missing.html')`);
   await screenshot('terminal-file-context');
   await evaluate(`document.querySelector('dialog[open] [data-save]').click()`);await pause(150);
   await evaluate(`document.querySelector('dialog[open] [data-close]').click()`);

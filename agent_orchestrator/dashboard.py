@@ -10123,9 +10123,14 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         if ctx.get("host"):
             result = post_session_ssh_file(run_id, {"host": ctx["host"], "path": path, "discovery": discovery})
             return {"raw": raw, "source_path": path, "context_id": ctx["id"], **result}
-        linked = _resolve_linked_path(path)
+        try:
+            linked = _resolve_linked_path(path)
+        except HTTPException as exc:
+            message = ("File not found; check the path and selected base directory"
+                       if exc.status_code == 404 else "File cannot be linked; check the allowed file roots")
+            raise terminal_files.FileLinkError(message) from exc
         if not linked.is_file():
-            raise ValueError("Only regular files can be discovered")
+            raise terminal_files.FileLinkError("Only regular files can be discovered")
         _persist_linked_path(run, linked, linked.name, "file", artifact={"discovery": discovery})
         return {"ok": True, "raw": raw, "source_path": str(linked), "context_id": ctx["id"],
                 "folder": _linked_folder_summary({"path": str(linked), "label": linked.name,

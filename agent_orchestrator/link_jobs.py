@@ -11,6 +11,7 @@ import time
 import uuid
 
 from .json_store import write_json
+from .terminal_files import FileLinkError
 
 ACTIVE = {'queued', 'running', 'cancelling'}
 
@@ -121,9 +122,9 @@ class LinkJobs:
                     try:
                         result = register(raw)
                         error = None
-                    except Exception:
+                    except Exception as exc:
                         result = None
-                        error = {'path': raw, 'error': 'File could not be verified or linked'}
+                        error = {'path': raw, 'error': str(exc) if isinstance(exc, FileLinkError) else 'File could not be verified or linked'}
                     with self.lock:
                         if error:
                             job['errors'].append(error)

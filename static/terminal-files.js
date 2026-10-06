@@ -227,7 +227,8 @@
               for(const job of jobs) {
                 const row=document.createElement('div');row.style.cssText='border:1px solid var(--border);border-radius:8px;padding:10px;margin:8px 0;overflow-wrap:anywhere';
                 const title=document.createElement('div');title.textContent=`${statusName(job.status)} · ${job.files.length} ${tr('files linked','个文件已关联')} · ${job.context.host||tr('Local','本机')} · ${job.context.cwd||'?'}`;row.append(title);
-                if(job.error || job.errors.length) {const error=document.createElement('p');error.textContent=job.error || tr('Some files could not be linked. Review the text and retry.','部分文件关联失败，请检查文字后重试。');row.append(error);}
+                if(job.error) {const error=document.createElement('p');error.textContent=job.error;row.append(error);}
+                for(const item of job.errors) {const error=document.createElement('p');error.textContent=`${item.path}: ${item.error}`;row.append(error);}
                 if(job.limited) {const note=document.createElement('p');note.textContent=tr('Only the first 8 candidates were checked. Narrow the text for more.','本次仅检查前 8 个候选，请缩小文字范围后继续。');row.append(note);}
                 for(const item of job.files) {const button=document.createElement('button');button.className='ui-button';button.textContent=item.source_path;button.onclick=()=>void openViewer(id,item.folder.path);row.append(button);}
                 if(['queued','running','cancelling'].includes(job.status)) {
