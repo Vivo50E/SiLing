@@ -312,6 +312,8 @@
     "Soft Dark": "柔和深色",
     "Soft Light": "柔和浅色",
     "Soft Green": "柔和绿色",
+    "Always show pane priority": "始终显示面板优先级",
+    "Keep the priority selector visible in small panes instead of the More menu. Saved in this browser.": "在小面板中直接显示优先级选择框，不收进更多菜单。仅保存在当前浏览器。",
     "Panel opacity": "面板不透明度",
     "Open web links inside SiLing": "在 SiLing 内打开网页链接",
     "Open terminal, Markdown, and Linked Items HTTP(S) links as Projects tabs. Sites that block embedding can still be opened with Open in browser.": "在项目标签页中打开终端、Markdown 和关联条目中的 HTTP(S) 链接。不允许嵌入的网站仍可通过“在浏览器中打开”访问。",

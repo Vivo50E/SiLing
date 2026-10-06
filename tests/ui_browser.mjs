@@ -1443,6 +1443,13 @@ try {
     const stableHeights=[];
     for(let i=0;i<5;i++){stableHeights.push(await evaluate(`denseFrame.getBoundingClientRect().height`));await pause(100);}
     assert.equal(new Set(stableHeights).size,1,'Status changes do not cause resize oscillation');
+    await evaluate(`window.densePriority=denseCard.querySelector('.pane-state-select');document.querySelector('#settings-show-pane-priority').checked=true;document.querySelector('#settings-show-pane-priority').dispatchEvent(new Event('change'))`);
+    assert.ok(await evaluate(`denseCard.querySelector('.pane-actions .pane-state-select')===densePriority && densePriority.getBoundingClientRect().width>0`),'Preference exposes the same priority control in short panes');
+    assert.equal(await evaluate(`localStorage.getItem('siling_show_pane_priority')`),'true');
+    assert.equal(await evaluate(`denseFrame===denseCard.querySelector('iframe')`),true,'Priority preference preserves terminal identity');
+    await screenshot('priority-visible-'+name);
+    await evaluate(`document.querySelector('#settings-show-pane-priority').checked=false;document.querySelector('#settings-show-pane-priority').dispatchEvent(new Event('change'))`);
+    assert.ok(await evaluate(`denseCard.querySelector('.compact-pane-tools .pane-state-select')===densePriority`),'Disabling restores priority to More');
     await screenshot('dense-cursor-'+name);
     await evaluate(`denseCard.querySelector('.btn-pane-more').click()`);
     assert.ok(await evaluate(`denseCard.querySelector('.compact-pane-tools .btn-folders')!==null`),'Files remains reachable in the compact menu');

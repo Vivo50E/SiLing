@@ -3001,6 +3001,10 @@
           </span>
           <input id="settings-system-browser" type="checkbox" />
         </label>
+        <label class="settings-row" for="settings-show-pane-priority">
+          <span><span class="settings-row-title" data-ui-message="Always%20show%20pane%20priority">Always show pane priority</span><span class="settings-row-help" data-ui-message="Keep%20the%20priority%20selector%20visible%20in%20small%20panes%20instead%20of%20the%20More%20menu.%20Saved%20in%20this%20browser.">Keep the priority selector visible in small panes instead of the More menu. Saved in this browser.</span></span>
+          <input id="settings-show-pane-priority" type="checkbox" />
+        </label>
         <label class="settings-row" for="settings-panel-opacity">
           <span>
             <span class="settings-row-title"><span data-ui-message=Panel%20opacity>Panel opacity</span></span>
@@ -3502,6 +3506,15 @@
   // ---------- Dashboard settings ----------
   const settingsModal = $("settings-modal");
   const internalLinksSetting = $("settings-open-links-internally");
+  const panePrioritySetting = $("settings-show-pane-priority");
+  let showPanePriority = false;
+  try { showPanePriority = localStorage.getItem("siling_show_pane_priority") === "true"; } catch (_) {}
+  panePrioritySetting.checked = showPanePriority;
+  panePrioritySetting.addEventListener("change", () => {
+    showPanePriority = panePrioritySetting.checked;
+    persistBrowserSetting("siling_show_pane_priority", String(showPanePriority));
+    document.querySelectorAll(".pane-card").forEach(card => card.dispatchEvent(new Event("priority-visibility-change")));
+  });
   const panelOpacitySetting = $("settings-panel-opacity");
   const panelOpacityValue = $("settings-panel-opacity-value");
 
@@ -8062,6 +8075,16 @@
       control.before(marker);
       return { control, marker };
     });
+    function placeCompactControls() {
+      const compact = card.classList.contains("compact-pane");
+      for (const {control, marker} of compactControls) {
+        const inMenu = compact && !(showPanePriority && control.classList.contains("pane-state-select"));
+        if (inMenu) {
+          if (control.parentNode !== compactTools) compactTools.append(control);
+        } else if (marker.nextSibling !== control) marker.after(control);
+      }
+    }
+    card.addEventListener("priority-visibility-change", placeCompactControls);
     card.querySelector(".btn-compact-compose").onclick = () => {
       // The dialog's close handler restores focus to More. Focus the draft
       // afterwards, once its normal toolbar has returned from compact mode.
@@ -8077,10 +8100,7 @@
         if (card.classList.contains("compact-pane") === compact) continue;
         card.classList.toggle("compact-pane", compact);
         compactTools.hidden = !compact;
-        for (const {control, marker} of compactControls) {
-          if (compact) compactTools.append(control);
-          else marker.after(control);
-        }
+        placeCompactControls();
       }
     });
     ro.observe(card);
