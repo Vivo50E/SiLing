@@ -65,7 +65,7 @@ from .plugins import Plugins
 from .workflows import DispatchRejected, Workflows, validate as validate_workflow
 from .agent_cli import resolve_agent_cli
 from .browser_open import open_system_browser, system_browser_available, validate_web_url
-from . import terminal_files, terminal_control
+from . import terminal_files, terminal_control, secret_input
 from .link_jobs import LinkJobs
 from .conversation_metrics import TranscriptMetricsCache
 from .dashboard_network import build_access_url, list_local_ipv4, pick_best_ip
@@ -8700,6 +8700,12 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         return value
 
     async def _proxy_remote_http(request: Request, node, path: str):
+        if path.endswith('/secret-input'):
+            destination = urlparse(node.upstream_url(path))
+            if (destination.hostname != 'localhost' and not secret_input.trusted_transport(
+                    destination.scheme, destination.hostname or '')):
+                return JSONResponse({'detail': 'Private input requires HTTPS or a loopback tunnel to the remote node'},
+                                    status_code=403, headers={'Cache-Control': 'no-store'})
         headers = {
             key: value for key, value in request.headers.items()
             if key.lower() not in {
@@ -8807,11 +8813,18 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             if not authenticated and request.url.path != "/":
                 # Allow GET / to render a page that prompts for a token.
                 return JSONResponse({"error": "invalid token"}, status_code=401)
+        private_input = request.url.path.endswith('/secret-input')
+        if private_input and not secret_input.trusted_transport(
+                request.url.scheme, request.client.host if request.client else ''):
+            return JSONResponse({'detail': 'Private input requires HTTPS or a loopback connection'},
+                                status_code=403, headers={'Cache-Control': 'no-store'})
         target = _remote_session_target(request.url.path)
         response = (
             await _proxy_remote_http(request, *target)
             if target is not None else await call_next(request)
         )
+        if private_input:
+            response.headers['Cache-Control'] = 'no-store'
         if (token and authenticated
                 and not _token_matches(request.cookies.get("orch_token"), token)):
             response.set_cookie(
@@ -10595,6 +10608,38 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             raise HTTPException(500,
                 f"tmux send-keys failed ({len(text)} chars): {err}")
         return {"ok": ok, "session": session, "bytes_sent": len(text)}
+
+    @app.post("/api/sessions/{run_id}/secret-input")
+    async def post_secret_input(run_id: str, request: Request):
+        # Parse manually: framework validation must never reflect a bad value.
+        value = bytearray()
+        async for chunk in request.stream():
+            value.extend(chunk)
+            if len(value) > secret_input.MAX_SECRET_BYTES:
+                raise HTTPException(413, "Private input exceeds 4096 bytes")
+        try:
+            secret_input.validate(bytes(value))
+            enter = request.headers.get('x-siling-secret-enter', 'false')
+            if enter not in ('true', 'false'):
+                raise ValueError('Invalid private input option')
+            run = _lookup_run_light(outputs_dir, run_id)
+            if not run:
+                raise HTTPException(404, "run not found")
+            session = run.get('tmux_session', '')
+            if not session:
+                raise HTTPException(409, "Session has no live terminal")
+            pane, _error = _tmux_target_pane(session)
+            if not pane:
+                raise HTTPException(409, "Session has no live terminal")
+            # No ordinary send path, argv value, transcript, retry, or stderr.
+            ok = await asyncio.to_thread(secret_input.send, pane, bytes(value), enter == 'true')
+            if not ok:
+                raise HTTPException(502, "Delivery could not be confirmed. Check the terminal before sending again.")
+            return {"ok": True}
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
+        finally:
+            value[:] = b'\0' * len(value)
 
     @app.post("/api/sessions/{run_id}/runtime-config")
     async def post_runtime_config(run_id: str, request: Request):

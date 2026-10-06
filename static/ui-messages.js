@@ -1,6 +1,15 @@
 /* Authored Dashboard copy only. Never translate terminal output or user data. */
 (() => {
   const zh = {
+    "Private input": "私密输入",
+    "Private input requires HTTPS or localhost.": "私密输入需要 HTTPS 或 localhost。",
+    "Use only at a password or token prompt. The receiving program can still display or record input; this does not hide shell commands or agent messages.": "仅在密码或令牌提示处使用。接收程序仍可能显示或记录输入；此功能不能隐藏 Shell 命令或 Agent 消息。",
+    "Password or token": "密码或令牌",
+    "Send Enter after input": "输入后发送回车",
+    "SiLing does not save this input. It is cleared when sent, closed, or the tab is hidden.": "SiLing 不保存此输入。发送、关闭或隐藏标签页时会清空。",
+    "Send private input": "发送私密输入",
+    "Enter one line, up to 4096 bytes, without control characters.": "请输入单行内容，最多 4096 字节，不含控制字符。",
+    "Delivery could not be confirmed. Check the terminal before sending again.": "无法确认发送结果。再次发送前请检查终端。",
     "Host resources": "主机资源",
     "Memory": "内存",
     "Output disk": "产出磁盘",
