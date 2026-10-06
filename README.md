@@ -467,6 +467,22 @@ reconnects suspended displays. Snapshot time is not last agent-output time; fail
 the previous snapshot with a stale warning. Full phone keyboard/device acceptance and
 service-wide settings editing remain pending. See [the Spec Kit workflow](specs/README.md).
 
+### Archive a session
+
+Choose **Archive session** in a pane's More menu or the session list; on phones,
+use the session detail action. Confirming hides only that execution's displays
+on devices sharing this Dashboard. **The agent keeps running**; monitoring,
+existing logs, Files, labels and flags remain unchanged. No files are moved.
+Connected foreground pages reconcile the shared state on the five-second poll.
+Each browser keeps its normal input draft in that tab's session storage.
+
+Open **Archived** in the sidebar or phone session list to search, inspect bounded
+output snapshots, open Files or **Unarchive**. The running count helps identify
+agents still consuming resources. Unarchive returns the record to the list; it
+does not open a pane or restart execution. Saved layouts exclude archived records.
+This increment supports persisted local sessions, not remote nodes, orphan tmux
+sessions or legacy log entries. See the [archive plan](specs/001-uiux-improvements/archive-plan.md).
+
 ### Inspect host resources
 
 The toolbar beside **Mission** shows compact CPU, memory usage (total minus

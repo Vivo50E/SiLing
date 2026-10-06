@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { checkMobileReader } from './mobile_browser.mjs';
 import { checkResources } from './resources_browser.mjs';
+import { checkArchives } from './archives_browser.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const executable = process.env.UI_BROWSER;
@@ -25,6 +26,9 @@ const sessions = ['claude', 'codex', 'terminal', 'cursor', 'custom-agent'].map((
   remote: i === 4, node_id: i === 4 ? 'fixture-remote' : '', node_online: i !== 4,
 }));
 const requests = [];
+const archiveFixture = {version:1, revision:0, entries:{}};
+let archiveMode = 'ok';
+const archiveSubmissions = [];
 let readerMode = 'ok';
 let resourceMode = 'ok';
 let delayedResource;
@@ -67,6 +71,19 @@ let truncatePreview = false;
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   requests.push({ method: req.method, path: url.pathname });
+  if (url.pathname === '/api/session-archives') {
+    res.setHeader('Content-Type', 'application/json');
+    let raw=''; req.on('data', chunk=>raw+=chunk); req.on('end', ()=>{
+      const data=JSON.parse(raw); archiveSubmissions.push(data);
+      if (archiveMode==='error') {res.writeHead(503); return res.end('{}');}
+      const previous=archiveFixture.entries[data.run_id];
+      if (data.expected_revision!==(previous?.revision || 0)) {res.writeHead(409); return res.end('{}');}
+      archiveFixture.entries[data.run_id]={archived:data.archived, revision:(previous?.revision || 0)+1, archived_at:data.archived?Date.now()/1000:0};
+      archiveFixture.revision++;
+      if (archiveMode==='lost') {res.writeHead(503); return res.end('{}');}
+      res.end(JSON.stringify({ok:true,session_archives:archiveFixture}));
+    }); return;
+  }
   if (url.pathname === '/api/resources') {
     res.setHeader('Content-Type', 'application/json');
     if (resourceMode === 'error') {res.writeHead(503); return res.end('{}');}
@@ -272,7 +289,8 @@ const server = http.createServer((req, res) => {
     let value = { ok: true };
     if (url.pathname === '/api/config') value = { projects_browser_url: '', remote_nodes: [], system_browser_available: systemBrowserAvailable };
     if (url.pathname === '/api/health') value = { ttyd: true };
-    if (url.pathname === '/api/sessions') value = { sessions, snapshot: { ready: true }, pane_groups: groupFixture };
+    if (url.pathname === '/api/sessions') value = { sessions, snapshot: { ready: true }, pane_groups: groupFixture,
+      session_archives:archiveMode==='metadata-error' ? {error:'fixture unavailable'} : archiveFixture };
     if (url.pathname === '/api/host') value = { best_url: 'https://dashboard.example/?token=fixture-secret' };
     if (url.pathname.endsWith('/tty')) value = { ok: true, selection_copy: url.pathname.includes('/fixture-1/') ? undefined : true, url: '/fixture-tty/' + url.pathname.split('/')[3] };
     if (url.pathname.endsWith('/tty') && delayTty) {delayedTtys.push(()=>res.end(JSON.stringify(value)));return;}
@@ -343,6 +361,13 @@ try {
   if (!baseline) sessions[0].panel_state='blocked';
   await cdp('Page.addScriptToEvaluateOnNewDocument', { source: `if(!localStorage.getItem('orch_layout')){localStorage.setItem('orch_layout','cols-2x2');localStorage.setItem('orch_slots',JSON.stringify(['fixture-0','fixture-1','fixture-2','fixture-3']));localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'en',theme:'dark'}));}` });
   await cdp('Page.navigate', { url: `http://127.0.0.1:${server.address().port}/` });
+  if (process.env.UI_ARCHIVES_ONLY === '1') {
+    await waitFor(`!!document.querySelector('#btn-session-archives')`);
+    await checkArchives({evaluate, waitFor, viewport, screenshot, pause, cdp, requests,
+      mode:value=>{archiveMode=value;}, view:archiveFixture, submissions:archiveSubmissions, sessions, groups:groupFixture});
+    assert.deepEqual(errors, [], 'No uncaught archive browser errors');
+    console.log(JSON.stringify({result:'PASS',suite:'archives',screenshots:artifacts}));
+  } else {
   if (!baseline) {
     await checkMobileReader({evaluate,viewport,waitFor,screenshot,requests,pause,
       mode:value=>{readerMode=value;}, delayed:()=>!!delayedRead, release:()=>{delayedRead?.();delayedRead=null;}});
@@ -861,6 +886,10 @@ try {
     await pause(100);
   }
   assert.equal(await evaluate(`document.querySelector('#settings-system-browser').checked`),true);
+  // Reload preserves intentionally empty saved slots. Explicitly reopen the
+  // source used by later Files/Link checks instead of relying on auto-fill.
+  await evaluate(`document.querySelector('.session-item[data-id="fixture-0"]').click()`);
+  await waitFor(`!!document.querySelector('#grid [data-run-id="fixture-0"] .btn-link-folder')`);
   await evaluate(`window.webOpens=[];window.webAlerts=[];window.open=url=>webOpens.push(url);window.alert=message=>webAlerts.push(message)`);
   const nativeUrl='https://example.invalid/native?redirect_uri=http%3A%2F%2Flocalhost%3A1234%2Fcallback&state=exact-value';
   await evaluate(`silingOpenWebUrl(${JSON.stringify(nativeUrl)},document.querySelector('.pane iframe').contentWindow)`);
@@ -1345,8 +1374,12 @@ try {
   await waitFor(`[...document.querySelectorAll('.pane iframe')].every(f=>f.contentDocument?.querySelector('textarea'))`);
   await checkResources({evaluate, waitFor, viewport, screenshot, pause, cdp, requests,
     mode:value=>{resourceMode=value;}, delayed:()=>delayedResource, frameLoads:()=>frameLoads});
+  readerMode='ok';
+  await checkArchives({evaluate, waitFor, viewport, screenshot, pause, cdp, requests,
+    mode:value=>{archiveMode=value;}, view:archiveFixture, submissions:archiveSubmissions, sessions, groups:groupFixture});
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));
+  }
   }
 } finally {
   ws?.close(); browser?.kill(); server.closeAllConnections(); server.close();

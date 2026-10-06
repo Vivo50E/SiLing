@@ -74,6 +74,7 @@ from .local_settings import dashboard_token, require_dashboard_auth
 from .native_activity import NativeActivityService
 from .resources import ResourceMonitor
 from .pane_groups import PaneGroups
+from .session_archives import SessionArchives, ArchiveConflict
 from .remote_nodes import (
     RemoteNodeReconnectManager,
     RemoteNodeRegistry,
@@ -8452,6 +8453,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
     # running-code update until the Dashboard has actually restarted.
     runtime_version = build_info(PROJECT_DIR)
     pane_groups = PaneGroups(outputs_dir)
+    session_archives = SessionArchives(outputs_dir)
 
     def scan_session_snapshot() -> list[dict[str, Any]]:
         # Reaping shares the same low-frequency worker as discovery. HTTP
@@ -9641,6 +9643,29 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             raise HTTPException(503, "Unable to save project groups") from exc
         return {"ok": True}
 
+    @app.post("/api/session-archives")
+    def change_session_archive(body: dict):
+        run_id = body.get("run_id")
+        if (not isinstance(run_id, str) or not run_id or len(run_id) > 2048
+                or type(body.get("archived")) is not bool
+                or type(body.get("expected_revision")) is not int
+                or body["expected_revision"] < 0):
+            raise HTTPException(400, "Invalid archive request")
+        if parse_qualified_run_id(run_id) or run_id.startswith("tmux::"):
+            raise HTTPException(409, "Archive currently supports persisted local sessions only")
+        row = _lookup_run_light(outputs_dir, run_id)
+        if not row:
+            raise HTTPException(404, "Session not found")
+        if row.get("kind") not in {"run", "task"}:
+            raise HTTPException(409, "Archive currently supports persisted local sessions only")
+        try:
+            view = session_archives.change(run_id, body["archived"], body["expected_revision"])
+        except ArchiveConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except (OSError, ValueError, TypeError) as exc:
+            raise HTTPException(503, "Archive storage unavailable; refresh before retrying") from exc
+        return {"ok": True, "session_archives": view}
+
     @app.get("/api/sessions")
     def list_sessions():
         snapshot = session_snapshots.snapshot()
@@ -9661,8 +9686,13 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         except (OSError, ValueError, TypeError):
             # Broken optional metadata must not take down terminal discovery.
             group_view = {"error": "Project-group storage unavailable"}
+        try:
+            archive_view = session_archives.read()
+        except (OSError, ValueError, TypeError):
+            archive_view = {"error": "Archive storage unavailable; refresh before retrying"}
         return {
             "sessions": sessions,
+            "session_archives": archive_view,
             "pane_groups": group_view,
             "instance_id": dashboard_instance_id,
             "backend_id": _runtime_backend_id(),
@@ -11840,10 +11870,18 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         skipped: list[dict[str, str]] = []
         source_to_new: dict[str, str] = {}
 
+        try:
+            archived_entries = session_archives.read()["entries"]
+        except (OSError, ValueError, TypeError) as exc:
+            raise HTTPException(503, "Archive storage unavailable; restore was not started") from exc
+
         for entry in entries:
             if not isinstance(entry, dict):
                 continue
             source_run_id = str(entry.get("source_run_id") or "")
+            if archived_entries.get(source_run_id, {}).get("archived"):
+                skipped.append({"source_run_id": source_run_id, "reason": "archived"})
+                continue
             resume_id = str(entry.get("resume_id") or "").strip()
             agent = _norm_agent(entry.get("agent", ""))
             if not resume_id:

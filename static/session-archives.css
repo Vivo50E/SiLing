@@ -1,0 +1,11 @@
+#btn-session-archives { margin: 6px 10px; min-height: 36px; }
+#session-archives { width: min(720px, 94vw); max-height: 88dvh; overflow: auto; }
+#session-archives .modal-body { display: grid; gap: 12px; }
+#session-archives p { font-size: 12px; line-height: 1.5; margin: 6px 0; }
+#session-archives input { width: 100%; box-sizing: border-box; }
+#session-archives button, #session-archives input { min-height: 44px; }
+.archive-list { max-height: 42dvh; overflow: auto; }
+.archive-item { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 8px; overflow-wrap: anywhere; }
+.archive-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.archive-preview pre { max-height: 30dvh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 ui-monospace, monospace; user-select: text; }
+.session-item .btn-archive-session { padding: 2px 5px; font-size: 12px; flex-shrink: 0; }

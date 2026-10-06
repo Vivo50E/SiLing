@@ -2749,18 +2749,20 @@
   }
 </style>
 <link rel="stylesheet" href="/static/ui-foundation.css?v=6" />
-<script src="/static/ui-messages.js?v=10"></script>
-<script src="/static/ui-foundation.js?v=10"></script>
+<script src="/static/ui-messages.js?v=11"></script>
+<script src="/static/ui-foundation.js?v=11"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=2" />
-<script src="/static/pane-groups.js?v=3"></script>
+<script src="/static/pane-groups.js?v=4"></script>
 <script src="/static/terminal-files.js?v=3"></script>
 <script src="/static/terminal-keys.js?v=1"></script>
 <link rel="stylesheet" href="/static/browser-panes.css?v=1" />
 <script src="/static/browser-panes.js?v=1"></script>
 <link rel="stylesheet" href="/static/mobile-reader.css?v=1">
-<script src="/static/mobile-reader.js?v=1"></script>
+<script src="/static/mobile-reader.js?v=2"></script>
 <link rel="stylesheet" href="/static/resources.css?v=3">
 <script src="/static/resources.js?v=4"></script>
+<link rel="stylesheet" href="/static/session-archives.css?v=1">
+<script src="/static/session-archives.js?v=1"></script>
 </head>
 <body>
 
@@ -2796,6 +2798,7 @@
       <button data-priority-filter="done"><span data-ui-message=Done>Done</span></button>
       <button data-priority-filter="unflagged"><span data-ui-message=None>None</span></button>
     </div>
+    <button id="btn-session-archives" type="button"></button>
     <div class="sess-search-status" id="sess-search-status" hidden></div>
     <div class="session-list" id="session-list"></div>
     <div style="padding: 8px 14px; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 11px; flex-shrink: 0;">
@@ -4326,6 +4329,7 @@
   let dashboardInstanceId = "";
   let sessionSnapshotReady = false;
   // Ordered slots: slots[i] = run_id or null. Length fixed by layout.
+  const hasSavedSlots = localStorage.getItem("orch_slots") !== null;
   let slots = JSON.parse(localStorage.getItem("orch_slots") || "[]");
   let layout = localStorage.getItem("orch_layout") || "1";
   // Default ON when ttyd is available; init() flips to false if the dashboard
@@ -4425,8 +4429,30 @@
   const paneCtrls = new Map();  // run_id -> { eventSource, cardEl, paneEl, inputEl, ... }
   const paneActivity = new Map();  // run_id -> activity timestamps/state
   const paneLocateTimers = new Map();  // run_id -> timeout id for locate pulse cleanup
+  const sessionArchives = window.SilingSessionArchives.create({
+    api, ui, trigger:$("btn-session-archives"), sessions:() => sessions, title:sessionTitle,
+    status:s => sessionDotPresentation(s).title, files:id => void openFolderViewer(id),
+    project:s => paneGroups.nameFor(s.run_id) || s.project || s.cwd || "",
+    changed:() => { reconcileArchivedPanes(); renderList(); renderGrid(); },
+    refresh:async () => {if (refreshListInFlight) await refreshListInFlight; return refreshList();},
+  });
+  function reconcileArchivedPanes() {
+    let changed = false;
+    for (const [id, ctrl] of paneCtrls) {
+      if (!sessionArchives.isArchived(id)) continue;
+      sessionArchives.rememberDraft(id, ctrl.inputEl?.value || "");
+      closePane(id); changed = true;
+    }
+    slots = slots.map(id => {
+      if (!sessionArchives.isArchived(id)) return id;
+      changed = true; return null;
+    });
+    if (changed) saveSlots();
+    mobileReader?.update();
+    return changed;
+  }
   const paneGroups = window.SiLingPaneGroups({
-    api, ui, sessions: () => sessions, language: () => document.documentElement.lang,
+    api, ui, sessions: () => sessions.filter(s => !sessionArchives.isArchived(s.run_id)), language: () => document.documentElement.lang,
     changed: () => { renderList(); paneGroups.applyVisibility(); },
     refresh: async () => {
       if (refreshListInFlight) await refreshListInFlight;
@@ -4510,6 +4536,7 @@
     slots = kept;
   }
   function placeInFirstFree(runId) {
+    if (sessionArchives.isArchived(runId)) {sessionArchives.show(runId); return -1;}
     // If already placed, just focus.
     const existing = slotOf(runId);
     if (existing >= 0) return existing;
@@ -5554,7 +5581,7 @@
     const seen = new Set();
     const out = [];
     for (const s of sessions || []) {
-      if (!s || !s.run_id || !s.alive || seen.has(s.run_id)) continue;
+      if (!s || !s.run_id || !s.alive || sessionArchives.isArchived(s.run_id) || seen.has(s.run_id)) continue;
       seen.add(s.run_id);
       out.push(s);
     }
@@ -6308,6 +6335,8 @@
         const firstSnapshot = !sessionSnapshotReady;
         sessionSnapshotReady = true;
         sessions = mergePendingPanelStates(data.sessions || []);
+        const archiveChanged = sessionArchives.receive(data.session_archives);
+        const archiveClosed = reconcileArchivedPanes();
         paneGroups.receive(data.pane_groups);
         const remoteNodeStates = Array.isArray(data.remote_nodes)
           ? data.remote_nodes : [];
@@ -6379,7 +6408,7 @@
           }
         }
         if (changed) saveSlots();
-        if (changed || recoveredPaneAppeared || firstSnapshot) renderGrid();
+        if (changed || archiveChanged || archiveClosed || recoveredPaneAppeared || firstSnapshot) renderGrid();
         paneGroups.applyVisibility();
         for (const [runId, draft] of recoveredDrafts) {
           const input = paneCtrls.get(runId)?.inputEl;
@@ -6841,6 +6870,7 @@
           <span class="si-title" title="${escapeHtml(display)}">${escapeHtml(display)}</span>
           ${stateBadge}
           ${canLabel ? `<button class="btn-rename" title="Rename (label)" data-ui-title=Rename%20(label) aria-label="Rename session" data-ui-label=Rename%20session>${ui.icon("edit")}</button>` : ""}
+          <button class="btn-archive-session" title="Archive session" data-ui-title="Archive%20session" aria-label="Archive session" data-ui-label="Archive%20session">${ui.icon("archive")}</button>
         </div>
         <div class="si-agent">${ui.agentBadge(s.agent)}<span class="ui-secondary">${escapeHtml(_dot.title)}</span></div>
       </div>
@@ -6848,6 +6878,7 @@
   }
 
   function renderList() {
+    sessionArchives.render();
     mobileReader?.update();
     const el = $("session-list");
     syncSidebarAuxControls();
@@ -6859,7 +6890,7 @@
       el.innerHTML = '<div style="padding: 24px 14px; color: var(--text-dim); font-size: 12px;"><span data-ui-message=No%20sessions%20in%20outputs%2F.>No sessions in outputs/.</span></div>';
       return;
     }
-    const base = sessions.filter(s => s.alive && paneGroups.matches(s));
+    const base = sessions.filter(s => sessionArchives.listed(s) && paneGroups.matches(s));
     renderSidebarPriorityFilter(base);
     const activityFiltered = sidebarWorkingOnly
       ? base.filter(sessionAgentWorking) : base;
@@ -6935,6 +6966,9 @@
       const id = node.dataset.id;
       let clickTimer = null;
       node.addEventListener("click", (ev) => {
+        if (ev.target.closest(".btn-archive-session")) {
+          ev.stopPropagation(); clearTimeout(clickTimer); void sessionArchives.change(id); return;
+        }
         if (ev.target.closest(".btn-rename")) {
           ev.stopPropagation(); renameSession(id); return;
         }
@@ -6951,7 +6985,7 @@
         clickTimer = setTimeout(() => handleSessionClick(click, id), 260);
       });
       node.addEventListener("dblclick", (ev) => {
-        if (ev.target.closest(".btn-rename")) return;
+        if (ev.target.closest(".btn-rename, .btn-archive-session")) return;
         ev.preventDefault();
         ev.stopPropagation();
         clearTimeout(clickTimer);
@@ -7036,6 +7070,7 @@
   }
 
   function handleSessionClick(ev, id) {
+    if (sessionArchives.isArchived(id)) {sessionArchives.show(id); return;}
     if (isMobileView()) { mobileReader?.open(id); closeSidebar(); return; }
     idleNotif.acknowledge(id);
     // ⌘/Ctrl+Click: toggle this session in/out of pinned slots
@@ -7361,7 +7396,7 @@
     // After expanding layout, fill empty slots with any live sessions that
     // aren't already pinned. Keeps user flow: "I chose 2↔, show me 2 things."
     const placed = new Set(slots.filter(Boolean));
-    const candidates = sessions.filter(s => s.alive && !placed.has(s.run_id));
+    const candidates = sessions.filter(s => s.alive && !sessionArchives.isArchived(s.run_id) && !placed.has(s.run_id));
     for (let i = 0; i < slots.length && candidates.length; i++) {
       if (!slots[i]) slots[i] = candidates.shift().run_id;
     }
@@ -7493,6 +7528,7 @@
   }
 
   function renderGrid() {
+    reconcileArchivedPanes();
     if (isMobileView()) { mobileReader?.update(); return; }
     const grid = $("grid");
     browserPanes.reconcile();
@@ -7584,6 +7620,7 @@
   // new one via openPane's one-shot construction path.
   function ensurePaneCard(runId, slotIdx) {
     if (browserPanes.isBrowser(runId)) return browserPanes.ensure(runId, slotIdx);
+    if (sessionArchives.isArchived(runId)) return null;
     const existing = paneCtrls.get(runId);
     if (existing) {
       if (existing.cached) {
@@ -7616,6 +7653,11 @@
     el.className = "pane-card empty-slot";
     el.dataset.slot = String(idx);
     el.style.order = String(idx);
+    if (slots[idx] && !sessionArchives.ready) {
+      el.setAttribute("role", "status");
+      el.textContent = ui.message("Archive state unavailable — refresh before retrying");
+      return el;
+    }
     if (slots[idx] && pendingRecoveredSessions.has(slots[idx])) {
       el.setAttribute("role", "status");
       el.setAttribute("aria-busy", "true");
@@ -7833,6 +7875,7 @@
 
   let paneMenuSerial = 0;
   function openPane(runId, slotIdx) {
+    if (!sessionArchives.ready || sessionArchives.isArchived(runId)) return;
     const grid = $("grid");
 
     // Reuse existing card if we already built one for this runId.
@@ -7922,6 +7965,7 @@
           <div class="ui-menu-group">
             <button class="btn-unpin" data-dialog-close>${ui.icon("close")}<span data-i18n="closePane">Close pane</span></button>
             <p class="ui-secondary" data-i18n="closeHelp"></p>
+            <button class="btn-archive-session" data-dialog-close data-ui-message="Archive%20session">Archive session</button>
           </div>
           <div class="ui-menu-group">
             <button class="btn-restart-session" ${terminalSession || s.agent_exited === true ? "hidden" : ""} data-dialog-close>${ui.icon("refresh")}<span data-i18n="restartAgent">Restart agent</span></button>
@@ -7938,6 +7982,7 @@
     ui.translate(card);
     paneGroups.decorate(card, s);
     const paneMenu = card.querySelector(".pane-menu");
+    card.querySelector(".btn-archive-session").onclick = () => void sessionArchives.change(runId);
     const moveSelect = card.querySelector(".pane-move-select");
     ui.wireDialog(card.querySelector(".pane-related-menu"), card.querySelector(".btn-related-sessions"), () => renderRelatedSessions(card, runId));
     card.querySelector(".btn-switch-type").addEventListener("click", () => openSwitchPaneModal(runId));
@@ -8042,6 +8087,7 @@
 
     const paneEl = card.querySelector(".pane");
     const inputEl = card.querySelector("textarea");
+    inputEl.value = sessionArchives.draft(runId);
     if (switchedPaneDrafts.has(runId)) {
       inputEl.value = switchedPaneDrafts.get(runId);
       switchedPaneDrafts.delete(runId);
@@ -13514,7 +13560,10 @@
   $("grid").before(mobileHost);
   mobileReader = window.SilingMobileReader.create({
     host: mobileHost, api, message: (key, params) => ui.message(key, params),
-    sessions: () => sessions, title: sessionTitle,
+    sessions: () => sessions.filter(s => !sessionArchives.isArchived(s.run_id)), title: sessionTitle,
+    archive:id => sessionArchives.change(id),
+    archives:button => sessionArchives.show("", button),
+    archiveLabel:() => $("btn-session-archives").textContent,
     attention: s => !!sessionAttentionState(s) || s.panel_state === "blocked",
     status: s => sessionDotPresentation(s).title,
     files: id => void openFolderViewer(id),
@@ -13848,12 +13897,17 @@
         await new Promise(resolve => setTimeout(resolve, 250));
       }
     }
-    if (!isMobileView()) setLayout(layout);
+    // Replaying saved slots is not an explicit request to auto-fill: retain
+    // gaps left by archived/closed panes, including an entirely empty layout.
+    if (!isMobileView()) {
+      if (hasSavedSlots) setLayoutAndSlots(layout, slots);
+      else setLayout(layout);
+    }
     // Auto-place the first live session if all slots are empty. Ended runs
     // stay in the history API, but must not reappear after the user clears
     // their pane layout and reloads the Dashboard.
-    const firstLiveSession = sessions.find(s => s.alive);
-    if (!isMobileView() && firstLiveSession && slots.every(x => !x)) {
+    const firstLiveSession = sessions.find(s => s.alive && !sessionArchives.isArchived(s.run_id));
+    if (!isMobileView() && !hasSavedSlots && firstLiveSession && slots.every(x => !x)) {
       slots[0] = firstLiveSession.run_id;
       saveSlots();
     }

@@ -2,7 +2,7 @@
 (() => {
   "use strict";
   window.SilingMobileReader = {create};
-  function create({host, api, message: t, sessions, title, attention, status, files, terminal}) {
+  function create({host, api, message: t, sessions, title, attention, status, files, terminal, archive, archives, archiveLabel}) {
     let active = false, selected = "", generation = 0, abort = null, timer = null;
     let last = null, stale = false, reading = false, interactive = false, frame = null;
     let listScroll = 0, query = "", filter = "all";
@@ -20,6 +20,7 @@
     host.id = "mobile-reader"; host.hidden = true;
     const listView = el("section", "home", host);
     const heading = el("h2", "heading", listView);
+    const archiveList = button("archives", listView, () => archives(archiveList));
     const controls = el("div", "filters", listView);
     const search = el("input", "search", controls); search.type = "search";
     const select = el("select", "filter", controls);
@@ -31,6 +32,7 @@
     const actions = el("div", "actions", detail);
     const back = button("back", actions, () => goBack());
     const fileButton = button("files", actions, () => files(selected));
+    const archiveButton = button("archive", actions, () => void archive(selected));
     const refresh = button("refresh", actions, () => { cancel(); void poll(); });
     const interact = button("interact", actions, () => void toggleTerminal());
     const name = el("h2", "title", detail); name.tabIndex = -1;
@@ -50,6 +52,8 @@
     }
     function updateCopy() {
       heading.textContent = t("Sessions");
+      archiveList.textContent = archiveLabel();
+      archiveButton.textContent = t("Archive session");
       search.placeholder = t("Search sessions"); search.setAttribute("aria-label", t("Search sessions"));
       select.setAttribute("aria-label", t("Session filter"));
       select.options[0].textContent = t("All sessions");
@@ -96,6 +100,7 @@
     select.addEventListener("change", () => {filter = select.value; renderList();});
     function update() {
       if (!active) return;
+      if (selected && !sessions().some(row => row.run_id === selected)) {goBack(); return;}
       updateCopy();
       if (!selected) renderList();
     }

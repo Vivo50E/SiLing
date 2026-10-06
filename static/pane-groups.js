@@ -270,6 +270,7 @@
     renderBar();
     return {
       matches, decorate, applyVisibility, refreshLabels: renderBar,
+      nameFor: id => groupFor(id)?.name || "",
       reveal(runId) {
         if (!matches({run_id:runId})) selectFilter("all");
       },
