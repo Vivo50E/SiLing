@@ -102,6 +102,15 @@ class SpecKitRepositoryTests(unittest.TestCase):
                     self.assertTrue(resolved.is_relative_to(ROOT.resolve()))
                     self.assertTrue(resolved.exists(), str(resolved))
 
+    def test_spec_landing_page_counts_track_the_current_contract(self):
+        spec = (ROOT / FEATURE / "spec.md").read_text()
+        landing = (ROOT / "docs/uiux-improvement-spec.md").read_text()
+        stories = len(re.findall(r"^### User Story \d+ -", spec, re.M))
+        requirements = len(re.findall(r"^- \*\*FR-\d{3}\*\*:", spec, re.M))
+        criteria = len(re.findall(r"^- \*\*SC-\d{3}\*\*:", spec, re.M))
+        self.assertIn(f"{stories} 个独立用户故事", landing)
+        self.assertIn(f"{requirements} 条需求和 {criteria} 项量化验收标准", landing)
+
     def test_bundled_shell_scripts_are_parseable(self):
         for path in (ROOT / ".specify/scripts/bash").glob("*.sh"):
             result = subprocess.run(["bash", "-n", str(path)],
