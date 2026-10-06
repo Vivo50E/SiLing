@@ -139,6 +139,32 @@ the shortcut before ttyd loses the Shift modifier, without changing global
 tmux settings. Plain Terminal and unknown/custom agents retain native keys.
 The bottom input box also supports Shift+Enter or Option/Alt+Enter for newlines.
 
+Pane **More → Secret operations** registers an API key with a name and an immutable
+HTTPS operation (GET or POST, Bearer or X-API-Key, optional fixed POST body).
+Tell the agent only the name, then use `siling secret call deploy`; `siling secret list`
+lists references in the current `ORCH_RUN_ID` scope. No CLI accepts a key, arbitrary
+command, request override, or key export. Keys live only in Dashboard memory, expire
+after 15 minutes or one hour, and disappear on revoke or Dashboard shutdown.
+Expired keys are cleared by an idle expiry worker. Existing in-flight calls may
+finish before revoke returns; calls are never automatically retried.
+
+The broker alone adds the authentication header, verifies the remote TLS certificate
+and does not use environment proxies or follow redirects. It returns only HTTP
+status, never response bodies, headers, or raw exceptions—even if an API echoes
+the key. This is suitable for fixed operations such as a deployment webhook or
+authentication check; arbitrary API data retrieval and local-command injection are
+not supported. The CLI uses loopback access or an SSH tunnel to the Dashboard.
+Remote Nodes must run a version supporting this API and use HTTPS or a loopback tunnel.
+
+The security boundary is the broker API on a trusted host. Dashboard administrators
+can manage/call all registered operations; session labels do not replace OS user
+isolation. This does not protect against an agent or another process with the same
+OS privileges attacking Dashboard memory, files, or credentials. For that threat
+model, run agents under a separate OS identity/sandbox with no Dashboard admin token.
+Python/HTTP/TLS may temporarily copy keys in memory; this is not cryptographic
+memory-zeroization or an encrypted persistent vault. Keep key values exclusively
+in the private value field, never in URLs, request bodies, ordinary commands or chat.
+
 Pane **More → Private input** provides a masked field for a waiting password or token
 prompt. SiLing clears it on send, close, or hiding the tab; it never saves it as a
 draft or sends it through ordinary message handling. Delivery uses stdin and a
