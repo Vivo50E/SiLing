@@ -851,3 +851,5 @@ Choose **Settings → Browsing & files → Default web link destination** to ope
 Dense desktop layouts fit the viewport. Short panes keep the terminal visible and move secondary controls into **⋯**; choose **Write a message** to expand the pane and use its preserved draft. Zoom restores the full toolbars. Narrow screens below 820px use the mobile list and single-session reader instead of stacking desktop terminals.
 
 Cursor launches use synchronized full-screen repaint delivery with tmux 3.7+ to avoid displaying intermediate history replays in small panes. Existing Cursor processes need a restart/resume after updating SiLing. [Cause, validation and activation](docs/cursor-redraw.md).
+
+Settings → Appearance → **Always show pane priority** keeps the priority selector visible even in short panes. Off by default; saved in this browser and applied immediately without restarting sessions.
