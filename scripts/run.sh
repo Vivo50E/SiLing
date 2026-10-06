@@ -92,9 +92,10 @@ if [ "$AGENT_TYPE" = "terminal" ]; then
     EFFORT=""
 fi
 
-# If no model is specified, cursor/agent uses claude-opus-4-7-high.
+# New Cursor chats default to claude-opus-4-7-high. Resumed chats must
+# restore their native lastUsedModel unless the CLI caller explicitly overrides it.
 # Claude and Codex keep their own CLI defaults.
-if [ -z "$MODEL" ] && { [ "$AGENT_TYPE" = "cursor" ] || [ "$AGENT_TYPE" = "agent" ]; }; then
+if [ -z "$MODEL" ] && [ -z "$RESUME_ID" ] && { [ "$AGENT_TYPE" = "cursor" ] || [ "$AGENT_TYPE" = "agent" ]; }; then
     MODEL="claude-opus-4-7-high"
 fi
 

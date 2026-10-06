@@ -347,6 +347,9 @@ linked-file allowed roots 限制。Remote Nodes 使用节点上的同类接口�
 
 「更多 → 重启当前 Agent」会在确认后中断选中的 Claude／Codex／Cursor 进程，并用已保存的
 原生对话 ID 启动新的后台会话，适合重新加载 MCP 配置；不会更新或重启独立的 MCP 服务。
+Cursor 的重启、Resume 和 Restore saved 由 Cursor 恢复该对话最后实际使用的模型，
+不再传入 SiLing 最初启动时的旧模型。只切换菜单而尚未发送消息时，Cursor 可能还没有保存选择。
+新建会话仍可指定模型；直接使用 CLI 恢复时，也可用 `--model` 显式覆盖。
 没有恢复 ID、工作目录无效或找不到 CLI 时，不会停止 Agent；正常退出超时也不会强杀。
 CLI 优先从服务 PATH 查找，再检查 `~/.local/bin`；后台启动使用解析后的绝对可执行路径。新的 SiLing run
 只替换对应面板，并带入名称、配色、标记、关联文件和下方输入框草稿。终端内未提交的输入和

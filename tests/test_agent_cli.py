@@ -120,6 +120,11 @@ class AgentCliTests(unittest.TestCase):
                         self.assertIn("<resume>" if agent == "codex" else "<--resume>", pane)
                     else:
                         self.assertNotIn("<saved-id>", pane)
+                    if agent == "cursor":
+                        if resume:
+                            self.assertNotIn("<--model>", pane)
+                        else:
+                            self.assertIn("<claude-opus-4-7-high>", pane)
                     self.assertIn(str(tools / "python3"), pane)
         finally:
             subprocess.run([real_tmux, "-S", str(socket), "kill-server"], capture_output=True, timeout=5)

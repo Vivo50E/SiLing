@@ -10831,6 +10831,11 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             parts.append(f"ORCH_PROJECTS_ROOT={shlex.quote(projects_root)}")
         parts.append(shlex.quote(orch_bin))
         agent_kind = _norm_agent(agent)
+        if agent_kind == "cursor" and resume_id:
+            # Cursor restores this conversation's lastUsedModel only when no
+            # initial --model is supplied. Our launch record can predate an
+            # in-terminal model switch; never override native resume with it.
+            model = ""
         if agent_kind == "terminal":
             # Hidden form fields can retain values after the user switches
             # from an AI agent to Terminal. Never forward those values to a

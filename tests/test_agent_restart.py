@@ -79,13 +79,25 @@ class AgentRestartTests(unittest.TestCase):
                 args = self.spawn.call_args.args[0]
                 self.assertEqual(args[args.index("--resume-id") + 1], "conversation-123")
                 self.assertEqual(args[args.index("--label") + 1], "Keep my name")
-                self.assertEqual(args[args.index("--model") + 1], "fixture-model")
+                if agent == "cursor":
+                    self.assertNotIn("--model", args)
+                else:
+                    self.assertEqual(args[args.index("--model") + 1], "fixture-model")
                 self.assertIn(agent, args)
                 self.assertEqual(args[-1], str(self.root))
                 self.assertTrue(data["ui_metadata_copied"])
                 self.assertEqual(data["linked_folders_copied"], 2)
                 self.assertEqual(self.ui.call_args.args[1]["terminal_theme"], "light")
         self.discover.assert_not_called()
+
+    def test_cursor_resume_does_not_override_native_model_with_stale_record(self):
+        self.src.update(agent="cursor", alive=False, model="claude-opus-4-7-high")
+        result = self.client.post("/api/resume", json={"run_id": "source"},
+                                  headers={"Authorization": "Bearer fixture-token"})
+        self.assertEqual(result.status_code, 200, result.text)
+        args = self.spawn.call_args.args[0]
+        self.assertNotIn("--model", args)
+        self.assertEqual(args[args.index("--resume-id") + 1], "conversation-123")
 
     def test_preflight_failure_never_stops_agent(self):
         for changes, code in [({"resume_id": ""}, 409), ({"agent": "terminal"}, 400),
