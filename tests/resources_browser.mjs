@@ -11,7 +11,13 @@ export async function checkResources({evaluate, waitFor, viewport, screenshot, p
   assert.equal(await evaluate(`document.querySelector('[data-summary-metric="outputs_disk"] strong').textContent`), '50%');
   assert.equal(await evaluate(`document.querySelector('#resource-summary').dataset.status`), 'partial', 'Missing project-volume observations are not silently marked healthy');
   assert.ok(await evaluate(`document.querySelector('#resource-summary').getBoundingClientRect().bottom<=document.querySelector('#grid').getBoundingClientRect().top`), 'Summary does not overlap pane content');
+  assert.ok(await evaluate(`{const s=document.querySelector('#resource-summary').getBoundingClientRect(),m=document.querySelector('#btn-mission-control').getBoundingClientRect();Math.abs((s.top+s.bottom-m.top-m.bottom)/2)<2 && s.width<=190 && s.height<=36}`), 'Resource summary is compact and shares the Mission toolbar row');
   await screenshot('resources-summary-desktop');
+  for (const width of [1440, 1351, 1280, 1251, 1100, 1024]) {
+    await viewport(width, 900);
+    assert.ok(await evaluate(`{const s=document.querySelector('#resource-summary').getBoundingClientRect(),m=document.querySelector('#btn-mission-control').getBoundingClientRect(),b=document.querySelector('.topbar-global');Math.abs((s.top+s.bottom-m.top-m.bottom)/2)<2 && b.scrollWidth<=b.clientWidth && document.documentElement.scrollWidth<=innerWidth}`), `Toolbar fits at ${width}px without creating a resource row`);
+  }
+  await viewport(1280, 900);
   const frames = frameLoads();
   const requestStart = requests.length;
   await evaluate(`document.querySelector('#resource-summary').focus()`);
@@ -62,6 +68,7 @@ export async function checkResources({evaluate, waitFor, viewport, screenshot, p
   await evaluate(`window.resourceClock=Date.now;Date.now=()=>resourceClock()+16000`);
   await waitFor(`document.querySelector('[data-metric="memory"]').dataset.status==='stale'`);
   assert.equal(await evaluate(`document.querySelector('[data-summary-metric="memory"]').dataset.status`), 'stale');
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.resource-summary-indicator')).visibility`), 'visible', 'Compact summary keeps a visible non-color-only warning');
   assert.equal(await evaluate(`getComputedStyle(document.querySelector('[data-summary-metric="memory"] .resource-ring')).backgroundImage`), 'none', 'Expired readings lose their live ring');
   assert.equal(await evaluate(`document.querySelector('[data-metric="memory"] strong').textContent`), before);
   await screenshot('resources-stale');
@@ -75,6 +82,7 @@ export async function checkResources({evaluate, waitFor, viewport, screenshot, p
   await evaluate(`document.querySelector('#resource-refresh').click()`);
   await waitFor(`document.querySelector('[data-metric="cpu"]').dataset.status==='fresh'`);
   assert.equal(await evaluate(`document.querySelector('#resource-summary').dataset.status`), 'fresh');
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.resource-summary-indicator')).visibility`), 'hidden');
   assert.match(await evaluate(`document.querySelector('.resource-summary-heading small').textContent`), /Every 5s/);
   mode('unauthorized');
   await evaluate(`window.resourcePrompt=window.prompt;window.prompt=()=>{throw Error('Resource polling must not prompt')};document.querySelector('#resource-refresh').click()`);
@@ -98,8 +106,8 @@ export async function checkResources({evaluate, waitFor, viewport, screenshot, p
   await waitFor(`document.querySelector('.resource-summary-heading strong').textContent==='主机资源'`);
   await screenshot('resources-summary-mobile-zh-light');
   await viewport(320, 740);
-  assert.ok(await evaluate(`document.documentElement.scrollWidth<=innerWidth && document.querySelector('#resource-summary').scrollWidth<=document.querySelector('#resource-summary').clientWidth`), 'Summary fits a narrow phone');
-  assert.ok(await evaluate(`document.querySelector('#resource-summary').getBoundingClientRect().height>=44`));
+  assert.ok(await evaluate(`document.documentElement.scrollWidth<=innerWidth && !document.querySelector('#resource-summary').getClientRects().length && document.querySelector('#btn-resources-mobile').getClientRects().length>0`), 'Narrow phones use the resource icon instead of an extra summary row');
+  assert.ok(await evaluate(`document.querySelector('#btn-resources-mobile').getBoundingClientRect().height>=44`));
   await screenshot('resources-summary-mobile-320');
   await viewport(390, 844);
   assert.ok(await evaluate(`document.querySelector('#btn-resources-mobile').getClientRects().length>0`), 'Phone has a visible resource entry, independent of hidden Workspace');

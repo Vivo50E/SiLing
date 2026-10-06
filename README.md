@@ -460,8 +460,10 @@ service-wide settings editing remain pending. See [the Spec Kit workflow](specs/
 
 ### Inspect host resources
 
-The main view shows a compact **Host resources** card with CPU, memory usage
-(total minus available) and output-volume usage rings. Click it for details.
+The toolbar beside **Mission** shows compact CPU, memory usage (total minus
+available) and output-volume usage rings, without taking a separate row.
+Hover for host/status information; click for details. A `!` marks incomplete,
+stale or failed observations. Narrow phones use the resource chip icon instead.
 It adapts to phones and light/dark themes; unavailable or stale values never
 appear as live rings. Visible pages read the shared cache every five seconds;
 background tabs pause requests. Opening details does not create a second loop.

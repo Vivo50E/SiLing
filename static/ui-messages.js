@@ -3,6 +3,8 @@
   const zh = {
     "Host resources": "主机资源",
     "Memory": "内存",
+    "Mem": "内存",
+    "Disk": "磁盘",
     "Output disk": "产出磁盘",
     "Resource request failed": "资源请求失败",
     "Partial data": "部分指标不可用",
