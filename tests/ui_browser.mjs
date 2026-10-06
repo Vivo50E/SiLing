@@ -78,11 +78,14 @@ const server = http.createServer((req, res) => {
       status:resourceMode === 'disabled' ? 'disabled' : 'fresh', source:'psutil', error:''});
     return res.end(JSON.stringify({schema_version:1, enabled:resourceMode !== 'disabled',
       host:'fixture-host <literal>', scope:'dashboard_host', interval_s:5, max_age_s:15,
-      metrics:{cpu:metric({percent:37.5,logical_cpus:8}),
+      metrics:{cpu:resourceMode === 'warming_up'
+          ? {value:null, observed_at:null, age_s:null, status:'unknown', error:'warming_up', source:'psutil'}
+          : metric({percent:resourceMode === 'zero' ? 0 : 37.5,logical_cpus:8}),
         memory:metric({total_bytes:8589934592,available_bytes:2147483648}),
         swap:metric({total_bytes:1073741824,used_bytes:0}),
         outputs_disk:metric({total_bytes:100000000000,free_bytes:50000000000}),
-        projects_disk:{value:null,observed_at:null,age_s:null,status:resourceMode==='path_missing'?'unavailable':'unknown',error:resourceMode==='path_missing'?'path_missing':'unavailable',source:'psutil'}}}));
+        projects_disk:resourceMode === 'healthy' ? metric({total_bytes:100000000000,free_bytes:50000000000})
+          : {value:null,observed_at:null,age_s:null,status:resourceMode==='path_missing'?'unavailable':'unknown',error:resourceMode==='path_missing'?'path_missing':'unavailable',source:'psutil'}}}));
   }
   if (url.pathname.endsWith('/read')) {
     res.setHeader('Content-Type','application/json');

@@ -460,7 +460,12 @@ service-wide settings editing remain pending. See [the Spec Kit workflow](specs/
 
 ### Inspect host resources
 
-Open **Workspace → Host resources** on desktop, or the **Host resources** chip
+The main view shows a compact **Host resources** card with CPU, memory usage
+(total minus available) and output-volume usage rings. Click it for details.
+It adapts to phones and light/dark themes; unavailable or stale values never
+appear as live rings. Visible pages read the shared cache every five seconds;
+background tabs pause requests. Opening details does not create a second loop.
+You can also open **Workspace → Host resources** on desktop, or the **Host resources** chip
 icon in the phone toolbar, for this Dashboard
 host's CPU (all cores normalized to 0–100%), available/total memory, used/total
 swap and free space on its output/project volumes. This is not the phone's or

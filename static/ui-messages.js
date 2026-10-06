@@ -2,6 +2,13 @@
 (() => {
   const zh = {
     "Host resources": "主机资源",
+    "Memory": "内存",
+    "Output disk": "产出磁盘",
+    "Resource request failed": "资源请求失败",
+    "Partial data": "部分指标不可用",
+    "Every 5s": "每 5 秒更新",
+    "Memory used = total − available. Disk usage is for the output volume.": "内存占用 = 总量 − 可用量。磁盘占用指产出目录所在卷。",
+    "Open resource details": "打开资源详情",
     "Resource collector needs psutil. Install requirements.txt in the Dashboard's Python environment; collection retries automatically.": "资源采集器缺少 psutil。请在 Dashboard 使用的 Python 环境中安装 requirements.txt；采集会自动重试。",
     "Some resource metrics could not be collected — see the reason below": "部分资源指标采集失败 — 请查看下方原因",
     "Missing dependency: psutil": "缺少依赖：psutil",

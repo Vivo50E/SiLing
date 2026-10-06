@@ -2,7 +2,7 @@
 (() => {
   "use strict";
   window.SilingResources = {create};
-  function create({trigger, mobileTrigger, returnFocus, api, ui}) {
+  function create({trigger, mobileTrigger, summary, returnFocus, api, ui}) {
     const t = (...args) => ui.message(...args);
     const node = (tag, parent, text) => {
       const el = document.createElement(tag);
@@ -29,6 +29,19 @@
     });
     const help = node("p", body); help.className = "resource-help";
     const refresh = node("button", body); refresh.id = "resource-refresh";
+    const heading = node("span", summary); heading.className = "resource-summary-heading";
+    const summaryTitle = node("strong", heading);
+    const summaryStatus = node("small", heading);
+    const miniFields = [
+      ["cpu", "CPU"], ["memory", "Memory"], ["outputs_disk", "Output disk"],
+    ].map(([key, label]) => {
+      const card = node("span", summary); card.className = "resource-mini"; card.dataset.summaryMetric = key;
+      const ring = node("span", card); ring.className = "resource-ring"; ring.setAttribute("aria-hidden", "true");
+      const copy = node("span", card); copy.className = "resource-mini-copy";
+      const name = node("span", copy); name.className = "resource-mini-label";
+      return {key, label, card, name, value:node("strong", copy), ring};
+    });
+    const arrow = node("span", summary, "›"); arrow.className = "resource-summary-arrow"; arrow.setAttribute("aria-hidden", "true");
     let last = null, receivedWall = 0, receivedMono = 0, failed = false;
     let controller = null, generation = 0, pollTimer = null, renderTimer = null;
     let opener = returnFocus || trigger;
@@ -38,6 +51,16 @@
       let i = 0; while (value >= 1024 && i < units.length - 1) {value /= 1024; i++;}
       return value.toLocaleString(document.documentElement.lang, {maximumFractionDigits:1}) + " " + units[i];
     };
+    function percentage(key, value) {
+      if (!value) return null;
+      let percent = value.percent;
+      if (key !== "cpu") {
+        const total = value.total_bytes, free = key === "memory" ? value.available_bytes : value.free_bytes;
+        if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(free) || free < 0 || free > total) return null;
+        percent = 100 * (total - free) / total;
+      }
+      return Number.isFinite(percent) && percent >= 0 && percent <= 100 ? percent : null;
+    }
     function render() {
       title.textContent = t("Host resources"); close.setAttribute("aria-label", t("Close"));
       refresh.textContent = t("Refresh snapshot"); refresh.disabled = !!controller;
@@ -77,9 +100,31 @@
         const reason = Object.hasOwn(reasons, metric?.error) ? t(reasons[metric.error]) : "";
         field.meta.textContent = [t(labels[state] || "unknown"), time, metric?.source || "", reason].filter(Boolean).join(" · ");
       }
+      const state = last?.enabled === false ? "disabled" : failed ? "unavailable"
+        : fields.some(field => field.card.dataset.status === "stale") ? "stale"
+        : fields.some(field => field.card.dataset.status !== "fresh") ? "partial" : "fresh";
+      summary.dataset.status = state;
+      summaryTitle.textContent = t("Host resources");
+      const statusLabel = {disabled:"Disabled", unavailable:"Resource request failed", stale:"Stale",
+        partial:last ? "Partial data" : "Loading snapshot…", fresh:"Every 5s"}[state];
+      // Keep freshness visible even when a long hostname is ellipsized on phones.
+      summaryStatus.textContent = [t(statusLabel), last?.host].filter(Boolean).join(" · ");
+      for (const mini of miniFields) {
+        const detail = fields.find(field => field.key === mini.key);
+        const percent = percentage(mini.key, last?.metrics?.[mini.key]?.value);
+        mini.card.dataset.status = detail.card.dataset.status;
+        mini.name.textContent = t(mini.label);
+        mini.value.textContent = percent === null || state === "disabled" ? "—"
+          : percent.toLocaleString(document.documentElement.lang, {maximumFractionDigits:1}) + "%";
+        mini.ring.style.setProperty("--resource-fill", `${percent ?? 0}%`);
+        mini.card.title = [detail.title.textContent, detail.value.textContent, detail.meta.textContent].join(" · ");
+      }
+      summary.title = [host.textContent, notice.textContent, t("Memory used = total − available. Disk usage is for the output volume."), t("Open resource details")].join("\n");
+      summary.setAttribute("aria-label", [host.textContent, t(statusLabel),
+        ...miniFields.map(field => `${t(field.label)} ${field.value.textContent}`), t("Open resource details")].join(" · "));
     }
     async function poll() {
-      if (!dialog.open || document.hidden || controller) return;
+      if (document.hidden || controller) return;
       clearTimeout(pollTimer);
       const current = ++generation;
       const requestController = new AbortController();
@@ -97,7 +142,7 @@
         clearTimeout(timeout);
         if (current === generation) {
           controller = null; render();
-          if (dialog.open && !document.hidden) pollTimer = setTimeout(poll, 5000);
+          if (!document.hidden) pollTimer = setTimeout(poll, 5000);
         }
       }
     }
@@ -108,15 +153,18 @@
     ui.wireDialog(dialog, trigger, render);
     function start() {void poll(); clearInterval(renderTimer); renderTimer = setInterval(render, 1000);}
     trigger.addEventListener("click", () => {opener = returnFocus || trigger; start();});
-    mobileTrigger.setAttribute("aria-haspopup", "dialog");
-    mobileTrigger.setAttribute("aria-controls", dialog.id);
-    mobileTrigger.setAttribute("aria-expanded", "false");
-    mobileTrigger.addEventListener("click", () => {
-      opener = mobileTrigger; render(); dialog.showModal();
-      mobileTrigger.setAttribute("aria-expanded", "true"); start();
-    });
+    for (const button of [mobileTrigger, summary]) {
+      button.setAttribute("aria-haspopup", "dialog");
+      button.setAttribute("aria-controls", dialog.id);
+      button.setAttribute("aria-expanded", "false");
+      button.addEventListener("click", () => {
+        opener = button; render(); dialog.showModal();
+        button.setAttribute("aria-expanded", "true"); start();
+      });
+    }
     dialog.addEventListener("close", () => {
-      cancel(); mobileTrigger.setAttribute("aria-expanded", "false");
+      // The visible summary owns the same loop; closing details must not stop it.
+      mobileTrigger.setAttribute("aria-expanded", "false"); summary.setAttribute("aria-expanded", "false");
       const target = opener.getClientRects().length ? opener
         : mobileTrigger.getClientRects().length ? mobileTrigger : returnFocus;
       target?.focus({preventScroll:true});
@@ -124,8 +172,10 @@
     refresh.addEventListener("click", () => void poll());
     document.addEventListener("visibilitychange", () => {
       cancel();
-      if (dialog.open && !document.hidden) {render(); void poll(); renderTimer = setInterval(render, 1000);}
+      if (!document.hidden) start();
     });
+    render();
+    if (!document.hidden) start();
     return {render};
   }
 })();

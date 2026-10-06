@@ -2749,7 +2749,7 @@
   }
 </style>
 <link rel="stylesheet" href="/static/ui-foundation.css?v=6" />
-<script src="/static/ui-messages.js?v=8"></script>
+<script src="/static/ui-messages.js?v=9"></script>
 <script src="/static/ui-foundation.js?v=10"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=2" />
 <script src="/static/pane-groups.js?v=3"></script>
@@ -2759,8 +2759,8 @@
 <script src="/static/browser-panes.js?v=1"></script>
 <link rel="stylesheet" href="/static/mobile-reader.css?v=1">
 <script src="/static/mobile-reader.js?v=1"></script>
-<link rel="stylesheet" href="/static/resources.css?v=1">
-<script src="/static/resources.js?v=2"></script>
+<link rel="stylesheet" href="/static/resources.css?v=2">
+<script src="/static/resources.js?v=3"></script>
 </head>
 <body>
 
@@ -3297,6 +3297,7 @@
       <button class="ui-button" id="btn-resources-mobile" data-ui-icon="resources" aria-label="Host resources" data-ui-label=Host%20resources title="Host resources" data-ui-title=Host%20resources><span data-ui-message=Host%20resources>Host resources</span></button>
       <button class="ui-button" id="btn-settings" data-ui-icon="settings" data-i18n-label="settings"><span data-i18n="settings">Settings</span></button>
     </div>
+    <button type="button" id="resource-summary"></button>
     <dialog class="ui-dialog" id="layout-menu" aria-labelledby="layout-menu-title">
       <div class="modal-head"><h2 id="layout-menu-title" data-i18n="layout">Layout</h2><button data-dialog-close aria-label="Close" data-ui-label=Close>×</button></div>
       <div class="modal-body">
@@ -3843,7 +3844,7 @@
 
   function authQS() { return TOKEN ? "?token=" + encodeURIComponent(TOKEN) : ""; }
 
-  window.SilingResources.create({trigger:$("btn-resources"), mobileTrigger:$("btn-resources-mobile"), returnFocus:$("btn-workspace-menu"), api, ui});
+  window.SilingResources.create({trigger:$("btn-resources"), mobileTrigger:$("btn-resources-mobile"), summary:$("resource-summary"), returnFocus:$("btn-workspace-menu"), api, ui});
 
   // ---------- Approve and apply Agent or Git upstream updates ----------
   let selfUpdateStatus = { available: false, candidates: [] };
