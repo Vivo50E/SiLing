@@ -41,6 +41,9 @@ const linkJobs = new Map();
 const linkSubmissions = [];
 let delayLinkRun = "";
 let delayedLinkReply;
+const brokerOperations = new Map();
+const brokerRegistrations = [];
+let brokerFailure = false;
 const privateSubmissions = [];
 let privateMode = 'ok';
 let privateReply;
@@ -176,6 +179,17 @@ const server = http.createServer((req, res) => {
     const reply=()=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({configured:true,current:{id:'fixture-context',host:'fixture-ssh',cwd:'/remote/work'},settings:{mode:'auto',auto_discover:true},contexts:[{id:'fixture-context',host:'fixture-ssh',cwd:'/remote/work'}]}));};
     if(req.method==='PUT') {req.resume();req.on('end',reply);} else reply();
     return;
+  }
+  if (url.pathname.startsWith('/api/sessions/') && url.pathname.includes('/secret-operations')) {
+    const scope=url.pathname.split('/')[3];res.setHeader('Content-Type','application/json');
+    if(req.method==='GET') {res.end(JSON.stringify({operations:brokerOperations.get(scope)||[]}));return;}
+    if(req.method==='DELETE') {brokerOperations.set(scope,[]);res.end('{"ok":true}');return;}
+    let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{
+      const input=JSON.parse(body);brokerRegistrations.push({scope,...input});
+      if(brokerFailure) {res.writeHead(400);res.end(JSON.stringify({detail:input.value}));return;}
+      const {value,...metadata}=input;metadata.expires_at=Date.now()/1000+input.ttl;
+      brokerOperations.set(scope,[metadata]);res.end(JSON.stringify({operation:metadata}));
+    });return;
   }
   if (url.pathname.endsWith('/secret-input')) {
     let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{
@@ -450,10 +464,30 @@ try {
     assert.equal(frameLoads, groupFrames, 'Filtering never reloads a terminal iframe');
     assert.ok(await evaluate(`(()=>{const bar=document.querySelector('#pane-group-bar').getBoundingClientRect();const main=document.querySelector('.main').getBoundingClientRect();return bar.right<=main.right+1&&bar.left>=main.left&&bar.top>=document.querySelector('.topbar-global').getBoundingClientRect().bottom-1})()`), 'Group bar occupies its own row within the workbench');
     await screenshot('project-group-filter');
+    await evaluate(`window.groupCard=document.querySelector('[data-run-id="fixture-0"]');window.groupFrame=groupCard.querySelector('iframe');document.querySelector('#group-auto-layout').checked=true;document.querySelector('#group-auto-layout').dispatchEvent(new Event('change'))`);
+    assert.equal(await evaluate(`document.querySelector('#grid').style.getPropertyValue('--group-cols')`), '2');
+    assert.equal(await evaluate(`document.querySelector('#grid').style.getPropertyValue('--group-rows')`), '1');
+    assert.equal(await evaluate(`getComputedStyle(document.querySelector('#grid')).gridTemplateRows.split(' ').length`), 1, 'Group panes fill one row');
+    await screenshot('group-auto-layout');
+    assert.equal(await evaluate(`localStorage.getItem('orch_slots')`), oldSlots, 'Auto fit preserves global slots');
+    assert.equal(await evaluate(`localStorage.getItem('siling_group_auto_layout')`), 'true');
+    assert.ok(await evaluate(`groupCard===document.querySelector('[data-run-id="fixture-0"]') && groupFrame===groupCard.querySelector('iframe')`), 'Auto fit preserves terminal nodes');
+    await evaluate(`document.querySelector('[data-group-filter="all"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('#grid').classList.contains('group-auto-layout')`), false, 'All restores manual layout');
+    await evaluate(`document.querySelector('#group-auto-layout').checked=false;document.querySelector('#group-auto-layout').dispatchEvent(new Event('change'));document.querySelector('[data-group-filter="project-fixture"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('#grid').classList.contains('group-auto-layout')`), false, 'Disabled preference preserves manual grid');
+
     await evaluate(`document.querySelector('[data-group-filter="ungrouped"]').click();document.querySelector('[data-group-filter="all"]').click()`);
     assert.equal(await evaluate(`document.querySelectorAll('#grid .pane-card.group-hidden').length`), 0);
     await evaluate(`document.querySelector('[data-run-id="fixture-2"] .btn-pane-more').click();const gs=document.querySelector('[data-run-id="fixture-2"] .pane-group-select');gs.value='project-fixture';gs.dispatchEvent(new Event('change'))`);
     await waitFor(`document.querySelector('[data-run-id="fixture-2"] .pane-group-badge').textContent==='Project <A>'`);
+    await evaluate(`document.querySelector('[data-run-id="fixture-2"] .pane-menu').close();document.querySelector('[data-run-id="fixture-3"] .btn-pane-more').click();const arrangeMove=document.querySelector('[data-run-id="fixture-3"] .pane-move-select');arrangeMove.value='2';arrangeMove.dispatchEvent(new Event('change'))`);
+    assert.deepEqual(await evaluate(`JSON.parse(localStorage.getItem('orch_slots')).filter(Boolean)`), ['fixture-0','fixture-1','fixture-3','fixture-2']);
+    await evaluate(`document.querySelector('#btn-arrange-groups').click()`);
+    assert.deepEqual(await evaluate(`JSON.parse(localStorage.getItem('orch_slots')).filter(Boolean)`), ['fixture-0','fixture-1','fixture-2','fixture-3'], 'Groups stay contiguous with ungrouped panes last');
+    assert.ok(await evaluate(`groupCard===document.querySelector('[data-run-id="fixture-0"]') && groupFrame===groupCard.querySelector('iframe')`), 'Arrange retains iframe nodes');
+    assert.equal(frameLoads, groupFrames, 'Arrange does not reload terminal frames');
+
     await evaluate(`document.querySelector('[data-run-id="fixture-2"] .pane-menu').close();document.querySelector('#btn-pane-groups').click();document.querySelector('[data-edit-group="project-fixture"]').click();document.querySelector('#group-name').value='Renamed'`);
     assert.equal(await evaluate(`document.querySelector('#group-hex').value`),'#12abef','Saved custom color reopens accurately');
     failGroupSave = true;
@@ -1028,6 +1062,52 @@ try {
   await evaluate(`document.querySelector('[data-private-close]').click()`);
   await cdp('Emulation.clearDeviceMetricsOverride');
   console.log('PASS: masked bilingual private input, cancellation, hidden-tab clearing, no draft/storage, exact target, one-shot delivery, generic failures and mobile layout');
+  const framesBeforeBroker=frameLoads;
+  const promptsBeforeBroker=sentPrompts.length;
+  const openBroker=async()=>{
+    await evaluate(`document.querySelector('${privateCard} .btn-pane-more').click();document.querySelector('${privateCard} .btn-secret-operations').click()`);
+    await waitFor(`!!document.querySelector('.secret-operations-dialog[open] [data-operations]')?.textContent`);
+  };
+  const closeBroker=async()=>{await evaluate(`document.querySelector('.secret-operations-dialog [data-close]').click()`);await waitFor(`!document.querySelector('.secret-operations-dialog')`);};
+  for(const language of ['zh','en']) {
+    await evaluate(`{const c=document.querySelector('[data-appearance="language"]');c.value=${JSON.stringify(language)};c.dispatchEvent(new Event('change'));}`);
+    await openBroker();
+    assert.equal(await evaluate(`document.querySelector('.secret-operations-dialog [data-value]').type`),'password');
+    await screenshot('secret-operations-'+language);
+    await evaluate(`document.querySelector('.secret-operations-dialog [data-value]').value='fixture-broker-cancel'`);
+    await closeBroker();
+  }
+  assert.equal(brokerRegistrations.length,0,'Cancel does not save or send a key');
+  await openBroker();
+  const storageBeforeBroker=await evaluate(`JSON.stringify(localStorage)`);
+  await evaluate(`document.querySelector('.secret-operations-dialog [data-value]').value='fixture-broker-hidden';Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));delete document.hidden`);
+  assert.equal(await evaluate(`document.querySelector('.secret-operations-dialog [data-value]').value`),'');
+  await evaluate(`{const d=document.querySelector('.secret-operations-dialog');d.querySelector('[data-name]').value='deploy';d.querySelector('[data-url]').value='https://api.example.test/deploy';d.querySelector('[data-value]').value='fixture-broker-private-123456';d.querySelector('[data-method]').value='POST';d.querySelector('[data-method]').dispatchEvent(new Event('change'));d.querySelector('[data-body]').value='{"action":"deploy"}';d.querySelector('[data-submit]').click();d.querySelector('[data-submit]').click();}`);
+  await waitFor(`document.querySelector('.secret-operation-row')?.textContent.includes('deploy')`);
+  assert.equal(brokerRegistrations.length,1,'Double save creates one operation');
+  assert.equal(brokerRegistrations[0].scope,'fixture-2');
+  assert.equal(await evaluate(`document.querySelector('.secret-operations-dialog [data-value]').value`),'');
+  assert.ok(await evaluate(`!document.querySelector('.secret-operations-dialog').textContent.includes('fixture-broker-private-123456')`));
+  assert.equal(await evaluate(`JSON.stringify(localStorage)`),storageBeforeBroker,'Credential management never writes browser storage');
+  assert.equal(sentPrompts.length,promptsBeforeBroker,'Registering keys never injects agent messages');
+  assert.equal(frameLoads,framesBeforeBroker,'Credential management never reloads terminal frames');
+  await evaluate(`window.brokerCopies=[];Object.defineProperty(navigator.clipboard,'writeText',{configurable:true,value:async value=>brokerCopies.push(value)});document.querySelector('.secret-operation-row button').click()`);
+  await waitFor(`brokerCopies.length===1`);
+  assert.deepEqual(await evaluate('brokerCopies'),['siling secret call deploy'],'Only the reference reaches clipboard');
+  await evaluate(`document.querySelector('.secret-operation-row button:last-child').click()`);
+  await waitFor(`!document.querySelector('.secret-operation-row')`);
+  brokerFailure=true;
+  await evaluate(`{const d=document.querySelector('.secret-operations-dialog');d.querySelector('[data-value]').value='fixture-broker-never-reflect';d.querySelector('[data-submit]').click();}`);
+  await waitFor(`document.querySelector('.secret-operations-dialog [data-status]').textContent.includes('Unable to save')`);
+  assert.ok(await evaluate(`!document.querySelector('.secret-operations-dialog').textContent.includes('fixture-broker-never-reflect')`));
+  assert.equal(await evaluate(`document.querySelector('.secret-operations-dialog [data-value]').value`),'');
+  await closeBroker();brokerFailure=false;
+  await cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+  await openBroker();
+  assert.ok(await evaluate(`(()=>{const r=document.querySelector('.secret-operations-dialog').getBoundingClientRect();return r.x>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight;})()`),'Secret operation dialog fits a narrow viewport');
+  await screenshot('secret-operations-mobile');await closeBroker();
+  await cdp('Emulation.clearDeviceMetricsOverride');
+  console.log('PASS: bilingual broker management, cleared credentials, no storage/agent messages, reference-only clipboard, revoke, literal errors and mobile layout');
   const promptsBeforeLink=sentPrompts.length;
   for(const language of ['zh','en']) {
     await evaluate(`{const c=document.querySelector('[data-appearance="language"]');c.value=${JSON.stringify(language)};c.dispatchEvent(new Event('change'));document.querySelector('[data-run-id="fixture-2"] .btn-link-folder').click();}`);

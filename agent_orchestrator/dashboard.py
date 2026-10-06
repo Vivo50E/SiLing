@@ -66,6 +66,7 @@ from .workflows import DispatchRejected, Workflows, validate as validate_workflo
 from .agent_cli import resolve_agent_cli
 from .browser_open import open_system_browser, system_browser_available, validate_web_url
 from . import terminal_files, terminal_control, secret_input
+from .secret_broker import SecretBroker
 from .link_jobs import LinkJobs
 from .conversation_metrics import TranscriptMetricsCache
 from .dashboard_network import build_access_url, list_local_ipv4, pick_best_ip
@@ -8495,6 +8496,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         completion_callback=publish_session_handoff,
     )
     link_jobs = LinkJobs(outputs_dir / ".link-jobs")
+    secret_broker = SecretBroker()
     workflows = Workflows(outputs_dir)
     dashboard_instance_id = uuid.uuid4().hex
     remote_http_client = httpx.AsyncClient(
@@ -8502,8 +8504,12 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         limits=httpx.Limits(max_connections=64, max_keepalive_connections=24),
     )
 
+    remote_secret_client = httpx.AsyncClient(trust_env=False,
+        timeout=httpx.Timeout(connect=3.0, read=30.0, write=30.0, pool=3.0))
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        secret_broker.start()
         resources.start()
         native_activity.start()
         sync_status.start()
@@ -8568,6 +8574,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                 thread.join(timeout=2)
             app.state.active_snapshot_autosave_stop = None
             app.state.active_snapshot_autosave_thread = None
+            secret_broker.close()
             link_jobs.close()
             session_snapshots.stop(timeout=3)
             native_activity.stop(timeout=2)
@@ -8575,6 +8582,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             sync_status.stop()
             remote_node_reconnect.stop()
             remote_nodes.stop()
+            await remote_secret_client.aclose()
             await remote_http_client.aclose()
 
     app = FastAPI(
@@ -8702,7 +8710,8 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         return value
 
     async def _proxy_remote_http(request: Request, node, path: str):
-        if path.endswith('/secret-input'):
+        sensitive = path.endswith('/secret-input') or '/secret-operations' in path
+        if sensitive:
             destination = urlparse(node.upstream_url(path))
             if (destination.hostname != 'localhost' and not secret_input.trusted_transport(
                     destination.scheme, destination.hostname or '')):
@@ -8717,7 +8726,8 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         }
         headers.update(node.authorization_headers)
         try:
-            upstream = await remote_http_client.request(
+            client = remote_secret_client if sensitive else remote_http_client
+            upstream = await client.request(
                 request.method,
                 node.upstream_url(path),
                 headers=headers,
@@ -8734,7 +8744,8 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         except httpx.HTTPError as exc:
             remote_nodes.request_refresh()
             return JSONResponse(
-                {"detail": f"remote node {node.label} unavailable: {exc}"},
+                {"detail": "Remote secret operation unavailable; check the node before retrying"
+                 if sensitive else f"remote node {node.label} unavailable: {exc}"},
                 status_code=502,
             )
         response_headers = {
@@ -8815,7 +8826,8 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             if not authenticated and request.url.path != "/":
                 # Allow GET / to render a page that prompts for a token.
                 return JSONResponse({"error": "invalid token"}, status_code=401)
-        private_input = request.url.path.endswith('/secret-input')
+        private_input = request.url.path.startswith('/api/sessions/') and (
+            request.url.path.endswith('/secret-input') or '/secret-operations' in request.url.path)
         if private_input and not secret_input.trusted_transport(
                 request.url.scheme, request.client.host if request.client else ''):
             return JSONResponse({'detail': 'Private input requires HTTPS or a loopback connection'},
@@ -10638,6 +10650,58 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             raise HTTPException(500,
                 f"tmux send-keys failed ({len(text)} chars): {err}")
         return {"ok": ok, "session": session, "bytes_sent": len(text)}
+
+    def require_secret_session(run_id: str):
+        run = _lookup_run_light(outputs_dir, run_id)
+        if not run:
+            secret_broker.revoke_run(run_id)
+            raise HTTPException(404, "run not found")
+        if not run.get('tmux_session') or not tmux_alive(run['tmux_session']):
+            secret_broker.revoke_run(run_id)
+            raise HTTPException(409, "Secret operations require a live session")
+
+    @app.get("/api/sessions/{run_id}/secret-operations")
+    def list_secret_operations(run_id: str):
+        require_secret_session(run_id)
+        return {"operations": secret_broker.list(run_id)}
+
+    @app.post("/api/sessions/{run_id}/secret-operations")
+    async def register_secret_operation(run_id: str, request: Request):
+        require_secret_session(run_id)
+        raw = bytearray()
+        try:
+            async for chunk in request.stream():
+                raw.extend(chunk)
+                if len(raw) > 16384:
+                    raise HTTPException(413, "Secret operation settings are too large")
+            try:
+                body = json.loads(raw)
+            except (ValueError, UnicodeError):
+                raise HTTPException(400, "Invalid secret operation settings") from None
+            try:
+                return {"operation": secret_broker.register(run_id, body)}
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from None
+        finally:
+            raw[:] = b'\0' * len(raw)
+
+    @app.delete("/api/sessions/{run_id}/secret-operations/{name}")
+    async def revoke_secret_operation(run_id: str, name: str):
+        await asyncio.to_thread(secret_broker.revoke, run_id, name)
+        return {"ok": True}
+
+    @app.post("/api/sessions/{run_id}/secret-operations/{name}/call")
+    async def call_secret_operation(run_id: str, name: str, request: Request):
+        require_secret_session(run_id)
+        # A reference can invoke its fixed operation only: no agent-supplied
+        # destination, headers, method, request body or credential overrides.
+        async for chunk in request.stream():
+            if chunk:
+                raise HTTPException(400, "Secret calls accept a name only; no overrides")
+        try:
+            return await asyncio.to_thread(secret_broker.call, run_id, name)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
 
     @app.post("/api/sessions/{run_id}/secret-input")
     async def post_secret_input(run_id: str, request: Request):

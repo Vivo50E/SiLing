@@ -206,3 +206,10 @@ html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-mo
 .private-input-dialog [data-private-value] { width: 100%; box-sizing: border-box; font-size: 16px; }
 .private-input-dialog [data-private-target] { overflow-wrap: anywhere; }
 .private-input-dialog .ui-secondary { white-space: normal; line-height: 1.5; }
+
+.secret-operations-dialog { width: min(540px, calc(100vw - 32px)); }
+.secret-operations-dialog label { margin: 8px 0; }
+.secret-operations-dialog input, .secret-operations-dialog textarea { width: 100%; box-sizing: border-box; font-size: 16px; }
+.secret-operations-dialog p { overflow-wrap: anywhere; white-space: normal; line-height: 1.5; }
+.secret-operation-row { border-top: 1px solid var(--border); padding: 8px 0; }
+.secret-operation-row button { margin-right: 8px; }

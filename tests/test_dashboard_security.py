@@ -699,7 +699,7 @@ class DashboardExitedSessionContractTests(unittest.TestCase):
             self.source,
         )
         self.assertIn(
-            "const firstLiveSession = sessions.find(s => s.alive);",
+            "const firstLiveSession = sessions.find(s => s.alive && !sessionArchives.isArchived(s.run_id));",
             self.source,
         )
         self.assertIn(

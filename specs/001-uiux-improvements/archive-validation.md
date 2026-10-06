@@ -5,8 +5,9 @@ accepted. Scope and state contract: [archive-plan.md](archive-plan.md).
 
 ## Automated evidence
 
-- `make verify PYTHON=<project-venv>/bin/python`: 465 tests passed, warnings as
-  errors; repository structure, Python/Shell/JavaScript/JSON checks passed.
+- `make verify PYTHON=<project-venv>/bin/python`: final integrated suite passed
+  all 473 tests (90.767s), warnings as errors; repository structure,
+  Python/Shell/JavaScript/JSON checks passed.
 - Ten archive backend tests cover authentication, independent execution identity,
   Dashboard restart persistence, atomic writes, concurrent records, revision
   conflicts/idempotence, invalid timestamps/corrupt storage, unsupported targets,
@@ -32,6 +33,9 @@ and source metadata. Only the disposable test server/session was cleaned up.
   slots. Saved layouts now replay their explicit slots and gaps; deliberate
   layout selection still fills eligible sessions. Existing Link tests explicitly
   reopen their source instead of depending on boot-time automatic fill.
+- The existing ended-session source contract was updated to require both
+  `alive` and not archived when choosing the first eligible live session;
+  browser regressions independently verify the behavior.
 - One earlier full browser run timed out on the existing transient SSH status
   text assertion; later complete runs passed. No production workaround was added.
 - Screenshots and API/browser fixtures are not iOS/Android or two physical-device

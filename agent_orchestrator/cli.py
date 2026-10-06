@@ -6,6 +6,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import shutil
 import ssl
 import subprocess
@@ -16,7 +17,7 @@ from pathlib import Path
 from typing import Optional
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlparse
-from urllib.request import Request, urlopen
+from urllib.request import Request, urlopen, build_opener, ProxyHandler, HTTPSHandler
 
 from . import notifier, artifacts
 from .config import ProjectConfig, load_config
@@ -1031,6 +1032,51 @@ def cmd_session_list(args):
         )
 
 
+def cmd_secret(args):
+    run_id = args.run_id or os.environ.get('ORCH_RUN_ID', '')
+    if not run_id:
+        raise SystemExit('Run inside a SiLing session or specify --run-id')
+    base = _dashboard_api_base(getattr(args, 'dashboard_url', ''))
+    target = urlparse(base)
+    if target.scheme != 'https' and not is_loopback_host(target.hostname or ''):
+        raise SystemExit('Secret operations require HTTPS or localhost')
+    # The existing local helper trusts the self-signed Dashboard certificate.
+    # Never use that policy for a network destination.
+    if not is_loopback_host(target.hostname or ''):
+        raise SystemExit('Use a loopback Dashboard URL or SSH tunnel for secret calls')
+    path = f'/api/sessions/{quote(run_id, safe="")}/secret-operations'
+    if args.secret_action == 'call':
+        path += f'/{quote(args.name, safe="")}/call'
+    headers = {'Accept':'application/json'}
+    token = dashboard_token()
+    if token:
+        headers['Authorization'] = 'Bearer '+token
+    # A local agent's proxy settings cannot reroute Dashboard authentication.
+    opener = build_opener(ProxyHandler({}), HTTPSHandler(context=ssl._create_unverified_context()))
+    request = Request(base+path, headers=headers, method='POST' if args.secret_action == 'call' else 'GET')
+    try:
+        with opener.open(request, timeout=20) as response:
+            payload = json.loads(response.read(16384).decode('utf-8'))
+    except Exception:
+        raise SystemExit('Secret operation unavailable; check the pane before retrying') from None
+    # Even an unexpected upstream response cannot turn this CLI into a raw
+    # response or error printer. Return the small broker schema only.
+    if args.secret_action == 'call':
+        if (not isinstance(payload,dict) or type(payload.get('http_status')) is not int
+                or not 100 <= payload['http_status'] <= 599):
+            raise SystemExit('Invalid secret operation result')
+        payload = {'http_status':payload['http_status'],'ok':200 <= payload['http_status'] < 300,
+                   'response_body_withheld':True}
+    elif not isinstance(payload,dict) or not isinstance(payload.get('operations'),list):
+        raise SystemExit('Invalid secret operation list')
+    else:
+        payload = {'operations':[{'name':item['name'],'method':item['method'],'expires_at':item['expires_at']}
+                                  for item in payload['operations'] if isinstance(item,dict)
+                                  and isinstance(item.get('name'),str) and re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,63}',item['name'])
+                                  and item.get('method') in ('GET','POST') and type(item.get('expires_at')) in (int,float)]}
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
 def cmd_session_read(args):
     position = "head" if args.head else "tail"
     lines = 50000 if getattr(args, "all", False) else args.lines
@@ -1524,6 +1570,16 @@ def main():
     p_prune.add_argument("--protect", action="append", default=[],
                          help="Output directory name to keep even if it looks prunable")
     p_prune.set_defaults(func=cmd_prune)
+
+    p_secret = sub.add_parser('secret', help='Invoke a named status-only operation without reading its key')
+    secret_sub = p_secret.add_subparsers(dest='secret_action', required=True)
+    for action in ('list', 'call'):
+        child = secret_sub.add_parser(action)
+        if action == 'call':
+            child.add_argument('name', help='Name registered in the pane Secret operations dialog')
+        child.add_argument('--run-id', default='', help='Session scope (default: ORCH_RUN_ID)')
+        child.add_argument('--dashboard-url', default='', help='Loopback Dashboard URL or SSH tunnel')
+        child.set_defaults(func=cmd_secret)
 
     p_workflow = sub.add_parser("workflow", help="Run an explicit reviewed dependency graph")
     workflow_sub = p_workflow.add_subparsers(dest="workflow_action", required=True)

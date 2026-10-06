@@ -2748,12 +2748,13 @@
     border-color: var(--warn);
   }
 </style>
-<link rel="stylesheet" href="/static/ui-foundation.css?v=6" />
-<script src="/static/ui-messages.js?v=11"></script>
+<link rel="stylesheet" href="/static/ui-foundation.css?v=7" />
+<script src="/static/ui-messages.js?v=12"></script>
 <script src="/static/ui-foundation.js?v=11"></script>
-<link rel="stylesheet" href="/static/pane-groups.css?v=2" />
+<link rel="stylesheet" href="/static/pane-groups.css?v=3" />
 <script src="/static/pane-groups.js?v=4"></script>
 <script src="/static/terminal-files.js?v=3"></script>
+<script src="/static/secret-operations.js?v=1"></script>
 <script src="/static/terminal-keys.js?v=1"></script>
 <link rel="stylesheet" href="/static/browser-panes.css?v=1" />
 <script src="/static/browser-panes.js?v=1"></script>
@@ -4454,6 +4455,14 @@
   const paneGroups = window.SiLingPaneGroups({
     api, ui, sessions: () => sessions.filter(s => !sessionArchives.isArchived(s.run_id)), language: () => document.documentElement.lang,
     changed: () => { renderList(); paneGroups.applyVisibility(); },
+    arrange: rank => {
+      const occupied = slots.filter(Boolean).map((id, index) => ({id, index, rank: rank(id)}));
+      occupied.sort((a, b) => a.rank - b.rank || a.index - b.index);
+      slots = normalizeSlotsForLayout(occupied.map(item => item.id), slots.length);
+      saveSlots();
+      renderList();
+      renderGrid();
+    },
     refresh: async () => {
       if (refreshListInFlight) await refreshListInFlight;
       return await refreshList();
@@ -7955,6 +7964,7 @@
               <input class="pane-ssh-host" placeholder="dev-server or user@host" data-ui-placeholder=dev-server%20or%20user%40host value="${escapeHtml(terminalSshHost(runId))}" aria-label="SSH file host">
             </label>
             <p class="ui-secondary" ${s.remote ? "hidden" : ""} data-i18n="sshFileHelp">File links use this SSH host. Saved in this browser; clear to use local files.</p>
+            <button class="btn-secret-operations" ${s.alive ? "" : "disabled"} data-dialog-close data-ui-message="Secret%20operations">Secret operations</button>
             <button class="btn-secret-input" ${s.alive ? "" : "disabled"} data-dialog-close data-ui-message="Private%20input">Private input</button>
             <button class="btn-terminal-files" data-dialog-close data-i18n="terminalFiles">Terminal files</button>
             <button class="btn-switch-type" data-dialog-close><span data-ui-message="Switch%20pane%20type">Switch pane type</span></button>
@@ -7999,6 +8009,11 @@
         $("conn-status").textContent = ui.message("SSH disconnect requested");
       } catch (error) { alert(error.message); }
       finally { delete button.dataset.busy; button.disabled = false; }
+    });
+    card.querySelector(".btn-secret-operations").addEventListener("click", () => {
+      paneMenu.addEventListener("close", () => {
+        window.SilingSecretOperations.open({api, ui, runId, card});
+      }, {once: true});
     });
     card.querySelector(".btn-secret-input").addEventListener("click", () => {
       paneMenu.addEventListener("close", () => openPrivateInput(runId, card), {once: true});
