@@ -63,7 +63,8 @@ linked files/folders/URLs, session save/restore, Mission Control, remote nodes, 
 experimental workspace sync. Those capabilities are credited to Agent Orchestrator.
 
 **Scope:** the UI work is incremental. Mobile now defaults to a session list and
-single-session read-only snapshots; richer mobile input and a service-wide Settings editor remain planned. See the
+single-session read-only snapshots, with explicit multiline replies and isolated drafts.
+Physical phone acceptance and a service-wide Settings editor remain pending. See the
 [UI/UX specification and current baseline](docs/uiux-improvement-spec.md) for boundaries.
 
 ## Dashboard at a glance
@@ -497,6 +498,23 @@ Desktop drafts/layout are preserved across narrow-screen transitions; returning 
 reconnects suspended displays. Snapshot time is not last agent-output time; failures retain
 the previous snapshot with a stale warning. Full phone keyboard/device acceptance and
 service-wide settings editing remain pending. See [the Spec Kit workflow](specs/README.md).
+
+### Reply from a phone
+
+In a session's reading view, choose **Reply**. Enter inserts a newline; only **Send**
+submits (up to 8,000 characters). Esc, Tab and Ctrl+C have separate buttons;
+Ctrl+C asks for confirmation. Ordinary drafts stay in this browser tab's session
+storage, separately for each execution and from desktop drafts. Do not enter secrets
+here. Closing the tab can discard drafts; a storage warning means reload may lose them.
+
+“Terminal input accepted” does not confirm agent execution. If delivery is unknown
+(timeout, lost connection, backgrounding or reload during sending), the draft remains
+and further sends are blocked. Check output before explicitly allowing another send:
+the previous input may already have arrived. Reconnection never resends automatically.
+Known ended/offline sessions cannot receive input. Remote nodes need the new input
+endpoint; there is no fallback to the older, retrying send route. See the
+[mobile reply plan](specs/001-uiux-improvements/mobile-compose-plan.md) and
+[verification boundaries](specs/001-uiux-improvements/mobile-compose-validation.md).
 
 ### Archive a session
 

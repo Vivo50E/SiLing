@@ -8,6 +8,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { checkMobileReader } from './mobile_browser.mjs';
+import { checkMobileCompose } from './mobile_compose_browser.mjs';
 import { checkResources } from './resources_browser.mjs';
 import { checkArchives } from './archives_browser.mjs';
 
@@ -26,6 +27,8 @@ const sessions = ['claude', 'codex', 'terminal', 'cursor', 'custom-agent'].map((
   remote: i === 4, node_id: i === 4 ? 'fixture-remote' : '', node_online: i !== 4,
 }));
 const requests = [];
+const mobileInputs = [];
+let mobileInputMode = 'ok', mobileInputReply;
 const archiveFixture = {version:1, revision:0, entries:{}};
 let archiveMode = 'ok';
 const archiveSubmissions = [];
@@ -74,6 +77,16 @@ let truncatePreview = false;
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   requests.push({ method: req.method, path: url.pathname });
+  if (url.pathname.endsWith('/input')) {
+    res.setHeader('Content-Type','application/json');
+    let raw='';req.on('data',chunk=>raw+=chunk);req.on('end',()=>{
+      mobileInputs.push({path:url.pathname,body:JSON.parse(raw)});
+      if (mobileInputMode==='delay') {mobileInputReply=()=>res.end(JSON.stringify({ok:true,delivery:'accepted'}));return;}
+      if (mobileInputMode==='auth') {res.writeHead(401);return res.end('{}');}
+      if (mobileInputMode==='error') {res.writeHead(502);return res.end('{}');}
+      res.end(JSON.stringify({ok:true,delivery:'accepted'}));
+    });return;
+  }
   if (url.pathname === '/api/session-archives') {
     res.setHeader('Content-Type', 'application/json');
     let raw=''; req.on('data', chunk=>raw+=chunk); req.on('end', ()=>{
@@ -375,7 +388,12 @@ try {
   if (!baseline) sessions[0].panel_state='blocked';
   await cdp('Page.addScriptToEvaluateOnNewDocument', { source: `if(!localStorage.getItem('orch_layout')){localStorage.setItem('orch_layout','cols-2x2');localStorage.setItem('orch_slots',JSON.stringify(['fixture-0','fixture-1','fixture-2','fixture-3']));localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'en',theme:'dark'}));}` });
   await cdp('Page.navigate', { url: `http://127.0.0.1:${server.address().port}/` });
-  if (process.env.UI_ARCHIVES_ONLY === '1') {
+  if (process.env.UI_MOBILE_COMPOSE_ONLY === '1') {
+    await checkMobileCompose({evaluate,waitFor,viewport,screenshot,pause,cdp,requests,inputs:mobileInputs,sessions,
+      mode:value=>{mobileInputMode=value;},delayed:()=>mobileInputReply,release:()=>{mobileInputReply?.();mobileInputReply=null;}});
+    assert.deepEqual(errors, [], 'No uncaught mobile composer errors');
+    console.log(JSON.stringify({result:'PASS',suite:'mobile-compose',screenshots:artifacts}));
+  } else if (process.env.UI_ARCHIVES_ONLY === '1') {
     await waitFor(`!!document.querySelector('#btn-session-archives')`);
     await checkArchives({evaluate, waitFor, viewport, screenshot, pause, cdp, requests,
       mode:value=>{archiveMode=value;}, view:archiveFixture, submissions:archiveSubmissions, sessions, groups:groupFixture});
@@ -385,6 +403,8 @@ try {
   if (!baseline) {
     await checkMobileReader({evaluate,viewport,waitFor,screenshot,requests,pause,
       mode:value=>{readerMode=value;}, delayed:()=>!!delayedRead, release:()=>{delayedRead?.();delayedRead=null;}});
+    await checkMobileCompose({evaluate,waitFor,viewport,screenshot,pause,cdp,requests,inputs:mobileInputs,sessions,
+      mode:value=>{mobileInputMode=value;},delayed:()=>mobileInputReply,release:()=>{mobileInputReply?.();mobileInputReply=null;}});
     sessions[0].panel_state='p0';
     await viewport(1280,800);
     await cdp('Page.reload');
@@ -845,7 +865,15 @@ try {
   await evaluate(`document.querySelector('.btn-pane-more').click();document.querySelector('.pane-menu[open] .btn-unpin').click()`);
   assert.ok(await evaluate(`!JSON.parse(localStorage.getItem('orch_slots')).includes('fixture-0')`), 'Close pane only unpins');
   assert.equal(requests.filter(r => r.path === '/api/pane-groups' && r.method === 'POST').length, 6, 'Only explicit group edits write group metadata');
-  assert.deepEqual(requests.filter(r => r.method !== 'GET' && r.path !== '/api/pane-groups'), [{ method: 'POST', path: '/api/self-update/fetch' }, {method:'POST',path:'/api/self-update/fetch'}, {method:'POST',path:'/api/sessions/fixture-2/folders'}, {method:'POST',path:'/api/sessions/fixture-2/ssh-file'}], 'Only the two boots and explicitly clicked files may mutate other state');
+  assert.deepEqual(requests.filter(r => r.method !== 'GET' && r.path !== '/api/pane-groups'), [
+    {method:'POST',path:'/api/self-update/fetch'},
+    ...Array.from({length:7},()=>({method:'POST',path:'/api/sessions/fixture-0/input'})),
+    {method:'POST',path:'/api/self-update/fetch'},
+    ...Array.from({length:2},()=>({method:'POST',path:'/api/sessions/fixture-0/input'})),
+    {method:'POST',path:'/api/self-update/fetch'},
+    {method:'POST',path:'/api/sessions/fixture-2/folders'},
+    {method:'POST',path:'/api/sessions/fixture-2/ssh-file'},
+  ], 'Only three boots, nine explicit mobile inputs and clicked files may mutate other state');
   // Hold a real UI request open, fill its intended slot, then return the result.
   await viewport(1280, 800);
   await evaluate(`document.querySelector('[data-run-id="fixture-1"] .btn-pane-more').click();document.querySelector('[data-run-id="fixture-1"] .btn-unpin').click();`);

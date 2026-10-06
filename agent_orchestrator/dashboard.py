@@ -708,7 +708,8 @@ PASTE_ENTER_DELAY_S = 0.2
 FIRST_PROMPT_SUBMIT_CHECK_DELAY_S = 0.75
 
 
-def tmux_send(session: str, text: str, literal: bool = True, enter: bool = False) -> tuple[bool, str]:
+def tmux_send(session: str, text: str, literal: bool = True, enter: bool = False,
+              *, retries: int | None = None) -> tuple[bool, str]:
     """Send `text` to the tmux pane. Returns (ok, error_msg).
 
     For large pastes we split into chunks to stay well below OS argv
@@ -726,12 +727,13 @@ def tmux_send(session: str, text: str, literal: bool = True, enter: bool = False
     if not pane:
         return False, err
     base = ["tmux", "send-keys", "-t", pane]
+    retry_options = {} if retries is None else {"retries": retries}
     CHUNK = 8 * 1024
     if text:
         if literal and len(text) > CHUNK:
             for i in range(0, len(text), CHUNK):
                 chunk = text[i:i + CHUNK]
-                ok, err = _tmux_send_keys(base + ["-l", chunk])
+                ok, err = _tmux_send_keys(base + ["-l", chunk], **retry_options)
                 if not ok:
                     return False, f"chunk @{i}: {err}"
         else:
@@ -739,7 +741,7 @@ def tmux_send(session: str, text: str, literal: bool = True, enter: bool = False
             if literal:
                 cmd.append("-l")
             cmd.append(text)
-            ok, err = _tmux_send_keys(cmd)
+            ok, err = _tmux_send_keys(cmd, **retry_options)
             if not ok:
                 return False, err
     if enter:
@@ -747,7 +749,7 @@ def tmux_send(session: str, text: str, literal: bool = True, enter: bool = False
         # (text="" + enter=True) is fine to forward instantly.
         if text and literal:
             time.sleep(PASTE_ENTER_DELAY_S)
-        ok, err = _tmux_send_keys(base + ["Enter"], timeout=5)
+        ok, err = _tmux_send_keys(base + ["Enter"], timeout=5, **retry_options)
         if not ok:
             return False, f"Enter: {err}"
     return True, ""
@@ -10616,6 +10618,51 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         return {**result, "first_prompt": first_prompt,
                 "archived_log": str(p), "project": project,
                 "prompt_pending": bool(new_tmux)}
+
+    @app.post("/api/sessions/{run_id}/input")
+    async def post_mobile_input(run_id: str, request: Request):
+        # A separate contract lets older nodes reject the operation instead of
+        # silently using the legacy send endpoint's retry behavior.
+        raw = bytearray()
+        async for chunk in request.stream():
+            if len(raw) + len(chunk) > 65536:
+                raise HTTPException(413, "Input exceeds the 64 KiB request limit")
+            raw.extend(chunk)
+        try:
+            body = json.loads(raw)
+        except (ValueError, UnicodeError):
+            raise HTTPException(400, "Invalid input request") from None
+        if not isinstance(body, dict):
+            raise HTTPException(400, "Invalid input request")
+        if set(body) == {"text"}:
+            text = body["text"]
+            if not isinstance(text, str) or not 0 < len(text) <= 8000 or "\0" in text:
+                raise HTTPException(400, "Input must contain 1–8000 characters without NUL")
+            literal, enter = True, True
+        elif set(body) == {"key"} and body["key"] in ("Escape", "Tab", "C-c"):
+            text, literal, enter = body["key"], False, False
+        else:
+            raise HTTPException(400, "Use text or one supported key, not both")
+
+        def deliver():
+            try:
+                archived = session_archives.read()["entries"].get(run_id, {}).get("archived")
+            except (OSError, ValueError, TypeError):
+                raise HTTPException(503, "Archive state unavailable; input was not sent") from None
+            if archived:
+                raise HTTPException(409, "Unarchive this session before sending input")
+            row = _lookup_run(outputs_dir, run_id)
+            if not row:
+                raise HTTPException(404, "Session not found")
+            session = row.get("tmux_session", "")
+            if row.get("agent_exited") or not session or not tmux_alive(session):
+                raise HTTPException(409, "Session cannot accept input")
+            ok, _ = tmux_send(session, text, literal=literal, enter=enter, retries=0)
+            if not ok:
+                raise HTTPException(502, "Delivery not confirmed; check output before sending again")
+            return {"ok": True, "delivery": "accepted"}
+
+        return await asyncio.to_thread(deliver)
 
     @app.post("/api/sessions/{run_id}/send")
     async def post_send(run_id: str, request: Request):

@@ -33,6 +33,7 @@
     const back = button("back", actions, () => goBack());
     const fileButton = button("files", actions, () => files(selected));
     const archiveButton = button("archive", actions, () => void archive(selected));
+    const reply = button("reply", actions, () => {composer.toggle(); updateCopy();});
     const refresh = button("refresh", actions, () => { cancel(); void poll(); });
     const interact = button("interact", actions, () => void toggleTerminal());
     const name = el("h2", "title", detail); name.tabIndex = -1;
@@ -40,6 +41,8 @@
     const notice = el("p", "notice", detail); notice.setAttribute("role", "status");
     const output = el("pre", "output", detail); output.tabIndex = 0;
     const terminalHost = el("div", "terminal", detail); terminalHost.hidden = true;
+    const composer = window.SilingMobileCompose.create({parent:detail, api, message:t, title,
+      refresh:() => {cancel(); void poll();}});
 
     function cancel() {
       generation++;
@@ -63,6 +66,9 @@
       interact.textContent = t(interactive ? "Return to read-only" : "Open interactive terminal");
       output.setAttribute("aria-label", t("Read-only output"));
       const row = sessions().find(s => s.run_id === selected);
+      composer.setSession(selected, row, active && !interactive);
+      reply.textContent = t(composer.opened ? "Hide reply" : "Reply");
+      reply.disabled = interactive;
       name.textContent = row ? title(row) : selected;
       interact.disabled = !interactive && (!row?.alive || row.node_online === false);
       refresh.disabled = interactive || reading;
@@ -125,7 +131,7 @@
       const timeout = setTimeout(() => controller.abort(), 12000);
       reading = true; updateCopy();
       try {
-        const result = await api("/api/sessions/" + encodeURIComponent(id) + "/read?lines=200&position=tail&max_chars=32000", {signal:controller.signal});
+        const result = await api("/api/sessions/" + encodeURIComponent(id) + "/read?lines=200&position=tail&max_chars=32000", {signal:controller.signal, promptForToken:false});
         if (token !== generation || !active || selected !== id) return;
         if (!result?.ok || typeof result.text !== "string") throw Error("unavailable");
         // Older remote nodes may ignore the optional cap; bound the rendered text too.
@@ -170,6 +176,8 @@
       if (active === value) return;
       active = value; host.hidden = !active;
       cancel(); detach();
+      composer.setSession(selected, sessions().find(s => s.run_id === selected), active);
+      fitViewport();
       if (active) {update(); if (selected) void poll();}
     }
     document.addEventListener("visibilitychange", () => {
@@ -177,6 +185,13 @@
       cancel(); if (!document.hidden) void poll();
     });
     new MutationObserver(update).observe(document.documentElement, {attributes:true,attributeFilter:["lang"]});
+    function fitViewport() {
+      const app = host.closest(".app");
+      if (active && window.visualViewport) app?.style.setProperty("--mobile-view-height", `${Math.floor(window.visualViewport.height)}px`);
+      else app?.style.removeProperty("--mobile-view-height");
+    }
+    window.visualViewport?.addEventListener("resize", fitViewport);
+    window.addEventListener("resize", fitViewport);
     return {setActive, update, open};
   }
 })();

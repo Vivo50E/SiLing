@@ -27,7 +27,7 @@
 | STATE-02 | FR-011/012、US3 | [原生活动](../../agent_orchestrator/native_activity.py)、[活动测试](../../tests/test_native_activity.py)、Dashboard 现有提醒 | 原生观察和提醒不等于统一待处理中心或 300 秒心跳契约；统一事件确认、过期检查属于计划。 |
 | RESOURCE-01（新增） | FR-030/031/032/033、US3-A6/A7/A8/A9、SC-012/013 | [主机采集](../../agent_orchestrator/resources.py)、[资源界面](../../static/resources.js)、[测试](../../tests/test_resources.py)、[首批计划](resource-plan.md) | 本机 CPU/内存/Swap/产出与项目卷概览、认证缓存及过期提示为首批切片；不修改公开 health。会话排行、远端汇总、原生内存压力、计数/趋势、告警和设置仍待实现，SC-012/013 未整体验收。 |
 | MOBILE-01 | FR-007、US2 | [手机控制器](../../static/mobile-reader.js)、[计划](plan.md)、[测试](../../tests/mobile_browser.mjs) | 2026-10-05 增量新增列表 → 单会话只读 → 返回、单个显式终端、时间/来源/截断证据与桌面状态隔离；真机验收仍待完成，不等于整个 US2 完成。 |
-| MOBILE-02 | FR-008/009/026、US2 | [终端按键测试](../../tests/test_terminal_keys.py)、[浏览器样本](../../tests/ui_browser.mjs) | 输入基础不代表软键盘、安全区、草稿隔离和未知发送结果全链路通过。计划/待真机验证。 |
+| MOBILE-02 | FR-008/009/026、US2 | [回复计划](mobile-compose-plan.md)、[回复模块](../../static/mobile-compose.js)、[API 测试](../../tests/test_mobile_input.py)、[浏览器测试](../../tests/mobile_compose_browser.mjs)、[验证记录](mobile-compose-validation.md) | 2026-10-06 增量提供显式多行回复、逐执行标签页草稿、按键确认和未知结果保护；不自动重发，不代表 Agent 已执行。模拟软键盘视口不是 iOS/Android 真机验收，SC-004 尚未整体验收。 |
 | FILE-01 | FR-014/015/016、US4 | [产出契约](../../agent_orchestrator/artifacts.py)、[产出测试](../../tests/test_artifacts.py)、[SSH Files 测试](../../tests/test_ssh_files.py)、[Markdown 对比度记录](../../docs/markdown-preview-contrast.md) | 用途、来源和验证状态已有；手机列表/详情导航和六类资源矩阵待验收。 |
 | SETTINGS-01 | FR-017/018/020、US5 | Dashboard 设置分组、[偏好测试](../../tests/test_ui_foundation.py)、[版本测试](../../tests/test_version.py) | 不是“仅链接模式/透明度”；已有多分组、插件/About。搜索、完整作用域/来源呈现、分组重置仍待补齐。 |
 | SETTINGS-02 | FR-019/020、US5 | [本地配置](../../agent_orchestrator/local_settings.py)、[安全测试](../../tests/test_dashboard_security.py) | 单项配置已有，不等于通用服务设置编辑器。白名单/原子保存/远端路径验证需独立安全设计。计划。 |
@@ -51,6 +51,10 @@ B 对应 US2/4；C 对应 US3 和 US5 的服务配置部分。
 再验证占用归属和告警。不能用“归档”代替释放进程资源，也不能把 5 分钟任务心跳当作资源采样。
 首批采用 5 秒采样、2 秒子进程超时、15 秒过期；见[独立实施计划](resource-plan.md)。
 仅在隔离开发环境验证采集，没有更新运行服务或做完整负载压测；告警和开销预算仍待后续验收。
+
+2026-10-06 用户确认归档后继续 spec，当前切片为 **US2-A2/A3 手机回复与发送保护**。
+采用独立回复模块和无重试输入接口，桌面旧输入流程保持不变；真实移动键盘与原生
+Agent 的端到端验收独立记录，不把浏览器样本当成真机证明。
 
 选定切片后才运行 `$speckit-plan` → `$speckit-tasks` → `$speckit-analyze`；
 每项任务关联 FR/US/SC 与行为测试。原有契约和数据结构作为研究输入，不把全项目推倒重写。

@@ -1,6 +1,23 @@
 /* Authored Dashboard copy only. Never translate terminal output or user data. */
 (() => {
   const zh = {
+    "Reply": "回复",
+    "Hide reply": "收起回复",
+    "Reply to {name}": "回复：{name}",
+    "Enter inserts a newline. Use Send to submit. Do not enter secrets.": "回车换行，点击发送提交。请勿输入密钥或密码。",
+    "Ctrl+C · interrupt": "Ctrl+C · 中断",
+    "Send {key} to this session": "向此会话发送 {key}",
+    "Sending to the terminal…": "正在向终端发送…",
+    "Terminal input accepted; agent execution is not confirmed.": "终端已受理输入；不代表 Agent 已执行。",
+    "Delivery unknown. Draft kept. Check output before allowing another send.": "发送结果未知，草稿已保留。请先查看输出，再允许下一次发送。",
+    "Offline — not sent. Draft kept; reconnect and send explicitly.": "当前离线，尚未发送。草稿已保留，联网后需手动发送。",
+    "This draft stays in this tab, separately from desktop input.": "草稿保存在此标签页，与桌面输入框相互独立。",
+    "Session unavailable or ended — input disabled; draft kept.": "会话不可用或已结束，禁止发送，草稿保留。",
+    "Draft storage unavailable or invalid. This copy is in memory only; do not reload this tab.": "草稿存储不可用或数据损坏。当前内容仅保留在内存，请勿刷新或关闭此标签页。",
+    "Check output": "查看输出",
+    "I checked — allow another send": "已检查，允许再次发送",
+    "Check the output first. Previous input may already have arrived. Allow another send to {name}?": "请先查看输出，之前的输入可能已经到达。允许再次向 {name} 发送吗？",
+    "Send Ctrl+C to {name}? This may interrupt its current work.": "向 {name} 发送 Ctrl+C 吗？这可能中断当前工作。",
     "Secret operations": "受控密钥调用",
     "Credentials stay in SiLing memory. Agents call a name; they cannot read the key or change its fixed HTTPS operation. Response bodies and headers are withheld.": "密钥仅保留在 SiLing 内存中。Agent 按名称调用，不能读取密钥或更改绑定的 HTTPS 操作。响应正文和响应头不向 Agent 返回。",
     "This protects the broker API boundary, not against other programs with your OS account or administrator access.": "此功能保护代理接口边界，不能防御拥有你操作系统账户权限或管理员权限的其他程序。",

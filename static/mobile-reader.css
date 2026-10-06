@@ -1,4 +1,5 @@
 /* Mobile reading surface. Desktop layout and stored pane preferences are separate. */
+.app.mobile { height: var(--mobile-view-height, 100dvh); }
 .app.mobile .main { display: flex; flex-direction: column; }
 .app.mobile .topbar-global { flex: 0 0 auto; }
 #mobile-reader[hidden], #mobile-reader [hidden] { display: none !important; }
@@ -21,5 +22,21 @@
 #mobile-reader-output { flex: 1; min-height: 80px; margin: 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font: 13px/1.5 ui-monospace, monospace; user-select: text; -webkit-user-select: text; }
 #mobile-reader-terminal { flex: 1; min-height: 120px; }
 #mobile-reader iframe { width: 100%; height: 100%; border: 0; }
+#mobile-reader-detail.composing { gap: 6px; overflow: auto; }
+#mobile-reader-detail.composing #mobile-reader-meta,
+#mobile-reader-detail.composing #mobile-reader-title,
+#mobile-reader-detail.composing #mobile-reader-archive,
+#mobile-reader-detail.composing #mobile-reader-refresh,
+#mobile-reader-detail.composing #mobile-reader-interact { display: none; }
+#mobile-reader-detail.composing #mobile-reader-output { min-height: 44px; }
+#mobile-compose { flex-shrink: 0; display: grid; gap: 6px; }
+#mobile-compose label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+#mobile-compose-text { width: 100%; box-sizing: border-box; min-height: 64px; max-height: 20dvh; resize: vertical; font-size: 16px; }
+#mobile-compose-tools { display: flex; gap: 6px; }
+#mobile-compose-tools button { padding: 8px; }
+#mobile-compose-send { margin-left: auto; }
+#mobile-compose p { font-size: 12px; }
+#mobile-compose[data-delivery="uncertain"] #mobile-compose-status,
+#mobile-compose-storage { color: var(--warn); }
 .app.mobile #grid, .app.mobile #pane-group-bar, .app.mobile #pane-nav-rail { display: none !important; }
 .app.mobile #btn-layout-menu, .app.mobile #btn-workspace-menu, .app.mobile #pill-count { display: none; }

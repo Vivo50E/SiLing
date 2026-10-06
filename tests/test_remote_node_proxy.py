@@ -11,7 +11,7 @@ from unittest.mock import patch
 import uvicorn
 from uvicorn.config import WS_PROTOCOLS
 from fastapi import FastAPI, Request, WebSocket
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.testclient import TestClient
 
 from agent_orchestrator import dashboard
@@ -30,6 +30,9 @@ def _fake_remote_node() -> FastAPI:
     app.state.last_delegate = {}
     app.state.last_resume = {}
     app.state.last_restore = {}
+    app.state.input_supported = True
+    app.state.input_calls = []
+    app.state.send_calls = 0
 
     @app.get("/api/health")
     def health():
@@ -103,8 +106,16 @@ def _fake_remote_node() -> FastAPI:
 
     @app.post("/api/sessions/{run_id}/send")
     async def send(run_id: str, request: Request):
+        app.state.send_calls += 1
         body = await request.json()
         return {"ok": True, "run_id": run_id, "received": body}
+
+    @app.post("/api/sessions/{run_id}/input")
+    async def mobile_input(run_id: str, request: Request):
+        app.state.input_calls.append((run_id, await request.json()))
+        if not app.state.input_supported:
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        return {"ok": True, "delivery": "accepted"}
 
     @app.get("/api/sessions/{run_id}/read")
     def read(run_id: str, lines: int = 200, position: str = "tail", max_chars: int = 32000):
@@ -283,6 +294,23 @@ class RemoteNodeProxyTest(unittest.TestCase):
                         parse_qualified_run_id(sent.json()["run_id"]),
                         ("dev", "remote-run 1"),
                     )
+
+                    remote_state = self.server.config.app.state
+                    mobile = client.post(
+                        f"/api/sessions/{run_id}/input", json={"text": "remote\nmessage"},
+                    )
+                    self.assertEqual(mobile.status_code, 200)
+                    self.assertEqual(mobile.json()["delivery"], "accepted")
+                    self.assertEqual(remote_state.input_calls, [
+                        ("remote-run 1", {"text": "remote\nmessage"}),
+                    ])
+                    remote_state.input_supported = False
+                    unsupported = client.post(
+                        f"/api/sessions/{run_id}/input", json={"key": "Tab"},
+                    )
+                    self.assertEqual(unsupported.status_code, 404)
+                    self.assertEqual(len(remote_state.input_calls), 2)
+                    self.assertEqual(remote_state.send_calls, 1, "No fallback or retry on old nodes")
 
                     read = client.get(
                         f"/api/sessions/{run_id}/read",
