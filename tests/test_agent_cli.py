@@ -76,6 +76,7 @@ class AgentCliTests(unittest.TestCase):
         package.mkdir()
         shutil.copy(PROJECT / "scripts" / "run.sh", scripts / "run.sh")
         shutil.copy(PROJECT / "scripts" / "cursor-sync-output.cjs", scripts / "cursor-sync-output.cjs")
+        shutil.copy(PROJECT / "scripts" / "cursor-model-state.cjs", scripts / "cursor-model-state.cjs")
         shutil.copy(PROJECT / "agent_orchestrator" / "agent_cli.py", package / "agent_cli.py")
         (scripts / "watcher.sh").write_text("#!/bin/sh\nexit 0\n")
         tools = self.root / "tools"

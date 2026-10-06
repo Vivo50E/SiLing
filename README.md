@@ -407,10 +407,17 @@ More contains reconnect, terminal palette, move/swap, close pane, and terminate.
 **More → Restart agent** interrupts the selected Claude/Codex/Cursor process and
 launches a background session with the same saved native conversation ID. Use it
 to reload MCP configuration; independent MCP servers are not updated or restarted.
-Cursor restart, Resume, and Restore saved let Cursor restore the conversation’s last
-used model instead of overriding it with SiLing’s original launch model. A menu
-selection without a subsequent message may not yet be saved by Cursor. New chats
-still accept an explicit model; direct CLI resumes can override it with `--model`.
+Cursor records model menu changes per process, including selections made before sending
+another message. Restart, Resume, and Restore saved carry this conversation-bound
+selection and its parameters into the replacement process; another pane’s shared
+model preference cannot overwrite it. The capture contains model fields only, never
+credentials. Existing Cursor processes need one restart after updating to load the
+capture hook; choose the desired model after that first restart. Older runs without
+a capture still use Cursor’s native last-used model. New chats accept an explicit model.
+Before stopping Cursor, Restart checks `agent status --format json` without opening
+browser login. Missing/unreadable credentials or a check timeout leave the old agent
+running. This checks credential availability, not future token validity; credentials
+remain in Cursor’s own store. Explicit token/API-key environments keep their own auth.
 Confirmation is required. A missing resume ID, invalid workspace, or missing CLI
 prevents the stop; an exit timeout never triggers a force kill. CLI lookup uses
 the service PATH first, then `~/.local/bin`; background launches use the resolved

@@ -60,7 +60,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Optional
 from urllib.parse import quote, urlparse
 
-from . import artifacts, session_lifecycle, pane_relations
+from . import artifacts, session_lifecycle, pane_relations, cursor_runtime
 from .plugins import Plugins
 from .workflows import DispatchRejected, Workflows, validate as validate_workflow
 from .agent_cli import resolve_agent_cli
@@ -10840,11 +10840,13 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             parts.append(f"ORCH_PROJECTS_ROOT={shlex.quote(projects_root)}")
         parts.append(shlex.quote(orch_bin))
         agent_kind = _norm_agent(agent)
+        cursor_state = None
         if agent_kind == "cursor" and resume_id:
-            # Cursor restores this conversation's lastUsedModel only when no
-            # initial --model is supplied. Our launch record can predate an
-            # in-terminal model switch; never override native resume with it.
-            model = ""
+            source_dir = (resume_meta or {}).get("resumed_from_run_dir", "")
+            cursor_state = cursor_runtime.saved_model(source_dir, resume_id)
+            # A process-local selection includes unsent menu changes. Legacy
+            # runs without a capture still defer to Cursor's native restore.
+            model = cursor_state["fields"]["model"]["modelId"] if cursor_state else ""
         if agent_kind == "terminal":
             # Hidden form fields can retain values after the user switches
             # from an AI agent to Terminal. Never forward those values to a
@@ -10864,6 +10866,9 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                 break
             run_name = f"{base_run_name}-{i}"
         run_dir = outputs_dir / run_name
+        if cursor_state:
+            run_dir.mkdir(parents=True, exist_ok=True)
+            write_json(run_dir / cursor_runtime.MODEL_STATE, cursor_state)
         run_id = f"{run_name}::{safe_name}"
         preallocated_meta: dict[str, str] = {}
         preallocation_error = ""
@@ -12214,8 +12219,10 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             cwd = _resolve_session_cwd(src.get("cwd") or "")
             src = {**src, "cwd": cwd}
             try:
-                resolve_agent_cli(agent)
-            except (OSError, ValueError) as exc:
+                cli = resolve_agent_cli(agent)
+                if agent == "cursor":
+                    cursor_runtime.check_auth(cli, cwd)
+            except (OSError, ValueError, RuntimeError) as exc:
                 raise HTTPException(409, f"{exc}; agent was not stopped") from exc
             # Validate/persist the exact identity before interrupting anything.
             saved = src.get("resume") or {}

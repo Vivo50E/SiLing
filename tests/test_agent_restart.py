@@ -2,6 +2,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 import os
+import json
 from pathlib import Path
 import subprocess
 import shlex
@@ -37,6 +38,7 @@ class AgentRestartTests(unittest.TestCase):
                     "terminal_theme": "light", "run_dir": str(self.root / "old")}
         self.alive = True
         self.resolve_cli = self.stack.enter_context(patch.object(dashboard, "resolve_agent_cli", return_value="/fixture/claude"))
+        self.auth = self.stack.enter_context(patch.object(dashboard.cursor_runtime, "check_auth"))
         self.lookup = self.stack.enter_context(patch.object(dashboard, "_lookup_run", side_effect=lambda *_: dict(self.src)))
         self.stack.enter_context(patch.object(dashboard, "tmux_alive", side_effect=lambda _: self.alive))
         self.stop = self.stack.enter_context(patch.object(dashboard, "_graceful_stop_agent", return_value={"ok": True}))
@@ -98,6 +100,31 @@ class AgentRestartTests(unittest.TestCase):
         args = self.spawn.call_args.args[0]
         self.assertNotIn("--model", args)
         self.assertEqual(args[args.index("--resume-id") + 1], "conversation-123")
+
+    def test_cursor_login_failure_preserves_running_process(self):
+        self.src['agent'] = 'cursor'
+        self.auth.side_effect = RuntimeError('Cursor login could not be verified')
+        result = self.restart()
+        self.assertEqual(result.status_code, 409)
+        self.stop.assert_not_called()
+        self.kill.assert_not_called()
+        self.spawn.assert_not_called()
+
+    def test_cursor_restart_uses_captured_menu_selection_not_last_used_model(self):
+        self.src['agent'] = 'cursor'
+        root = Path(self.src['run_dir'])
+        root.mkdir()
+        state = {'version': 1, 'conversation_id': self.src['resume_id'],
+                 'fields': {'model': {'modelId': 'sonnet-fixture'},
+                            'selectedModel': {'modelId': 'sonnet-fixture', 'parameters': []}}}
+        (root / '.cursor-model.json').write_text(json.dumps(state))
+        result = self.restart()
+        self.assertEqual(result.status_code, 200, result.text)
+        args = self.spawn.call_args.args[0]
+        self.assertEqual(args[args.index('--model') + 1], 'sonnet-fixture')
+        copied = json.loads((Path(result.json()['run_dir']) / '.cursor-model.json').read_text())
+        self.assertEqual(copied, state)
+        self.auth.assert_called_once()
 
     def test_preflight_failure_never_stops_agent(self):
         for changes, code in [({"resume_id": ""}, 409), ({"agent": "terminal"}, 400),

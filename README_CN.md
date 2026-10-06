@@ -347,9 +347,13 @@ linked-file allowed roots 限制。Remote Nodes 使用节点上的同类接口�
 
 「更多 → 重启当前 Agent」会在确认后中断选中的 Claude／Codex／Cursor 进程，并用已保存的
 原生对话 ID 启动新的后台会话，适合重新加载 MCP 配置；不会更新或重启独立的 MCP 服务。
-Cursor 的重启、Resume 和 Restore saved 由 Cursor 恢复该对话最后实际使用的模型，
-不再传入 SiLing 最初启动时的旧模型。只切换菜单而尚未发送消息时，Cursor 可能还没有保存选择。
-新建会话仍可指定模型；直接使用 CLI 恢复时，也可用 `--model` 显式覆盖。
+Cursor 按进程记录菜单中的模型及参数，无需先发送消息。重启、Resume 和 Restore saved
+会携带绑定该对话的选择，其他 pane 的共享模型偏好不会覆盖它；记录仅含模型字段，不含凭据。
+更新后已有 Cursor 进程需先重启一次加载记录功能，再选择希望使用的模型。
+没有记录的旧会话仍使用 Cursor 原生的最后使用模型；新建会话仍可指定模型。
+重启 Cursor 前会运行不打开网页登录的 `agent status --format json` 检查。凭据缺失、不可读或
+检查超时会保留旧 agent。此检查确认凭据可用性，不能保证令牌后续永不失效；凭据仍由 Cursor
+自身保存。显式配置 token／API key 的环境继续使用其自身认证方式。
 没有恢复 ID、工作目录无效或找不到 CLI 时，不会停止 Agent；正常退出超时也不会强杀。
 CLI 优先从服务 PATH 查找，再检查 `~/.local/bin`；后台启动使用解析后的绝对可执行路径。新的 SiLing run
 只替换对应面板，并带入名称、配色、标记、关联文件和下方输入框草稿。终端内未提交的输入和
