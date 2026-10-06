@@ -37,6 +37,9 @@ const linkJobs = new Map();
 const linkSubmissions = [];
 let delayLinkRun = "";
 let delayedLinkReply;
+const privateSubmissions = [];
+let privateMode = 'ok';
+let privateReply;
 let frameLoads = 0;
 let pendingCreation;
 let pendingRestart;
@@ -156,6 +159,17 @@ const server = http.createServer((req, res) => {
     const reply=()=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({configured:true,current:{id:'fixture-context',host:'fixture-ssh',cwd:'/remote/work'},settings:{mode:'auto',auto_discover:true},contexts:[{id:'fixture-context',host:'fixture-ssh',cwd:'/remote/work'}]}));};
     if(req.method==='PUT') {req.resume();req.on('end',reply);} else reply();
     return;
+  }
+  if (url.pathname.endsWith('/secret-input')) {
+    let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{
+      privateSubmissions.push({path:url.pathname,body,enter:req.headers['x-siling-secret-enter']});
+      const reply=()=>{
+        res.setHeader('Content-Type','application/json');
+        res.writeHead(privateMode==='unauthorized'?401:privateMode==='failure'?502:200);
+        res.end(JSON.stringify(privateMode==='ok'||privateMode==='delay'?{ok:true}:{detail:body}));
+      };
+      if(privateMode==='delay') privateReply=reply;else reply();
+    });return;
   }
   if (url.pathname.includes('/link-jobs')) {
     res.setHeader('Content-Type','application/json');
@@ -950,6 +964,61 @@ try {
   assert.ok(await evaluate(`document.querySelector('dialog[open] [data-status]').textContent.includes('16000')`),'Truncation is explicit');
   await evaluate(`document.querySelector('dialog[open] [data-close]').click()`);
   console.log('PASS: ordinary Terminal file context, selected relative file discovery, persistence UI and frame preservation');
+  const framesBeforePrivate=frameLoads;
+  const privateCard='[data-run-id="fixture-2"]';
+  await evaluate(`document.querySelector('${privateCard} .pane-input textarea').value='private test preserved draft'`);
+  const openPrivate=async()=>{
+    await evaluate(`document.querySelector('${privateCard} .btn-pane-more').click();document.querySelector('${privateCard} .btn-secret-input').click()`);
+    await waitFor(`!!document.querySelector('.private-input-dialog[open]')`);
+  };
+  const privateValue=()=>evaluate(`document.querySelector('[data-private-value]').value`);
+  for(const language of ['zh','en']) {
+    await evaluate(`{const c=document.querySelector('[data-appearance="language"]');c.value=${JSON.stringify(language)};c.dispatchEvent(new Event('change'));}`);
+    await openPrivate();
+    assert.equal(await evaluate(`document.querySelector('[data-private-value]').type`),'password');
+    assert.equal(await evaluate(`document.querySelector('[data-private-value]').autocomplete`),'new-password');
+    assert.equal(await evaluate(`document.activeElement.hasAttribute('data-private-value')`),true);
+    await evaluate(`document.querySelector('[data-private-value]').value='fixture-private-cancel'`);
+    await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+    await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+    await waitFor(`!document.querySelector('.private-input-dialog')`);
+    assert.equal(privateSubmissions.length,0,'Cancel never sends private input');
+  }
+  await openPrivate();
+  assert.equal(await privateValue(),'','Reopening never restores private input');
+  await evaluate(`document.querySelector('[data-private-value]').value='fixture-private-hidden';Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));delete document.hidden`);
+  assert.equal(await privateValue(),'','Hiding the tab clears private input');
+  const storageBeforePrivate=await evaluate(`JSON.stringify(localStorage)`);
+  privateMode='delay';
+  await evaluate(`document.querySelector('[data-private-value]').value='fixture-private-$() 中文';document.querySelector('[data-private-enter]').checked=false;document.querySelector('[data-private-send]').click();document.querySelector('[data-private-send]').click()`);
+  await waitFor(`document.querySelector('[data-private-send]').disabled`);
+  assert.equal(await privateValue(),'','Sending immediately clears private input');
+  for(let i=0;i<50&&!privateReply;i++) await pause(50);
+  assert.equal(privateSubmissions.length,1,'Duplicate click sends once');
+  assert.deepEqual(privateSubmissions[0],{path:'/api/sessions/fixture-2/secret-input',body:'fixture-private-$() 中文',enter:'false'});
+  privateReply();privateReply=null;
+  await waitFor(`!document.querySelector('.private-input-dialog')`);
+  assert.equal(await evaluate(`JSON.stringify(localStorage)`),storageBeforePrivate,'Private input writes no browser storage');
+  for(const mode of ['failure','unauthorized']) {
+    privateMode=mode;await openPrivate();
+    await evaluate(`document.querySelector('[data-private-value]').value='fixture-private-never-reflect';document.querySelector('[data-private-send]').click()`);
+    await waitFor(`!!document.querySelector('[data-private-status]').textContent`);
+    assert.equal(await privateValue(),'','Failure cannot restore private input');
+    assert.ok(await evaluate(`!document.querySelector('.private-input-dialog').textContent.includes('fixture-private-never-reflect')`),'Server errors cannot expose private values');
+    assert.ok(await evaluate(`document.querySelector('[data-private-status]').textContent.includes('Check the terminal')`));
+    await evaluate(`document.querySelector('[data-private-close]').click()`);
+    await waitFor(`!document.querySelector('.private-input-dialog')`);
+  }
+  assert.equal(privateSubmissions.length,3,'Failure and authentication rejection never automatically replay input');
+  assert.equal(await evaluate(`document.querySelector('${privateCard} .pane-input textarea').value`),'private test preserved draft');
+  assert.equal(frameLoads,framesBeforePrivate,'Private input preserves terminal frames');
+  await cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+  await openPrivate();
+  assert.ok(await evaluate(`(()=>{const r=document.querySelector('.private-input-dialog').getBoundingClientRect();return r.x>=0&&r.right<=innerWidth;})()`),'Private input fits a narrow screen');
+  await screenshot('private-input-mobile');
+  await evaluate(`document.querySelector('[data-private-close]').click()`);
+  await cdp('Emulation.clearDeviceMetricsOverride');
+  console.log('PASS: masked bilingual private input, cancellation, hidden-tab clearing, no draft/storage, exact target, one-shot delivery, generic failures and mobile layout');
   const promptsBeforeLink=sentPrompts.length;
   for(const language of ['zh','en']) {
     await evaluate(`{const c=document.querySelector('[data-appearance="language"]');c.value=${JSON.stringify(language)};c.dispatchEvent(new Event('change'));document.querySelector('[data-run-id="fixture-2"] .btn-link-folder').click();}`);

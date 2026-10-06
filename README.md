@@ -139,6 +139,15 @@ the shortcut before ttyd loses the Shift modifier, without changing global
 tmux settings. Plain Terminal and unknown/custom agents retain native keys.
 The bottom input box also supports Shift+Enter or Option/Alt+Enter for newlines.
 
+Pane **More → Private input** provides a masked field for a waiting password or token
+prompt. SiLing clears it on send, close, or hiding the tab; it never saves it as a
+draft or sends it through ordinary message handling. Delivery uses stdin and a
+temporary, deleted tmux buffer, keeping the value out of command arguments and files.
+Requests require HTTPS or loopback access and are never automatically retried.
+The receiving program can still display or record input: this does not conceal shell
+commands, shell history, or messages/transcripts in an agent. Use it only at a prompt
+that accepts private input. Remote Nodes also require HTTPS or a loopback tunnel.
+
 Click an absolute local path or a `file://` link in a terminal to open it in SiLing’s
 Files preview. The clicked item is linked to that session automatically; agents do
 not need to run `link-file` first. Codex’s `label (/path)` output is also clickable,

@@ -201,3 +201,8 @@ html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-mo
 .app.mobile .grid { grid-auto-rows: minmax(340px, 1fr); }
 
 .pane-card.ended-session .btn-compact-compose { display: none; }
+
+.private-input-dialog { width: min(440px, calc(100vw - 32px)); }
+.private-input-dialog [data-private-value] { width: 100%; box-sizing: border-box; font-size: 16px; }
+.private-input-dialog [data-private-target] { overflow-wrap: anywhere; }
+.private-input-dialog .ui-secondary { white-space: normal; line-height: 1.5; }
