@@ -11,6 +11,7 @@ import { checkMobileReader } from './mobile_browser.mjs';
 import { checkMobileCompose } from './mobile_compose_browser.mjs';
 import { checkResources } from './resources_browser.mjs';
 import { checkArchives } from './archives_browser.mjs';
+import { checkGroupOrder } from './group_order_browser.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const executable = process.env.UI_BROWSER;
@@ -310,6 +311,7 @@ const server = http.createServer((req, res) => {
         const edit = JSON.parse(body);
         if (edit.action === 'create') groupFixture.groups.push({id:'project-fixture', name:edit.name, color:edit.color});
         if (edit.action === 'update') Object.assign(groupFixture.groups.find(g => g.id === edit.group_id), {name:edit.name, color:edit.color});
+        if (edit.action === 'reorder') {const moved=groupFixture.groups.find(g=>g.id===edit.group_id);groupFixture.groups=groupFixture.groups.filter(g=>g.id!==edit.group_id);const index=edit.before_id?groupFixture.groups.findIndex(g=>g.id===edit.before_id):groupFixture.groups.length;groupFixture.groups.splice(index,0,moved);}
         if (edit.action === 'assign') for (const id of edit.run_ids) groupFixture.members[id] = edit.group_id;
         if (edit.action === 'delete') {
           groupFixture.groups = groupFixture.groups.filter(g => g.id !== edit.group_id);
@@ -404,7 +406,12 @@ try {
   if (!baseline) sessions[0].panel_state='blocked';
   await cdp('Page.addScriptToEvaluateOnNewDocument', { source: `if(!localStorage.getItem('orch_layout')){localStorage.setItem('orch_layout','cols-2x2');localStorage.setItem('orch_slots',JSON.stringify(['fixture-0','fixture-1','fixture-2','fixture-3']));localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'en',theme:'dark'}));}` });
   await cdp('Page.navigate', { url: `http://127.0.0.1:${server.address().port}/` });
-  if (process.env.UI_MOBILE_COMPOSE_ONLY === '1') {
+  if (process.env.UI_GROUP_ORDER_ONLY === '1') {
+    await checkGroupOrder({evaluate,waitFor,cdp,viewport,screenshot,pause,requests,
+      groups:groupFixture,frameLoads:()=>frameLoads,fail:value=>{failGroupSave=value;}});
+    assert.deepEqual(errors, [], 'No uncaught group order browser errors');
+    console.log(JSON.stringify({result:'PASS',suite:'group-order',screenshots:artifacts}));
+  } else if (process.env.UI_MOBILE_COMPOSE_ONLY === '1') {
     await checkMobileCompose({evaluate,waitFor,viewport,screenshot,pause,cdp,requests,inputs:mobileInputs,sessions,
       mode:value=>{mobileInputMode=value;},delayed:()=>mobileInputReply,release:()=>{mobileInputReply?.();mobileInputReply=null;}});
     assert.deepEqual(errors, [], 'No uncaught mobile composer errors');
@@ -1576,6 +1583,8 @@ try {
   await cdp('Page.reload');
   await waitFor(`document.querySelectorAll('.pane iframe').length===4`);
   await waitFor(`[...document.querySelectorAll('.pane iframe')].every(f=>f.contentDocument?.querySelector('textarea'))`);
+  await checkGroupOrder({evaluate,waitFor,cdp,viewport,screenshot,pause,requests,
+    groups:groupFixture,frameLoads:()=>frameLoads,fail:value=>{failGroupSave=value;}});
   await checkResources({evaluate, waitFor, viewport, screenshot, pause, cdp, requests,
     mode:value=>{resourceMode=value;}, delayed:()=>delayedResource, frameLoads:()=>frameLoads});
   readerMode='ok';

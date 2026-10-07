@@ -101,7 +101,7 @@ class PaneGroups:
 
     def change(self, body: dict, rows: list[dict] | None = None) -> None:
         action = body.get("action")
-        if action not in ("create", "update", "delete", "assign"):
+        if action not in ("create", "update", "delete", "assign", "reorder"):
             raise ValueError("Unknown project-group action")
         group_id = body.get("group_id", "")
         if not isinstance(group_id, str):
@@ -131,6 +131,27 @@ class PaneGroups:
                         raise ValueError("At most 100 project groups are supported")
                     group_id = uuid.uuid4().hex
                 groups[group_id] = {"id": group_id, "name": name.strip(), **_stored_color(color)}
+            elif action == "reorder":
+                before_id = body.get("before_id", "")
+                if not isinstance(before_id, str):
+                    raise ValueError("before_id must be a string")
+                if before_id and before_id not in groups:
+                    raise ValueError("Project group no longer exists; refresh and try again")
+                if before_id == group_id:
+                    return
+                # Move one group inside the lock. A stale client cannot remove
+                # groups created by another device by submitting an old list.
+                moved = groups[group_id]
+                ordered = {}
+                for gid, group in groups.items():
+                    if gid == group_id:
+                        continue
+                    if gid == before_id:
+                        ordered[group_id] = moved
+                    ordered[gid] = group
+                if not before_id:
+                    ordered[group_id] = moved
+                data["groups"] = ordered
             elif action == "delete":
                 del groups[group_id]
                 data["members"] = {k: "" if v == group_id else v for k, v in members.items()}

@@ -79,3 +79,9 @@
   grid-template-columns: repeat(var(--group-cols), minmax(0, 1fr));
   grid-template-rows: repeat(var(--group-rows), minmax(0, 1fr));
 }
+
+/* Horizontal dragging sorts group metadata; vertical touch scrolling remains native. */
+#pane-group-tabs [data-group-reorder] { cursor: grab; touch-action: pan-y; user-select: none; }
+#pane-group-tabs .group-dragging { opacity: .55; cursor: grabbing; }
+#pane-group-tabs .group-drop-before { box-shadow: inset 3px 0 var(--accent); }
+#pane-group-tabs .group-drop-after { box-shadow: inset -3px 0 var(--accent); }

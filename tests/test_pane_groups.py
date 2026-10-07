@@ -29,6 +29,38 @@ class PaneGroupTests(unittest.TestCase):
     def assign(self, gid, rows=None):
         self.store.change({"action": "assign", "group_id": gid}, rows or [self.row])
 
+    def test_reorder_is_persistent_and_preserves_members_and_later_groups(self):
+        first, second, third = [self.create(name) for name in ("First", "Second", "Third")]
+        self.assign(first)
+        later = self.create("Added by another device")
+        members = self.store.read()["members"].copy()
+        self.store.change({"action": "reorder", "group_id": third, "before_id": first})
+        reopened = PaneGroups(self.root)
+        self.assertEqual([g["id"] for g in reopened.view([])["groups"]], [third, first, second, later])
+        self.assertEqual(reopened.read()["members"], members)
+        self.store.change({"action": "update", "group_id": first, "name": "Renamed", "color": "teal"})
+        self.store.change({"action": "reorder", "group_id": third, "before_id": ""})
+        self.assertEqual([g["id"] for g in reopened.view([])["groups"]], [first, second, later, third])
+        self.store.change({"action": "delete", "group_id": second})
+        self.assertEqual([g["id"] for g in reopened.view([])["groups"]], [first, later, third])
+        self.assertEqual(reopened.read()["version"], 1)
+        self.assertEqual(self.row["panel_state"], "p0")
+
+    def test_reorder_rejects_stale_or_malformed_targets_without_writing(self):
+        gid = self.create()
+        before = self.store.path.read_bytes()
+        for payload in [
+            {"group_id": "deleted", "before_id": gid},
+            {"group_id": gid, "before_id": "deleted"},
+            {"group_id": gid, "before_id": []},
+            {"group_id": gid, "before_id": None},
+        ]:
+            with self.subTest(payload=payload), self.assertRaises(ValueError):
+                self.store.change({"action": "reorder", **payload})
+            self.assertEqual(self.store.path.read_bytes(), before)
+        self.store.change({"action": "reorder", "group_id": gid, "before_id": gid})
+        self.assertEqual(self.store.path.read_bytes(), before)
+
     def test_crud_round_trip_preserves_session_state(self):
         gid = self.create()
         self.assign(gid)

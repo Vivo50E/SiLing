@@ -223,6 +223,11 @@ Existing named colors remain supported. Custom colors retain a nearest legacy
 color in storage, so older servers can read the groups; editing a group with an
 older server resets its custom color. Refresh older Dashboard tabs after updating.
 
+Drag named group tabs left or right to reorder them; the order is saved on the
+Dashboard and shared across devices. **All** and **Ungrouped** stay first.
+Alt+Left/Right moves a focused group with the keyboard; Escape cancels a drag.
+Sorting tabs does not move panes until you choose **Arrange by group**.
+
 Choose **All**, **Ungrouped**, or a group to filter the current open panes and
 live session list. **Arrange by group** packs open panes in group-tab order, keeping
 relative order within each group and putting ungrouped panes last; empty slots follow.

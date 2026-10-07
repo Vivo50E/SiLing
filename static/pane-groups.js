@@ -9,6 +9,7 @@
     const t = (en, zh) => language() === "zh" ? zh : en;
     let groups = [], members = {}, available = false, pending = false, filter = "all", storageError = "";
     let editing = "", draftColor = colors.blue, autoLayout = false;
+    let groupDrag = null, dragFrame = null, suppressGroupClick = false, orderMessage = "";
     try { autoLayout = localStorage.getItem("siling_group_auto_layout") === "true"; } catch (_) {}
     try { filter = localStorage.getItem("siling_group_filter") || "all"; } catch (_) {}
     const bar = $("pane-group-bar");
@@ -76,13 +77,14 @@
       changed();
     }
     function renderBar() {
+      if (groupDrag) return;
       const live = sessions().filter(s => s.alive);
       $("pane-group-tabs").setAttribute("aria-label", t("Filter by project group", "按项目分组筛选"));
       const entries = [{id:"all", name:t("All", "全部")}, {id:"ungrouped", name:t("Ungrouped", "未分组")}, ...groups];
       // Updating counts must not remove a keyboard user's focused tab on every poll.
       const markup = entries.map(g => {
         const count = live.filter(s => g.id === "all" || (members[s.run_id] || "") === (g.id === "ungrouped" ? "" : g.id)).length;
-        return `<button data-group-filter="${esc(g.id)}" aria-pressed="${filter === g.id}" ${!available ? "disabled" : ""} title="${esc(g.name)}" style="--group-color:${g.color ? colorValue(g.color) : "transparent"}">${g.color ? '<i class="group-dot" aria-hidden="true"></i>' : ""}${esc(g.name)} <span>${count}</span></button>`;
+        return `<button data-group-filter="${esc(g.id)}" aria-pressed="${filter === g.id}" ${!available || pending ? "disabled" : ""} ${groups.some(group => group.id === g.id) ? 'data-group-reorder aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"' : ""} title="${esc(g.name + (groups.some(group => group.id === g.id) ? t(" — Drag to reorder; Alt+Left/Right to move", " — 拖动排序；Alt+左右方向键移动") : ""))}" style="--group-color:${g.color ? colorValue(g.color) : "transparent"}">${g.color ? '<i class="group-dot" aria-hidden="true"></i>' : ""}${esc(g.name)} <span>${count}</span></button>`;
       }).join("");
       if ($("pane-group-tabs").innerHTML !== markup) {
         const focused = document.activeElement?.dataset.groupFilter;
@@ -99,13 +101,97 @@
     }
     $("pane-group-tabs").addEventListener("click", e => {
       const button = e.target.closest("[data-group-filter]");
+      if (suppressGroupClick) { suppressGroupClick = false; e.preventDefault(); return; }
       if (button) selectFilter(button.dataset.groupFilter);
+    });
+
+    const groupTabs = $("pane-group-tabs");
+    function clearDropMarker() {
+      groupTabs.querySelectorAll(".group-dragging, .group-drop-before, .group-drop-after").forEach(b => b.classList.remove("group-dragging", "group-drop-before", "group-drop-after"));
+    }
+    async function reorderGroup(id, beforeId) {
+      if (pending || !available) return;
+      const ids = groups.map(g => g.id);
+      if (!ids.includes(id) || (beforeId && !ids.includes(beforeId))) return;
+      const reordered = ids.filter(gid => gid !== id);
+      reordered.splice(beforeId ? reordered.indexOf(beforeId) : reordered.length, 0, id);
+      if (reordered.every((gid, index) => gid === ids[index])) return;
+      const restoreFocus = document.activeElement?.dataset.groupFilter === id;
+      orderMessage = "";
+      await save({action:"reorder", group_id:id, before_id:beforeId}, $("pane-group-status"));
+      orderMessage = $("pane-group-status").textContent;
+      if (restoreFocus && document.activeElement === document.body) [...groupTabs.querySelectorAll("[data-group-reorder]")].find(b => b.dataset.groupFilter === id)?.focus();
+    }
+    function paintGroupDrop() {
+      if (!groupDrag?.active) return;
+      const bounds = groupTabs.getBoundingClientRect();
+      if (groupDrag.x < bounds.left + 24) groupTabs.scrollLeft -= 12;
+      if (groupDrag.x > bounds.right - 24) groupTabs.scrollLeft += 12;
+      clearDropMarker();
+      const buttons = [...groupTabs.querySelectorAll("[data-group-reorder]")];
+      const source = buttons.find(b => b.dataset.groupFilter === groupDrag.id);
+      source?.classList.add("group-dragging");
+      const others = buttons.filter(b => b !== source);
+      const target = others.find(b => { const r=b.getBoundingClientRect(); return groupDrag.x < r.left+r.width/2; });
+      groupDrag.beforeId = target?.dataset.groupFilter || "";
+      (target || others.at(-1))?.classList.add(target ? "group-drop-before" : "group-drop-after");
+      dragFrame = requestAnimationFrame(paintGroupDrop);
+    }
+    function finishGroupDrag(commit = false) {
+      if (!groupDrag) return;
+      const drag = groupDrag; groupDrag = null;
+      cancelAnimationFrame(dragFrame); dragFrame = null;
+      if (groupTabs.hasPointerCapture(drag.pointerId)) groupTabs.releasePointerCapture(drag.pointerId);
+      clearDropMarker();
+      if (drag.active) renderBar();
+      if (drag.active) {
+        suppressGroupClick = true;
+        if (commit) void reorderGroup(drag.id, drag.beforeId);
+      }
+    }
+    groupTabs.addEventListener("pointerdown", event => {
+      if (event.button === 0) suppressGroupClick = false;
+      const button = event.target.closest("[data-group-reorder]");
+      if (!button || event.button !== 0 || !event.isPrimary || pending || !available || groupDrag) return;
+      groupDrag = {id:button.dataset.groupFilter, pointerId:event.pointerId, startX:event.clientX, startY:event.clientY, x:event.clientX, active:false, beforeId:""};
+    });
+    groupTabs.addEventListener("pointermove", event => {
+      if (!groupDrag || groupDrag.pointerId !== event.pointerId) return;
+      groupDrag.x = event.clientX;
+      if (!groupDrag.active) {
+        if (Math.abs(event.clientY-groupDrag.startY) > 12 && Math.abs(event.clientX-groupDrag.startX) < 6) { finishGroupDrag(); return; }
+        if (Math.abs(event.clientX-groupDrag.startX) < 6) return;
+        groupDrag.active = true; groupTabs.setPointerCapture(event.pointerId); paintGroupDrop();
+      }
+      event.preventDefault(); event.stopPropagation();
+    });
+    groupTabs.addEventListener("pointerup", event => {
+      if (!groupDrag || groupDrag.pointerId !== event.pointerId) return;
+      const bounds = groupTabs.getBoundingClientRect();
+      if (groupDrag.active) { cancelAnimationFrame(dragFrame); groupDrag.x=event.clientX; paintGroupDrop(); }
+      finishGroupDrag(event.clientX >= bounds.left-16 && event.clientX <= bounds.right+16 && event.clientY >= bounds.top-16 && event.clientY <= bounds.bottom+16);
+    });
+    document.addEventListener("pointerup", () => finishGroupDrag());
+    groupTabs.addEventListener("pointercancel", () => finishGroupDrag());
+    groupTabs.addEventListener("lostpointercapture", event => { if (event.target === groupTabs) finishGroupDrag(); });
+    window.addEventListener("blur", () => finishGroupDrag());
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape" && groupDrag) { event.preventDefault(); finishGroupDrag(); }
+    });
+    groupTabs.addEventListener("keydown", event => {
+      if (!groupDrag && ["Enter", " "].includes(event.key)) suppressGroupClick = false;
+      const button = event.target.closest("[data-group-reorder]");
+      if (!button || !event.altKey || !["ArrowLeft","ArrowRight"].includes(event.key)) return;
+      event.preventDefault();
+      const index = groups.findIndex(g => g.id === button.dataset.groupFilter);
+      if (event.key === "ArrowLeft" && index > 0) void reorderGroup(groups[index].id, groups[index-1].id);
+      if (event.key === "ArrowRight" && index >= 0 && index < groups.length-1) void reorderGroup(groups[index].id, groups[index+2]?.id || "");
     });
 
     function populateDialog() {
       const labels = {
         "pane-groups-title": t("Project groups", "项目分组"),
-        "pane-groups-help": t("Names, colors and membership sync between your devices connected to this Dashboard. Your layout stays on this device. Agents keep running.", "名称、颜色和归属会同步到连接此 Dashboard 的电脑与手机；当前布局留在本设备，Agent 始终继续运行。"),
+        "pane-groups-help": t("Names, colors, order and membership sync between your devices connected to this Dashboard. Your layout stays on this device. Agents keep running.", "名称、颜色、顺序和归属会同步到连接此 Dashboard 的电脑与手机；当前布局留在本设备，Agent 始终继续运行。"),
         "group-edit-label": t("Your groups", "我的分组"), "group-name-label": t("Group name", "分组名称"),
         "group-new": t("+ New group", "+ 新建分组"), "group-picker-label": t("Custom color", "自定义颜色"),
         "group-color-help": t("Pick a swatch, choose any color, or enter #RRGGBB. Preview updates immediately; Save applies it.", "可点选色块、自由取色或输入 #RRGGBB。预览即时更新，保存后才会应用。"),
@@ -195,6 +281,7 @@
     async function save(body, result) {
       if (pending) return false;
       pending = true;
+      renderBar();
       dialog.querySelectorAll("button:not([data-dialog-close]), input, select").forEach(e => { e.disabled = true; });
       result.textContent = t("Saving…", "保存中…");
       try {
@@ -210,6 +297,7 @@
         return false;
       } finally {
         pending = false;
+        renderBar();
         document.querySelectorAll("#grid .pane-card[data-run-id]").forEach(card => {
           const row = sessions().find(s => s.run_id === card.dataset.runId);
           if (row) decorate(card, row);
@@ -299,7 +387,7 @@
         dot.hidden = !!card?.classList.contains("group-hidden");
       });
       const empty = available && filter !== "all" && !cards.some(c => c.dataset.runId && !c.classList.contains("group-hidden"));
-      $("pane-group-status").textContent = storageError || (empty ? t("No open panes in this group — open a session from the list.", "此分组暂无打开的面板，可从会话列表打开。") : "");
+      $("pane-group-status").textContent = storageError || orderMessage || (empty ? t("No open panes in this group — open a session from the list.", "此分组暂无打开的面板，可从会话列表打开。") : "");
     }
     renderBar();
     return {
