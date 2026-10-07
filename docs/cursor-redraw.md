@@ -97,3 +97,10 @@ wall-clock fallback removes it if no complete frame arrives. Repeated resizes
 retain the first snapshot without extending that deadline. Unsupported renderers
 without canvas layers keep native behavior. This is a browser presentation change;
 refresh after updating the Dashboard, without restarting agent processes.
+
+The snapshot is bottom-aligned only when the cursor was on the final row, the
+viewport was at the live bottom, and no text was selected. Its offset is the
+row-count delta times the original cell height (not a scaled image), recomputed
+from the original snapshot for repeated resizes. This puts a live shell prompt
+at its expected final position before tmux fills in older history above it.
+Other cursor positions and history/selection views retain the original anchor.

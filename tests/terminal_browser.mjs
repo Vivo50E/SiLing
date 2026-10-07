@@ -143,6 +143,22 @@ try {
   await evaluate(`term.write=resizeWrite;for(const args of resizeWrites)term.write(...args);resizeWrites=[];`);
   await pause(150);
   console.log('PASS: resize retains painted pixels until synchronized output, preserves input and has a bounded fallback');
+  // Growing a live shell brings older tmux history into view above the prompt.
+  // The retained frame must already be at that final bottom position.
+  const anchored = await evaluate(`(()=>{term.write=function(...args){resizeWrites.push(args)};const b=term.buffer.active;const before={rows:term.rows,cursor:b.cursorY,line:b.getLine(b.viewportY+b.cursorY).translateToString(true),cell:document.querySelector('.xterm-screen').getBoundingClientRect().height/term.rows};resizeParent.style.height=(resizeParent.clientHeight+96)+'px';term.fit();const canvas=document.querySelector('.siling-resize-snapshot canvas');return {...before,newRows:term.rows,offset:canvas?new DOMMatrix(getComputedStyle(canvas).transform).m42:null};})()`);
+  assert.equal(anchored.cursor,anchored.rows-1,'Fixture has a live prompt on the bottom row');
+  assert.ok(anchored.newRows>anchored.rows,'Fixture expands terminal height');
+  assert.ok(Math.abs(anchored.offset-(anchored.newRows-anchored.rows)*anchored.cell)<0.1,'Snapshot prompt is at the final bottom position before output arrives');
+  await evaluate(`term.write=resizeWrite;for(const args of resizeWrites)term.write(...args);resizeWrites=[];`);
+  await pause(350);
+  assert.equal(await evaluate(`term.buffer.active.getLine(term.buffer.active.viewportY+term.rows-1).translateToString(true)`),anchored.line,'tmux confirms the same prompt at the predicted position');
+  // A full-screen cursor at the top must not be treated as a bottom prompt.
+  await evaluate(`new Promise(resolve=>term.write('\\x1b[H',resolve))`);
+  const topOffset=await evaluate(`(()=>{term.write=function(...args){resizeWrites.push(args)};if(resizeParentStyle===null)resizeParent.removeAttribute('style');else resizeParent.setAttribute('style',resizeParentStyle);term.fit();const c=document.querySelector('.siling-resize-snapshot canvas');return c?new DOMMatrix(getComputedStyle(c).transform).m42:null;})()`);
+  assert.equal(topOffset,0,'Top-positioned full-screen content keeps its original anchor');
+  await evaluate(`term.write=resizeWrite;for(const args of resizeWrites)term.write(...args);resizeWrites=[];`);
+  await pause(350);
+  console.log('PASS: live bottom prompt is aligned before resized history arrives; top cursor remains top-aligned');
   // A late layout/font change can miss ttyd's one window-resize fit.
   // Change only the container, so the browser window emits no resize event.
   await evaluate(`window.fitParent=term.element.parentElement;window.fitOriginalStyle=fitParent.getAttribute('style');window.narrowCols=term.cols;fitParent.style.width='600px';fitParent.style.height='500px';`);

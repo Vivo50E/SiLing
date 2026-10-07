@@ -157,6 +157,15 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       if (!canvases.length || bounds.width < 2 || bounds.height < 2) return;
       const cover = document.createElement("div");
       cover.className = "siling-resize-snapshot";
+      const buffer = terminal.buffer.active;
+      cover.__silingResizeAnchor = {
+        rows: terminal.rows, cellHeight: bounds.height / terminal.rows,
+        // Only a live prompt on the last row is predictably bottom-anchored.
+        // History readers, selections and top-positioned full-screen cursors
+        // keep the original top alignment.
+        bottom: buffer.viewportY === buffer.baseY && buffer.cursorY === terminal.rows - 1
+          && !terminal.hasSelection(),
+      };
       cover.setAttribute("aria-hidden", "true");
       Object.assign(cover.style, {position: "fixed", inset: "0", overflow: "hidden",
         pointerEvents: "none", zIndex: "2147483646",
@@ -176,15 +185,25 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       } catch (_) { return; }
       return cover;
     };
-    const preserveResizeFrame = () => {
+    const alignResizeFrame = (cover, rows) => {
+      const anchor = cover.__silingResizeAnchor;
+      const offset = anchor.bottom && Number.isInteger(rows) && rows > 0
+        ? (rows - anchor.rows) * anchor.cellHeight : 0;
+      for (const canvas of cover.querySelectorAll("canvas")) {
+        canvas.style.transform = `translateY(${offset}px)`;
+      }
+    };
+    const preserveResizeFrame = rows => {
       if (resizeSnapshot) {
         cancelAnimationFrame(resizeSnapshotFrame);
         resizeSnapshotFrame = 0;
+        alignResizeFrame(resizeSnapshot, rows);
         return;
       }
       const cover = preparedResizeSnapshot || captureResizeFrame();
       preparedResizeSnapshot = null;
       if (!cover) return;
+      alignResizeFrame(cover, rows);
       document.body.appendChild(cover);
       resizeSnapshot = cover;
       // A disconnected/older peer must never leave a stale screen covering input.
@@ -207,7 +226,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     }
     const nativeResize = terminal.resize;
     terminal.resize = function (cols, rows) {
-      if (cols !== terminal.cols || rows !== terminal.rows) preserveResizeFrame();
+      if (cols !== terminal.cols || rows !== terminal.rows) preserveResizeFrame(rows);
       try { return nativeResize.call(this, cols, rows); }
       catch (error) { clearResizeSnapshot(); throw error; }
     };

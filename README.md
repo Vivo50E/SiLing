@@ -875,3 +875,5 @@ Cursor launches use synchronized full-screen repaint delivery with tmux 3.7+ to 
 Settings → Appearance → **Always show pane priority** keeps the priority selector visible even in short panes. Off by default; saved in this browser and applied immediately without restarting sessions.
 
 Terminal zoom preserves the last painted frame while tmux repaints at the new size, avoiding an intermediate text jump. The visual cover does not intercept input and expires after 250 ms if output is delayed.
+
+During resize, a live prompt on the last terminal row keeps its bottom position in the retained frame, preventing a second downward jump when tmux restores history. Selected text, local scrollback browsing and cursors above the last row keep top alignment.
