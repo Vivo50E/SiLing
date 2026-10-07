@@ -135,20 +135,32 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     let preparedResizeSnapshot = null;
     let resizeSnapshotTimer = null;
     let resizeSnapshotFrame = 0;
+    let resizeSettleTimer = null;
     let sawSynchronizedOutput = false;
-    const clearResizeSnapshot = () => {
-      clearTimeout(resizeSnapshotTimer);
+    const cancelResizeRelease = () => {
+      clearTimeout(resizeSettleTimer);
+      resizeSettleTimer = null;
       cancelAnimationFrame(resizeSnapshotFrame);
       resizeSnapshotFrame = 0;
+    };
+    const clearResizeSnapshot = () => {
+      clearTimeout(resizeSnapshotTimer);
+      cancelResizeRelease();
       resizeSnapshot?.remove();
       resizeSnapshot = null;
     };
     const releaseResizeSnapshot = () => {
-      if (!resizeSnapshot || resizeSnapshotFrame) return;
-      // refresh() schedules painting; remove the cover only after that paint.
-      resizeSnapshotFrame = requestAnimationFrame(() => {
-        resizeSnapshotFrame = requestAnimationFrame(clearResizeSnapshot);
-      });
+      if (!resizeSnapshot) return;
+      cancelResizeRelease();
+      if (synchronized || resizeSnapshot.__silingPendingWrites > 0) return;
+      // A resize can produce several complete tmux/TUI frames. A single END
+      // or write callback is not the end of that burst. Debounce only this
+      // visual cover; parsing, input and PTY sizing continue immediately.
+      resizeSettleTimer = setTimeout(() => {
+        resizeSnapshotFrame = requestAnimationFrame(() => {
+          resizeSnapshotFrame = requestAnimationFrame(clearResizeSnapshot);
+        });
+      }, 120);
     };
     const captureResizeFrame = () => {
       if (!sawSynchronizedOutput || document.hidden) return;
@@ -195,8 +207,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     };
     const preserveResizeFrame = rows => {
       if (resizeSnapshot) {
-        cancelAnimationFrame(resizeSnapshotFrame);
-        resizeSnapshotFrame = 0;
+        cancelResizeRelease();
         alignResizeFrame(resizeSnapshot, rows);
         return;
       }
@@ -207,7 +218,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       document.body.appendChild(cover);
       resizeSnapshot = cover;
       // A disconnected/older peer must never leave a stale screen covering input.
-      resizeSnapshotTimer = setTimeout(clearResizeSnapshot, 250);
+      resizeSnapshotTimer = setTimeout(clearResizeSnapshot, 600);
     };
     // FitAddon clears the renderer immediately BEFORE calling resize(). Keep
     // that pre-clear frame only for a resize in this same synchronous turn.
@@ -232,13 +243,21 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     };
     const nativeWrite = terminal.write;
     terminal.write = function (data, callback) {
-      if (!resizeSnapshot) return nativeWrite.call(this, data, callback);
-      return nativeWrite.call(this, data, () => {
-        // tmux's resize redraw may lack DEC 2026, unlike ordinary output.
-        // Wait for parsing as well as painting, and honor any active sync frame.
-        if (!synchronized) releaseResizeSnapshot();
-        callback?.();
-      });
+      const cover = resizeSnapshot;
+      if (!cover) return nativeWrite.call(this, data, callback);
+      cancelResizeRelease();
+      cover.__silingPendingWrites = (cover.__silingPendingWrites || 0) + 1;
+      try {
+        return nativeWrite.call(this, data, () => {
+          cover.__silingPendingWrites--;
+          if (resizeSnapshot === cover) releaseResizeSnapshot();
+          callback?.();
+        });
+      } catch (error) {
+        cover.__silingPendingWrites--;
+        if (resizeSnapshot === cover) clearResizeSnapshot();
+        throw error;
+      }
     };
     window.addEventListener("pagehide", clearResizeSnapshot);
 
@@ -261,8 +280,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       terminal.parser.registerCsiHandler({prefix: "?", final: "h"}, params => {
         if (params.includes(2026)) {
           sawSynchronizedOutput = true;
-          cancelAnimationFrame(resizeSnapshotFrame);
-          resizeSnapshotFrame = 0;
+          cancelResizeRelease();
           synchronized = true;
           clearTimeout(syncTimeout);
           syncTimeout = setTimeout(finishSync, 1000);

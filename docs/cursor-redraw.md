@@ -92,7 +92,7 @@ xterm changes its canvas dimensions. Parsing and PTY resize continue normally.
 FitAddon clears are captured before the canvas is erased, but a clear without a
 resize in the same turn never displays a cover. Parsed output outside an active
 synchronized frame, or the next synchronized end, schedules removal after
-painting; a 250 ms
+120 ms of output quiet and painting; a 600 ms
 wall-clock fallback removes it if no complete frame arrives. Repeated resizes
 retain the first snapshot without extending that deadline. Unsupported renderers
 without canvas layers keep native behavior. This is a browser presentation change;
@@ -104,3 +104,10 @@ row-count delta times the original cell height (not a scaled image), recomputed
 from the original snapshot for repeated resizes. This puts a live shell prompt
 at its expected final position before tmux fills in older history above it.
 Other cursor positions and history/selection views retain the original anchor.
+
+A resize burst may contain several synchronized frames, even an intermediate
+clear, before the TUI settles. Every incoming write or sync begin cancels a
+pending release. Release starts only when writes finish parsing and no sync
+frame is active; another write restarts the 120 ms quiet interval. The 600 ms
+deadline belongs to the original cover and cannot be extended by repeated
+resizes or output. Ordinary output outside resize has no added delay.

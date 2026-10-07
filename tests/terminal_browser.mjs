@@ -126,6 +126,55 @@ try {
   assert.ok(await evaluate('window.tmuxSyncStarts>0'),'Real tmux client emits synchronized updates through ttyd');
   await evaluate('window.tmuxSyncProbe.dispose()');
   console.log('PASS: tmux to ttyd to browser synchronization negotiation');
+  // A resize burst can contain multiple complete frames, including a clear.
+  // Keep every intermediate frame covered for both expansion and contraction.
+  for (const direction of [1,-1]) {
+    const burst = await evaluate(`(async()=>{
+      // Isolate quiet-period behavior from the independently tested deadline.
+      // Canvas readback and overloaded CI can consume the real 600 ms budget.
+      const schedule=window.setTimeout;
+      window.setTimeout=(fn,delay,...args)=>schedule(fn,delay===600?4000:delay,...args);
+      try {
+      const native=term.write, queued=[];term.write=(...args)=>queued.push(args);
+      const width=term.cols,height=term.rows;
+      term.resize(width+${direction}*3,height+${direction}*2);
+      const cover=document.querySelector('.siling-resize-snapshot');
+      const pixels=()=>[...cover.querySelectorAll('canvas')].map(c=>c.toDataURL());
+      const before=pixels(),visible=[];
+      const write=text=>new Promise(resolve=>native.call(term,text,resolve));
+      for(const text of ['FIRST','', 'FINAL']) {
+        await write('\\x1b[?2026h\\x1b[2J\\x1b[H'+text+'\\x1b[?2026l');
+        await new Promise(resolve=>setTimeout(resolve,80));
+        visible.push(cover.isConnected&&JSON.stringify(pixels())===JSON.stringify(before));
+      }
+      const parsed=term.buffer.active.getLine(0).translateToString(true);
+      await new Promise(resolve=>setTimeout(resolve,120));
+      const released=!cover.isConnected;
+      term.write=native;for(const args of queued)term.write(...args);
+      return {visible,parsed,released};
+      } finally { window.setTimeout=schedule; }
+    })()`);
+    assert.deepEqual(burst.visible,[true,true,true],'Intermediate redraws and blank frame stay covered');
+    assert.ok(burst.parsed.includes('FINAL'),'Parsing continues underneath the cover');
+    assert.equal(burst.released,true,'A quiet burst releases the cover');
+  }
+  const sustained = await evaluate(`(async()=>{
+    const native=term.write,queued=[];term.write=(...args)=>queued.push(args);
+    term.resize(term.cols+1,term.rows+1);
+    const cover=document.querySelector('.siling-resize-snapshot'),start=performance.now();
+    let frames=0;
+    while(performance.now()-start<720) {
+      await new Promise(resolve=>native.call(term,'\\x1b[?2026h\\x1b[HCONTINUOUS\\x1b[?2026l',resolve));
+      frames++;await new Promise(resolve=>setTimeout(resolve,60));
+    }
+    const released=!cover.isConnected;
+    term.write=native;for(const args of queued)term.write(...args);
+    return {released,frames};
+  })()`);
+  assert.ok(sustained.frames>1,'Fixture supplies continuing output');
+  assert.equal(sustained.released,true,'Continuous redraws cannot extend the hard cover deadline');
+  tmux('refresh-client');await pause(300);
+  console.log('PASS: multi-frame resize bursts stay covered in both directions, including intermediate clears');
   // A resize must not expose xterm's provisional old rows before tmux's
   // authoritative repaint. Delay incoming writes to inspect the visible cover.
   const resizeCover = await evaluate(`(async()=>{window.resizeWrite=term.write;window.resizeWrites=[];term.write=function(...args){resizeWrites.push(args)};const before=[...document.querySelectorAll('.xterm-screen canvas')].map(c=>c.toDataURL());window.resizeParent=term.element.parentElement;window.resizeParentStyle=resizeParent.getAttribute('style');resizeParent.style.width=(resizeParent.clientWidth-64)+'px';term.fit();const cover=document.querySelector('.siling-resize-snapshot');const result={present:!!cover,pixelsMatch:JSON.stringify([...cover?.querySelectorAll('canvas')||[]].map(c=>c.toDataURL()))===JSON.stringify(before),pointerEvents:cover&&getComputedStyle(cover).pointerEvents};await new Promise(r=>setTimeout(r,70));result.waiting=!!document.querySelector('.siling-resize-snapshot');return result;})()`);
@@ -134,11 +183,11 @@ try {
   assert.equal(resizeCover.pointerEvents,'none','Snapshot never intercepts terminal input');
   assert.equal(resizeCover.waiting,true,'Intermediate paints remain covered while waiting for remote output');
   await evaluate(`term.write=resizeWrite;for(const args of resizeWrites)term.write(...args);resizeWrites=[];`);
-  await pause(120);
-  assert.equal(await evaluate(`!!document.querySelector('.siling-resize-snapshot')`),false,'A completed tmux frame releases the snapshot');
+  for(let i=0;i<40 && await evaluate(`!!document.querySelector('.siling-resize-snapshot')`);i++) await pause(20);
+  assert.equal(await evaluate(`!!document.querySelector('.siling-resize-snapshot')`),false,'Settled output releases the snapshot');
   await screenshot('resize-complete');
   await evaluate(`term.write=function(...args){resizeWrites.push(args)};if(resizeParentStyle===null)resizeParent.removeAttribute('style');else resizeParent.setAttribute('style',resizeParentStyle);term.fit();`);
-  await pause(320);
+  await pause(680);
   assert.equal(await evaluate(`!!document.querySelector('.siling-resize-snapshot')`),false,'Missing remote output cannot leave a stale overlay');
   await evaluate(`term.write=resizeWrite;for(const args of resizeWrites)term.write(...args);resizeWrites=[];`);
   await pause(150);
@@ -302,6 +351,9 @@ finally:
   await screenshot('hard-wrapped-web-link');
   await evaluate(`window.frameElement.dataset.inlineSelection='true';window.frameElement.dataset.nativeSelection='true';`);
   console.log('PASS: hard-wrapped web URL click targets and hover ranges under Claude mouse policy');
+  // The preceding browser-only link fixtures changed xterm without changing
+  // tmux's screen/cursor. Resynchronize before testing real PTY output.
+  tmux('refresh-client');
   const barePath='/localhome/demo/work/'+('reports/'.repeat(18))+'test_report.md';
   const pathChunks=barePath.match(new RegExp('.{1,'+(columns-4)+'}','g'));
   const prefix='报告文件已更新完毕：';
@@ -311,9 +363,14 @@ finally:
   const announcedRows=announcedChunks.map((part,i)=>'  '+(i===0?prefix:'')+part);
   for (const pathRows of [bareRows,announcedRows]) {
     tmux('send-keys','-t','check',"printf '%s\\n' '' "+pathRows.map(s=>"'"+s+"'").join(' '),'Enter');
-    await pause(500);
-    await evaluate('term.scrollToBottom()');
-    const pathCells=await evaluate(`(()=>{const rows=${JSON.stringify(pathRows)};const b=term.buffer.active;const r=document.querySelector('.xterm-screen').getBoundingClientRect();return rows.map(row=>{const indent=row.startsWith('  '+${JSON.stringify(prefix)})?2+${prefix.length*2}:2;for(let y=b.viewportY;y<Math.min(b.length,b.viewportY+term.rows);y++){if(b.getLine(y).translateToString(true)===row)return {x:r.x+(indent+1.5)*r.width/term.cols,y:r.y+(y-b.viewportY+.5)*r.height/term.rows};}})})()`);
+    let pathCells=[];
+    // Wait for the actual rows, not a fixed delay under machine load.
+    for(let attempt=0;attempt<30;attempt++) {
+      await evaluate('term.scrollToBottom()');
+      pathCells=await evaluate(`(()=>{const rows=${JSON.stringify(pathRows)};const b=term.buffer.active;const r=document.querySelector('.xterm-screen').getBoundingClientRect();return rows.map(row=>{const indent=row.startsWith('  '+${JSON.stringify(prefix)})?2+${prefix.length*2}:2;for(let y=b.viewportY;y<Math.min(b.length,b.viewportY+term.rows);y++){if(b.getLine(y).translateToString(true)===row)return {x:r.x+(indent+1.5)*r.width/term.cols,y:r.y+(y-b.viewportY+.5)*r.height/term.rows};}})})()`);
+      if(pathCells.length>1 && pathCells.every(Boolean)) break;
+      await pause(100);
+    }
     assert.ok(pathCells.length>1 && pathCells.every(Boolean),'Bare SSH path fragments are visible');
     for(const cell of pathCells) {
       await cdp('Input.dispatchMouseEvent',{type:'mouseMoved',...cell,buttons:0});
