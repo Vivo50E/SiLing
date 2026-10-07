@@ -300,7 +300,7 @@ CLI 主动换行的裸 HTTP(S) 链接，在缩进一致且接近 pane 行尾时�
 - 预览 Markdown、源码（含 SQL）、图片、CSV 数据和报告。
 - 文本预览中的 **复制全部** 会复制完整文件，即使预览已截断。
 - 可在 **设置 → 浏览与文件 → Open web links inside SiLing** 中选择将 terminal、Markdown
-  和 Linked Items 里的 HTTP(S) 链接打开为内嵌 Projects 标签页。
+  和 Linked Items 里的 HTTP(S) 链接打开为内嵌浏览器标签页（顶部 **更多 → 浏览器**）。
 - 在 Dashboard 所在的 Mac 上，默认开启 **通过 macOS 打开外部链接**：
   外部链接交给系统浏览器，不走 PWA 的打开路径；具体 profile 仍由 Edge 的设置决定，
   不强制指定账号。关闭后恢复浏览器原生打开方式，内嵌浏览选项仍优先。

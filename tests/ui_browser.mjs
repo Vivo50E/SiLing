@@ -330,7 +330,7 @@ const server = http.createServer((req, res) => {
     if (url.pathname === '/api/create') { pendingCreation = res; return; }
     if (url.pathname.endsWith('/restart')) { pendingRestart = res; return; }
     let value = { ok: true };
-    if (url.pathname === '/api/config') value = { projects_browser_url: '', remote_nodes: [], system_browser_available: systemBrowserAvailable };
+    if (url.pathname === '/api/config') value = { projects_browser_url: '/fixture-tty/browser-default', remote_nodes: [], system_browser_available: systemBrowserAvailable };
     if (url.pathname === '/api/health') value = { ttyd: true };
     if (url.pathname === '/api/sessions') value = { sessions, snapshot: { ready: true }, pane_groups: groupFixture,
       session_archives:archiveMode==='metadata-error' ? {error:'fixture unavailable'} : archiveFixture };
@@ -432,6 +432,7 @@ try {
   assert.equal(await evaluate(`document.querySelectorAll('.pane iframe').length`), 4, JSON.stringify(errors));
   assert.equal(await evaluate(`document.querySelectorAll('.new-browser-pane').length`), 0, 'Native browser panes are desktop-only');
   console.log('Dashboard booted with four isolated terminal frames');
+
   if (!baseline) assert.match(await evaluate(`document.querySelector('#conn-status').textContent`), /^Alive 5 · Ended 0 · Total 5 · /);
   if (!baseline) {
     const groupFrames = frameLoads;
@@ -1539,6 +1540,39 @@ try {
   sessions.slice(0,4).forEach(session=>{session.alive=true;});
   await evaluate(`localStorage.setItem('orch_slots',JSON.stringify(['fixture-0','fixture-1','fixture-2','fixture-3']))`);
   await viewport(1280,900);
+  await cdp('Page.reload');
+  await waitFor(`document.querySelectorAll('.pane iframe').length===4`);
+  await waitFor(`[...document.querySelectorAll('.pane iframe')].every(f=>f.contentDocument?.querySelector('textarea'))`);
+  await evaluate(`localStorage.setItem('orch_projects_browser_tabs_v1',JSON.stringify({tabs:[{url:'/fixture-tty/browser-saved',title:'Projects 1'},{url:'/fixture-tty/browser-custom',title:'Saved report'}],activeIndex:1}));{const c=document.querySelector('[data-appearance="language"]');c.value='en';c.dispatchEvent(new Event('change'));}`);
+  await cdp('Page.reload');
+  await waitFor(`document.querySelectorAll('.pane iframe').length===4`);
+  if (!baseline) {
+    assert.equal(await evaluate(`!!document.querySelector('.topbar-global #btn-open-projects-browser')`),false,'Browser no longer occupies the toolbar');
+    assert.equal(await evaluate(`document.querySelector('#btn-workspace-menu').textContent.trim()`),'More');
+    for(const [width,height] of [[1280,800],[320,740]]) {
+      await viewport(width,height);
+      await evaluate(`document.querySelector('#btn-workspace-menu').click()`);
+      assert.ok(await evaluate(`document.querySelector('#workspace-menu #btn-open-projects-browser').getClientRects().length`),'Browser is reachable in More on desktop and mobile');
+      await evaluate(`document.querySelector('#btn-open-projects-browser').click()`);
+      assert.equal(await evaluate(`document.querySelector('#workspace-menu').open`),false,'Choosing Browser dismisses More');
+      assert.equal(await evaluate(`document.querySelector('#projects-browser-modal').hidden`),false);
+      assert.equal(await evaluate(`document.querySelector('#projects-browser-modal .modal-title').textContent.trim()`),'Browser');
+      await waitFor(`!!document.querySelector('.projects-browser-frame').contentDocument?.querySelector('textarea')`);
+      assert.deepEqual(await evaluate(`Array.from(document.querySelectorAll('.projects-browser-tab-main')).map(b=>b.textContent.trim())`),['Browser 1','Saved report'],'Existing tab URLs and custom names survive the rename');
+      assert.ok(await evaluate(`document.querySelector('.projects-browser-frame:not([hidden])').src.endsWith('/fixture-tty/browser-custom')`),'The saved active tab remains active');
+      await screenshot('browser-menu-'+width);
+      await evaluate(`document.querySelector('#projects-browser-modal-close').click()`);
+    }
+    await viewport(1280,800);
+    await waitFor(`document.querySelectorAll('.pane iframe').length===4`);
+  }
+  await evaluate(`{const c=document.querySelector('[data-appearance="language"]');c.value='zh';c.dispatchEvent(new Event('change'));document.querySelector('#btn-workspace-menu').click();}`);
+  assert.equal(await evaluate(`document.querySelector('#workspace-menu-title').textContent`),'更多');
+  assert.equal(await evaluate(`document.querySelector('#btn-open-projects-browser').textContent.trim()`),'浏览器');
+  await screenshot('browser-more-zh');
+  await evaluate(`document.querySelector('#btn-open-projects-browser').click()`);
+  assert.equal(await evaluate(`document.querySelector('#projects-browser-modal .modal-title').textContent.trim()`),'浏览器');
+  await evaluate(`document.querySelector('#projects-browser-modal-close').click()`);
   await cdp('Page.reload');
   await waitFor(`document.querySelectorAll('.pane iframe').length===4`);
   await waitFor(`[...document.querySelectorAll('.pane iframe')].every(f=>f.contentDocument?.querySelector('textarea'))`);

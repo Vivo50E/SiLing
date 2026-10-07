@@ -383,7 +383,8 @@ preserves the full query string; blank lines and following prose are not joined.
 - Preview Markdown, source files (including SQL), images, CSV data, and reports.
 - **Copy all** copies the full text file, including content beyond a truncated preview.
 - Optionally open terminal, Markdown, and linked HTTP(S) URLs in an embedded
-  Projects tab via **Settings → Browsing & files → Open web links inside SiLing**.
+  Browser tab via **Settings → Browsing & files → Open web links inside SiLing**.
+  Open the browser from the top **More → Browser** menu.
 - On the Dashboard's Mac, **Open external links via macOS** is on by default:
   external links use the system browser rather than the PWA's opening path.
   Edge still chooses the profile according to its settings; this does not force

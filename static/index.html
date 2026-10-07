@@ -3300,10 +3300,9 @@
       <div class="quick-actions" aria-label="Quick actions" data-ui-label=Quick%20actions>
         <button type="button" id="resource-summary"></button>
         <button id="btn-mission-control" title="Monitor progress across all active sessions" data-ui-title=Monitor%20progress%20across%20all%20active%20sessions><span data-ui-message=mission%20control>mission control</span></button>
-        <button class="ui-button" id="btn-open-projects-browser" data-ui-icon="folder" aria-label="Projects &amp; files" data-ui-label=Projects%20%26%20files title="Projects &amp; files" data-ui-title=Projects%20%26%20files><span><span data-ui-message=Projects>Projects</span></span></button>
       </div>
       <button class="ui-button" id="btn-layout-menu" data-ui-icon="grid" data-i18n-label="layout"><span data-i18n="layout">Layout</span></button>
-      <button class="ui-button" id="btn-workspace-menu" data-ui-icon="workspace" data-i18n-label="workspace"><span data-i18n="workspace">Workspace</span></button>
+      <button class="ui-button" id="btn-workspace-menu" data-ui-icon="more" data-i18n-label="more"><span data-i18n="more">More</span></button>
       <button class="ui-button" id="btn-resources-mobile" data-ui-icon="resources" aria-label="Host resources" data-ui-label=Host%20resources title="Host resources" data-ui-title=Host%20resources><span data-ui-message=Host%20resources>Host resources</span></button>
       <button class="ui-button" id="btn-settings" data-ui-icon="settings" data-i18n-label="settings"><span data-i18n="settings">Settings</span></button>
     </div>
@@ -3325,7 +3324,7 @@
       </div>
     </dialog>
     <dialog class="ui-dialog" id="workspace-menu" aria-labelledby="workspace-menu-title">
-      <div class="modal-head"><h2 id="workspace-menu-title" data-i18n="workspace">Workspace</h2><button data-dialog-close aria-label="Close" data-ui-label=Close>×</button></div>
+      <div class="modal-head"><h2 id="workspace-menu-title" data-i18n="more">More</h2><button data-dialog-close aria-label="Close" data-ui-label=Close>×</button></div>
       <div class="modal-body">
       <div class="panel-actions-left ui-menu-group" aria-label="Saved active-session actions" data-ui-label=Saved%20active-session%20actions>
         <button id="btn-save-active" title="Save all currently active sessions for later restore" data-ui-title=Save%20all%20currently%20active%20sessions%20for%20later%20restore><span data-ui-message=Save%20active%20sessions>Save active sessions</span></button>
@@ -3336,6 +3335,7 @@
         <button id="btn-sort-panes" title="Fill panes from all active sessions by flag priority, then sustained activity" data-ui-title=Fill%20panes%20from%20all%20active%20sessions%20by%20flag%20priority%2C%20then%20sustained%20activity><span data-ui-message=sort%20panes>sort panes</span></button>
       </div>
       <button id="btn-clear-pins" title="Clear all pinned panes; sessions keep running" data-ui-title=Clear%20all%20pinned%20panes%3B%20sessions%20keep%20running><span data-ui-message=Close%20all%20panes%20(keep%20sessions)>Close all panes (keep sessions)</span></button>
+      <button class="ui-button" id="btn-open-projects-browser" data-ui-icon="workspace" aria-label="Browser" data-ui-label=Browser title="Browser" data-ui-title=Browser><span data-ui-message=Browser>Browser</span></button>
       <button id="btn-workflows" data-ui-message=Workflows>Workflows</button>
       <button id="btn-resources" data-ui-message=Host%20resources>Host resources</button>
       <button id="btn-open-notes" title="Open daily report (⌘D)" data-ui-title=Open%20daily%20report%20(%E2%8C%98D)><span data-ui-message=Daily%20report>Daily report</span></button>
@@ -9918,15 +9918,15 @@
   projectsBrowserModal.innerHTML = `
     <div class="modal web-modal">
       <div class="modal-head">
-        <div class="modal-title"><span data-ui-message=projects>projects</span></div>
+        <div class="modal-title"><span data-ui-message=Browser>Browser</span></div>
         <button class="modal-close" id="projects-browser-modal-close" title="Close" data-ui-title=Close>×</button>
       </div>
       <div class="web-hint">
-        This opens the local Projects browser. If the page is blank, confirm the app is running on localhost:8080.
+        <span data-ui-message=Open%20the%20configured%20project%20site%20or%20browse%20web%20links%20in%20tabs.>Open the configured project site or browse web links in tabs.</span>
       </div>
       <div class="projects-browser-tabs">
-        <div class="projects-browser-tab-list" id="projects-browser-tabs" aria-label="Projects browser tabs" data-ui-label=Projects%20browser%20tabs></div>
-        <button class="projects-browser-tab-add" id="projects-browser-add-tab" type="button" title="Open another Projects tab" data-ui-title=Open%20another%20Projects%20tab>+</button>
+        <div class="projects-browser-tab-list" id="projects-browser-tabs" aria-label="Browser tabs" data-ui-label=Browser%20tabs></div>
+        <button class="projects-browser-tab-add" id="projects-browser-add-tab" type="button" title="Open another browser tab" data-ui-title=Open%20another%20browser%20tab>+</button>
       </div>
       <div class="web-browser-bar">
         <span class="web-scheme" id="projects-browser-current-scheme">http</span>
@@ -10028,7 +10028,7 @@
     const tabs = rawTabs
       .map((tab, idx) => ({
         url: normalizeProjectsBrowserUrl(tab?.url || PROJECTS_BROWSER_URL),
-        title: String(tab?.title || `Projects ${idx + 1}`).trim() || `Projects ${idx + 1}`,
+        title: String(tab?.title || `Browser ${idx + 1}`).trim() || `Browser ${idx + 1}`,
       }))
       .filter(tab => tab.url)
       .slice(0, 12);
@@ -10081,7 +10081,7 @@
       return `
         <div class="projects-browser-tab ${isOn ? "on" : ""}">
           <button class="projects-browser-tab-main" data-tab-id="${tab.id}" type="button" title="${escapeHtml(tab.url)}">
-            ${escapeHtml(tab.title || `Projects ${idx + 1}`)}
+            ${escapeHtml(tab.title || `Browser ${idx + 1}`)}
           </button>
           ${close}
         </div>`;
@@ -10112,10 +10112,13 @@
     const activate = opts.activate !== false;
     const shouldSave = opts.save !== false;
     const id = projectsBrowserNextTabId++;
+    const savedTitle = String(opts.title || "");
     const tab = {
       id,
       url: normalizeProjectsBrowserUrl(url),
-      title: opts.title || `Projects ${projectsBrowserTabs.length + 1}`,
+      title: /^Projects \d+$/.test(savedTitle)
+        ? savedTitle.replace(/^Projects /, "Browser ")
+        : savedTitle || `Browser ${projectsBrowserTabs.length + 1}`,
     };
     projectsBrowserTabs.push(tab);
     const frame = document.createElement("iframe");
