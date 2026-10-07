@@ -126,6 +126,23 @@ try {
   assert.ok(await evaluate('window.tmuxSyncStarts>0'),'Real tmux client emits synchronized updates through ttyd');
   await evaluate('window.tmuxSyncProbe.dispose()');
   console.log('PASS: tmux to ttyd to browser synchronization negotiation');
+  // A resize must not expose xterm's provisional old rows before tmux's
+  // authoritative repaint. Delay incoming writes to inspect the visible cover.
+  const resizeCover = await evaluate(`(async()=>{window.resizeWrite=term.write;window.resizeWrites=[];term.write=function(...args){resizeWrites.push(args)};const before=[...document.querySelectorAll('.xterm-screen canvas')].map(c=>c.toDataURL());window.resizeParent=term.element.parentElement;window.resizeParentStyle=resizeParent.getAttribute('style');resizeParent.style.width=(resizeParent.clientWidth-64)+'px';term.fit();const cover=document.querySelector('.siling-resize-snapshot');const result={present:!!cover,pixelsMatch:JSON.stringify([...cover?.querySelectorAll('canvas')||[]].map(c=>c.toDataURL()))===JSON.stringify(before),pointerEvents:cover&&getComputedStyle(cover).pointerEvents};await new Promise(r=>setTimeout(r,70));result.waiting=!!document.querySelector('.siling-resize-snapshot');return result;})()`);
+  assert.equal(resizeCover.present,true,'Resize keeps the last painted frame');
+  assert.equal(resizeCover.pixelsMatch,true,'Snapshot preserves actual canvas pixels without scaling');
+  assert.equal(resizeCover.pointerEvents,'none','Snapshot never intercepts terminal input');
+  assert.equal(resizeCover.waiting,true,'Intermediate paints remain covered while waiting for remote output');
+  await evaluate(`term.write=resizeWrite;for(const args of resizeWrites)term.write(...args);resizeWrites=[];`);
+  await pause(120);
+  assert.equal(await evaluate(`!!document.querySelector('.siling-resize-snapshot')`),false,'A completed tmux frame releases the snapshot');
+  await screenshot('resize-complete');
+  await evaluate(`term.write=function(...args){resizeWrites.push(args)};if(resizeParentStyle===null)resizeParent.removeAttribute('style');else resizeParent.setAttribute('style',resizeParentStyle);term.fit();`);
+  await pause(320);
+  assert.equal(await evaluate(`!!document.querySelector('.siling-resize-snapshot')`),false,'Missing remote output cannot leave a stale overlay');
+  await evaluate(`term.write=resizeWrite;for(const args of resizeWrites)term.write(...args);resizeWrites=[];`);
+  await pause(150);
+  console.log('PASS: resize retains painted pixels until synchronized output, preserves input and has a bounded fallback');
   // A late layout/font change can miss ttyd's one window-resize fit.
   // Change only the container, so the browser window emits no resize event.
   await evaluate(`window.fitParent=term.element.parentElement;window.fitOriginalStyle=fitParent.getAttribute('style');window.narrowCols=term.cols;fitParent.style.width='600px';fitParent.style.height='500px';`);

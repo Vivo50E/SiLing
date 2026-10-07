@@ -873,3 +873,5 @@ Dense desktop layouts fit the viewport. Short panes keep the terminal visible an
 Cursor launches use synchronized full-screen repaint delivery with tmux 3.7+ to avoid displaying intermediate history replays in small panes. Existing Cursor processes need a restart/resume after updating SiLing. [Cause, validation and activation](docs/cursor-redraw.md).
 
 Settings → Appearance → **Always show pane priority** keeps the priority selector visible even in short panes. Off by default; saved in this browser and applied immediately without restarting sessions.
+
+Terminal zoom preserves the last painted frame while tmux repaints at the new size, avoiding an intermediate text jump. The visual cover does not intercept input and expires after 250 ms if output is delayed.

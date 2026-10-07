@@ -81,3 +81,19 @@ The browser part requires a page reload, not an agent restart.
 放大／还原后，浏览器观察实际容器和字体变化，在布局稳定后重新计算列数，
 避免错过单次 resize 事件后一直保持窄列。隐藏容器不调整尺寸，正在同步重绘时
 延后校正，尺寸相同不会反复触发 PTY resize。这部分刷新页面即可加载。
+
+## Resize presentation
+
+The browser can repaint xterm's old rows immediately after resizing, before tmux
+sends its resized screen. Even an idle shell then visibly shifts twice. After
+DEC 2026 has been observed, the resize wrapper copies the existing canvas layers
+at their original pixel size into a pointer-transparent, aria-hidden cover before
+xterm changes its canvas dimensions. Parsing and PTY resize continue normally.
+FitAddon clears are captured before the canvas is erased, but a clear without a
+resize in the same turn never displays a cover. Parsed output outside an active
+synchronized frame, or the next synchronized end, schedules removal after
+painting; a 250 ms
+wall-clock fallback removes it if no complete frame arrives. Repeated resizes
+retain the first snapshot without extending that deadline. Unsupported renderers
+without canvas layers keep native behavior. This is a browser presentation change;
+refresh after updating the Dashboard, without restarting agent processes.

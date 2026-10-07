@@ -131,6 +131,98 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     const render = core._renderService;
     let synchronized = false;
     let fitAfterSync = null;
+    let resizeSnapshot = null;
+    let preparedResizeSnapshot = null;
+    let resizeSnapshotTimer = null;
+    let resizeSnapshotFrame = 0;
+    let sawSynchronizedOutput = false;
+    const clearResizeSnapshot = () => {
+      clearTimeout(resizeSnapshotTimer);
+      cancelAnimationFrame(resizeSnapshotFrame);
+      resizeSnapshotFrame = 0;
+      resizeSnapshot?.remove();
+      resizeSnapshot = null;
+    };
+    const releaseResizeSnapshot = () => {
+      if (!resizeSnapshot || resizeSnapshotFrame) return;
+      // refresh() schedules painting; remove the cover only after that paint.
+      resizeSnapshotFrame = requestAnimationFrame(() => {
+        resizeSnapshotFrame = requestAnimationFrame(clearResizeSnapshot);
+      });
+    };
+    const captureResizeFrame = () => {
+      if (!sawSynchronizedOutput || document.hidden) return;
+      const canvases = [...screen.querySelectorAll("canvas")];
+      const bounds = screen.getBoundingClientRect();
+      if (!canvases.length || bounds.width < 2 || bounds.height < 2) return;
+      const cover = document.createElement("div");
+      cover.className = "siling-resize-snapshot";
+      cover.setAttribute("aria-hidden", "true");
+      Object.assign(cover.style, {position: "fixed", inset: "0", overflow: "hidden",
+        pointerEvents: "none", zIndex: "2147483646",
+        background: terminal.options.theme?.background || "#000"});
+      try {
+        for (const source of canvases) {
+          const rect = source.getBoundingClientRect();
+          const copy = document.createElement("canvas");
+          copy.width = source.width; copy.height = source.height;
+          const context = copy.getContext("2d");
+          if (!context) return;
+          context.drawImage(source, 0, 0);
+          Object.assign(copy.style, {position: "absolute", left: `${rect.left}px`,
+            top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`});
+          cover.appendChild(copy);
+        }
+      } catch (_) { return; }
+      return cover;
+    };
+    const preserveResizeFrame = () => {
+      if (resizeSnapshot) {
+        cancelAnimationFrame(resizeSnapshotFrame);
+        resizeSnapshotFrame = 0;
+        return;
+      }
+      const cover = preparedResizeSnapshot || captureResizeFrame();
+      preparedResizeSnapshot = null;
+      if (!cover) return;
+      document.body.appendChild(cover);
+      resizeSnapshot = cover;
+      // A disconnected/older peer must never leave a stale screen covering input.
+      resizeSnapshotTimer = setTimeout(clearResizeSnapshot, 250);
+    };
+    // FitAddon clears the renderer immediately BEFORE calling resize(). Keep
+    // that pre-clear frame only for a resize in this same synchronous turn.
+    if (render && typeof render.clear === "function") {
+      const nativeClear = render.clear;
+      render.clear = function (...args) {
+        if (!resizeSnapshot) {
+          const prepared = captureResizeFrame();
+          preparedResizeSnapshot = prepared;
+          queueMicrotask(() => {
+            if (preparedResizeSnapshot === prepared) preparedResizeSnapshot = null;
+          });
+        }
+        return nativeClear.apply(this, args);
+      };
+    }
+    const nativeResize = terminal.resize;
+    terminal.resize = function (cols, rows) {
+      if (cols !== terminal.cols || rows !== terminal.rows) preserveResizeFrame();
+      try { return nativeResize.call(this, cols, rows); }
+      catch (error) { clearResizeSnapshot(); throw error; }
+    };
+    const nativeWrite = terminal.write;
+    terminal.write = function (data, callback) {
+      if (!resizeSnapshot) return nativeWrite.call(this, data, callback);
+      return nativeWrite.call(this, data, () => {
+        // tmux's resize redraw may lack DEC 2026, unlike ordinary output.
+        // Wait for parsing as well as painting, and honor any active sync frame.
+        if (!synchronized) releaseResizeSnapshot();
+        callback?.();
+      });
+    };
+    window.addEventListener("pagehide", clearResizeSnapshot);
+
     if (render && typeof render._renderRows === "function" && terminal.parser) {
       const renderRows = render._renderRows;
       let syncTimeout = null;
@@ -149,6 +241,9 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       };
       terminal.parser.registerCsiHandler({prefix: "?", final: "h"}, params => {
         if (params.includes(2026)) {
+          sawSynchronizedOutput = true;
+          cancelAnimationFrame(resizeSnapshotFrame);
+          resizeSnapshotFrame = 0;
           synchronized = true;
           clearTimeout(syncTimeout);
           syncTimeout = setTimeout(finishSync, 1000);
@@ -157,7 +252,10 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
         return false;
       });
       terminal.parser.registerCsiHandler({prefix: "?", final: "l"}, params => {
-        if (params.includes(2026)) finishSync();
+        if (params.includes(2026)) {
+          finishSync();
+          releaseResizeSnapshot();
+        }
         return false;
       });
       terminal.onResize(finishSync);
