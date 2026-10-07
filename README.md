@@ -180,6 +180,9 @@ Files preview. The clicked item is linked to that session automatically; agents 
 not need to run `link-file` first. Codex’s `label (/path)` output is also clickable,
 including indented hard-wrapped paths. Paths must exist on the session’s host and be
 inside the configured allowed roots (`ORCH_LINKED_FOLDER_ROOTS` for extra roots).
+Bare inferred paths need a directory component or filename suffix, so slash commands
+such as `/help` and `/approve` remain plain text. For a root-level name without a
+suffix (such as `/README` or `/tmp`), use an explicit `file://` or OSC hyperlink.
 
 In Terminal, Codex and Cursor panes, drag to select text and keep holding the mouse while
 scrolling the wheel to extend the selection across screens, directly in the pane.
