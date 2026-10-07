@@ -287,3 +287,29 @@ click(3,0);
 assert.equal(messages.at(-1).message.path,'reports/test.md');
 assert.equal(messages.at(-1).message.context_id,'historical-remote');
 window.frameElement.dataset.fileContext='false';
+
+// Bare slash commands and prose units are not evidence of filesystem paths.
+term.cols=80;term.rows=1;buffer.viewportY=0;
+window.parent={postMessage:(message,origin)=>messages.push({message,origin})};
+for (const fileContext of ['false','true']) {
+  window.frameElement.dataset.fileContext=fileContext;
+  for (const sample of ['输入 /help 继续', '选择 /approve', '/anything', 'rate /tokens', '(/login)', '/help/', '/approve:12', 'yes/no', '是/否']) {
+    rows=[row(sample)];
+    const before=messages.length;
+    for(let x=0;x<sample.length;x++) {
+      assert.equal(hover(x,0).length,0,`No file highlight for ${sample}`);
+      click(x,0);
+    }
+    assert.equal(messages.length,before,`No file navigation for ${sample}`);
+  }
+}
+for(const path of ['/tmp/result', '/localhome/demo/report.md', '/report.md:12', 'file:///README']) {
+  rows=[row(path)];const before=messages.length;
+  assert.ok(hover(2,0).length,`File evidence highlights ${path}`);
+  click(2,0);
+  assert.equal(messages.length,before+1);
+  assert.equal(messages.at(-1).message.path,path.replace(/^file:\/\//,'').replace(/:12$/,''));
+}
+term._core._oscLinkService.getLinkData=()=>({uri:'file:///README'});
+rows=[row('Explicit root file',false,1)];click(2,0);
+assert.equal(messages.at(-1).message.path,'/README','Explicit root-level OSC files remain supported');

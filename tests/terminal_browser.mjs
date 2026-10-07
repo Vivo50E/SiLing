@@ -233,6 +233,22 @@ finally:
   await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
   assert.deepEqual(await evaluate('emittedKeys'),['\r'],'ordinary Enter remains submit');
   console.log('PASS: real ttyd Shift+Enter byte routing through tmux; plain Terminal and Enter unchanged');
+  // Slash commands must stay ordinary text without sending file-open requests.
+  const beforeSlash=await evaluate('window.localMessages.length');
+  await evaluate(`window.frameElement.dataset.nativeSelection='true';window.frameElement.dataset.fileContext='true';window.frameElement.dataset.inlineSelection='false';`);
+  for(const command of ['/help','/approve','/anything','(/login)']) {
+    const sample='SLASH-CASE '+command;
+    await evaluate(`new Promise(resolve=>term.write(${JSON.stringify('\r\n'+sample)},resolve))`);
+    const point=await evaluate(`(()=>{const b=term.buffer.active;const r=document.querySelector('.xterm-screen').getBoundingClientRect();for(let y=b.length-1;y>=b.viewportY;y--){const line=b.getLine(y).translateToString();if(line.includes(${JSON.stringify(sample)})){const x=line.indexOf('/');return {x:r.x+(x+1.5)*r.width/term.cols,y:r.y+(y-b.viewportY+.5)*r.height/term.rows};}}})()`);
+    assert.ok(point,'Slash command fixture is visible');
+    await cdp('Input.dispatchMouseEvent',{type:'mouseMoved',...point,buttons:0});
+    assert.equal(await evaluate(`document.querySelector('.siling-link-highlight')?.children.length || 0`),0,'Slash commands have no file underline');
+    await cdp('Input.dispatchMouseEvent',{type:'mousePressed',...point,button:'left',buttons:1,clickCount:1});
+    await cdp('Input.dispatchMouseEvent',{type:'mouseReleased',...point,button:'left',buttons:0,clickCount:1});
+    assert.equal(await evaluate('window.localMessages.length'),beforeSlash,'Slash commands never send file-open requests');
+  }
+  await evaluate(`window.frameElement.dataset.nativeSelection='true';window.frameElement.dataset.fileContext='false';window.frameElement.dataset.inlineSelection='true';term.clearSelection();`);
+  console.log('PASS: bare slash commands do not highlight or send file-open requests');
   await evaluate("new Promise(resolve=>term.write(" + JSON.stringify("\r\n\u001b]8;;file:///tmp/siling-fixture.png\u0007CLICK-ARTIFACT\u001b]8;;\u0007") + ",resolve))");
   const cell=await evaluate(`(()=>{const b=term.buffer.active;for(let y=b.viewportY;y<b.length;y++){const line=b.getLine(y).translateToString();const x=line.indexOf('CLICK-ARTIFACT');if(x>=0){const r=document.querySelector('.xterm-screen').getBoundingClientRect();return {x:r.x+(x+2.5)*r.width/term.cols,y:r.y+(y-b.viewportY+.5)*r.height/term.rows};}}})()`);
   assert.ok(cell,'Fixture hyperlink is visible');

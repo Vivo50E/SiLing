@@ -398,6 +398,17 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       return /^https?:\/\//i.test(url) ? url : cleanLocalPath(url);
     };
 
+    const literalLinkTarget = (raw) => {
+      const target = cleanLinkTarget(raw);
+      // A bare /word is also a CLI slash command or a prose unit. Require
+      // a directory component or filename suffix before inferring a file.
+      // Explicit file:// and OSC targets retain their original semantics.
+      if (raw.startsWith("/") && target.startsWith("/")
+          && !/^\/[^/]+\/[^/]+/.test(target)
+          && !/^\/[^/]+\.[A-Za-z0-9]{1,12}$/.test(target)) return "";
+      return target;
+    };
+
     const coordsForEvent = (event) => {
       try {
         const coords = selection._getMouseBufferCoords(event);
@@ -547,7 +558,8 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
           joined = true;
         }
         if (!joined) continue;
-        const url = cleanLinkTarget(target);
+        const url = literalLinkTarget(target);
+        if (!url) continue;
         mapped = mapped.slice(0, url.length);
         if (mapped.some(cell => cell.row === row && cell.col === col)) {
           return {url, ranges: rangesForCells(mapped)};
@@ -566,7 +578,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
         if (depth) continue;
         const rawTarget = paragraph.slice(start + 1, end).replace(/\n[ \t]*/g, "");
         if (/\s/.test(rawTarget)) continue;
-        const target = cleanLinkTarget(rawTarget);
+        const target = literalLinkTarget(rawTarget);
         if (!cleanLocalPath(target)) continue;
         const label = paragraph.slice(0, start).match(/(\[[^\]\n]+\]|[^\s()[\]，。；：！？、:]+)[ \t]*$/u);
         const begin = label ? start - label[0].length : start;
@@ -604,7 +616,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       const pattern = /https?:\/\/[^\s<>"'`]+|file:\/\/[^\s<>"'`]+|\/[^\s<>"'`]+/g;
       for (const match of text.matchAll(pattern)) {
         const raw = match[0];
-        const url = cleanLinkTarget(raw);
+        const url = literalLinkTarget(raw);
         const begin = match.index || 0;
         if (raw.startsWith("/") && begin > 0 && !/[\s([<="'`：，；（【]/u.test(text[begin - 1])) continue;
         const length = url && /^file:/i.test(raw) ? raw.length : url.length;

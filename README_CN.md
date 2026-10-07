@@ -212,6 +212,8 @@ Dashboard 会明确展示这些状态，而不是让它们消失在 terminal scr
 到该终端所属会话，无需 agent 先执行 `link-file`。Codex 显示的“标签（路径）”也支持
 点击标签或被缩进拆成多行的路径。文件须存在于会话所在主机且位于
 允许目录内；额外目录通过 `ORCH_LINKED_FOLDER_ROOTS` 配置。
+裸路径需要具备目录层级或文件后缀，因此 `/help`、`/approve` 等斜杠命令保持普通文本。
+根目录下没有后缀的名字（如 `/README`、`/tmp`）请使用显式 `file://` 或 OSC 超链接。
 
 在 Codex、Claude Code 和 Cursor Agent pane 内直接输入时，**Shift+Enter** 换行，
 普通 Enter 保持原有提交行为。SiLing 在 ttyd 丢失 Shift 修饰键前转换按键，不修改
