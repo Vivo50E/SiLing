@@ -13,6 +13,7 @@ import { checkResources } from './resources_browser.mjs';
 import { checkArchives } from './archives_browser.mjs';
 import { checkGroupOrder } from './group_order_browser.mjs';
 import { checkSessionOptions } from './session_options_browser.mjs';
+import { checkSessionHelp } from './session_help_browser.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const executable = process.env.UI_BROWSER;
@@ -415,7 +416,11 @@ try {
   if (!baseline) sessions[0].panel_state='blocked';
   await cdp('Page.addScriptToEvaluateOnNewDocument', { source: `if(!localStorage.getItem('orch_layout')){localStorage.setItem('orch_layout','cols-2x2');localStorage.setItem('orch_slots',JSON.stringify(['fixture-0','fixture-1','fixture-2','fixture-3']));localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'en',theme:'dark'}));}` });
   await cdp('Page.navigate', { url: `http://127.0.0.1:${server.address().port}/` });
-  if (process.env.UI_SESSION_OPTIONS_ONLY === '1') {
+  if (process.env.UI_SESSION_HELP_ONLY === '1') {
+    await checkSessionHelp({evaluate,waitFor,viewport,cdp,screenshot,pause,requests});
+    assert.deepEqual(errors, [], 'No uncaught session help errors');
+    console.log(JSON.stringify({result:'PASS',suite:'session-help',screenshots:artifacts}));
+  } else if (process.env.UI_SESSION_OPTIONS_ONLY === '1') {
     await checkSessionOptions({evaluate,waitFor,cdp,viewport,screenshot,pause,requests,groups:groupFixture,creations:creationRequests,mode:v=>{modelMode=v;},reply:()=>delayedModels,finish:()=>{pendingCreation.end(JSON.stringify({ok:true,run_id:'fixture-options-created'}));pendingCreation=undefined;}});
     assert.deepEqual(errors, [], 'No uncaught session options errors');
     console.log(JSON.stringify({result:'PASS',suite:'session-options',screenshots:artifacts}));
@@ -1599,6 +1604,7 @@ try {
   await checkGroupOrder({evaluate,waitFor,cdp,viewport,screenshot,pause,requests,
     groups:groupFixture,frameLoads:()=>frameLoads,fail:value=>{failGroupSave=value;}});
   await checkSessionOptions({evaluate,waitFor,cdp,viewport,screenshot,pause,requests,groups:groupFixture,creations:creationRequests,mode:v=>{modelMode=v;},reply:()=>delayedModels,finish:()=>{pendingCreation.end(JSON.stringify({ok:true,run_id:'fixture-options-created'}));pendingCreation=undefined;}});
+  await checkSessionHelp({evaluate,waitFor,viewport,cdp,screenshot,pause,requests});
   await checkResources({evaluate, waitFor, viewport, screenshot, pause, cdp, requests,
     mode:value=>{resourceMode=value;}, delayed:()=>delayedResource, frameLoads:()=>frameLoads});
   readerMode='ok';

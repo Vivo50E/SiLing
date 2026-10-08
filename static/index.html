@@ -1301,6 +1301,16 @@
     background: rgba(56,139,253,0.12); padding: 1px 4px; border-radius: 3px;
     color: var(--accent);
   }
+  .new-session-head-actions { display: flex; align-items: center; gap: 12px; }
+  .new-session-help-button { width: 28px; height: 28px; padding: 0; border-radius: 50%; font-weight: 600; }
+  #new-standard-help {
+    position: fixed; z-index: 101; width: min(460px, calc(100vw - 32px));
+    max-height: calc(100dvh - 32px); overflow-y: auto; margin: 0;
+    font-size: 12px; line-height: 1.6; border: 1px solid var(--border);
+    background: var(--bg-soft); box-shadow: 0 8px 28px rgba(0,0,0,.35);
+    padding: 12px 14px; overflow-wrap: anywhere;
+  }
+  #new-standard-help[hidden] { display: none; }
   .modal-foot {
     display: flex; justify-content: flex-end; gap: 8px;
     padding: 12px 14px; border-top: 1px solid var(--border);
@@ -2754,11 +2764,12 @@
   }
 </style>
 <link rel="stylesheet" href="/static/ui-foundation.css?v=7" />
-<script src="/static/ui-messages.js?v=15"></script>
+<script src="/static/ui-messages.js?v=16"></script>
 <script src="/static/ui-foundation.js?v=11"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=4" />
 <script src="/static/pane-groups.js?v=6"></script>
 <script src="/static/new-session-options.js?v=1"></script>
+<script src="/static/session-help.js?v=1"></script>
 <script src="/static/terminal-files.js?v=3"></script>
 <script src="/static/secret-operations.js?v=1"></script>
 <script src="/static/terminal-keys.js?v=1"></script>
@@ -2827,7 +2838,10 @@
     <div class="modal">
       <div class="modal-head">
         <div class="modal-title" id="new-modal-title"><span data-ui-message=New%20session>New session</span></div>
-        <button class="modal-close" id="new-close" title="Close" data-ui-title=Close>×</button>
+        <div class="new-session-head-actions">
+          <button id="new-standard-help-toggle" type="button" class="new-session-help-button" aria-label="Session options help" data-ui-label=Session%20options%20help aria-controls="new-standard-help" aria-describedby="new-standard-help" aria-expanded="false">?</button>
+          <button class="modal-close" id="new-close" title="Close" data-ui-title=Close>×</button>
+        </div>
       </div>
       <div class="modal-body">
         <p id="new-switch-help" class="ui-secondary" hidden data-ui-message="The%20new%20session%20uses%20this%20pane.%20Choose%20whether%20the%20original%20should%20keep%20running%20or%20stop%20after%20startup%20succeeds.">The new session uses this pane. Choose whether the original should keep running or stop after startup succeeds.</p>
@@ -2892,7 +2906,7 @@
         <div class="fld" id="new-model-field">
           <label for="new-model-choice" data-ui-message=Model>Model</label>
           <select id="new-model-choice"><option value="" data-ui-message=default>default</option><option value="__custom__">Custom model…</option></select>
-          <input id="new-model" type="text" placeholder="leave blank for default" data-ui-placeholder=leave%20blank%20for%20default autocomplete="off" aria-label="Custom model" data-ui-aria=Custom%20model hidden />
+          <input id="new-model" type="text" placeholder="leave blank for default" data-ui-placeholder=leave%20blank%20for%20default autocomplete="off" aria-label="Custom model" data-ui-label=Custom%20model hidden />
           <button id="new-model-refresh" type="button">Refresh models</button>
           <span id="new-model-status" class="ui-secondary" role="status" aria-live="polite"></span>
         </div>
@@ -2912,27 +2926,27 @@
           <input id="new-cwd" type="text" value="~/Workflows"
                  placeholder="~/project" autocomplete="off" />
         </label>
-        <div class="modal-hint" id="new-standard-help">
-          <b><span data-ui-message=Resume>Resume</span></b><span data-ui-message=%3A%20start%20a%20new%20tmux%20session%20using%20the%20selected%20session%27s%20native%20CLI%20resume%20id.%20Only%20ended%20sessions%20with%20saved%20resume%20metadata%20appear%20in%20the%20list.>: start a new tmux session using the selected session's
-          native CLI resume id. Only ended sessions with saved resume metadata
-          appear in the list.</span><br/>
-          <b><span data-ui-message=Import%20existing>Import existing</span></b><span data-ui-message=%3A%20index%20native%20Codex%2C%20Claude%20Code%2C%20or%20Cursor%20Agent%20history%20so%20it%20appears%20under%20Resume.%20Original%20transcripts%20are%20read-only%20and%20are%20not%20copied%2C%20moved%2C%20or%20deleted.>: index native Codex, Claude Code, or Cursor
-          Agent history so it appears under Resume. Original transcripts are
-          read-only and are not copied, moved, or deleted.</span><br/>
-          <b><span data-ui-message=Terminal>Terminal</span></b><span data-ui-message=%3A%20start%20your%20login%20shell%20without%20an%20AI%20agent.%20Commands%20are%20never%20auto-approved%2C%20and%20exiting%20the%20shell%20ends%20the%20session.>: start your login shell without an AI agent. Commands
-          are never auto-approved, and exiting the shell ends the session.</span><br/>
-          <b><span data-ui-message=Open%20iTerm%20%26%20Start>Open iTerm &amp; Start</span></b><span data-ui-message=%3A%20new%20iTerm%20window%20running>: new iTerm window running </span><code>siling run</code><span data-ui-message=.%20Requires%20macOS%20Automation%20permission%20for%20iTerm%20if%20the%20dashboard%20is%20running%20under%20LaunchAgent.>.
-          Requires macOS Automation permission for iTerm if the dashboard is
-          running under LaunchAgent.</span><br/>
-          <b><span data-ui-message=Start%20in%20background>Start in background</span></b><span data-ui-message=%3A%20spawn%20the%20tmux%20session%20only%2C%20no%20iTerm%20window.%20View%20it%20here%20or>: spawn the tmux session only, no iTerm
-          window. View it here or </span><code>tmux attach -t &lt;name&gt;</code>.
-        </div>
       </div>
       <div class="modal-foot">
         <button class="btn-secondary" id="new-cancel"><span data-ui-message=Cancel>Cancel</span></button>
         <button class="btn-secondary" id="new-submit"><span data-ui-message=Open%20iTerm%20%26%20Start>Open iTerm &amp; Start</span></button>
         <button class="btn-primary" id="new-submit-bg"><span data-ui-message=Start%20in%20background>Start in background</span></button>
       </div>
+    </div>
+    <div class="modal-hint" id="new-standard-help" role="tooltip" hidden>
+      <b><span data-ui-message=Resume>Resume</span></b><span data-ui-message=%3A%20start%20a%20new%20tmux%20session%20using%20the%20selected%20session%27s%20native%20CLI%20resume%20id.%20Only%20ended%20sessions%20with%20saved%20resume%20metadata%20appear%20in%20the%20list.>: start a new tmux session using the selected session's
+      native CLI resume id. Only ended sessions with saved resume metadata
+      appear in the list.</span><br/>
+      <b><span data-ui-message=Import%20existing>Import existing</span></b><span data-ui-message=%3A%20index%20native%20Codex%2C%20Claude%20Code%2C%20or%20Cursor%20Agent%20history%20so%20it%20appears%20under%20Resume.%20Original%20transcripts%20are%20read-only%20and%20are%20not%20copied%2C%20moved%2C%20or%20deleted.>: index native Codex, Claude Code, or Cursor
+      Agent history so it appears under Resume. Original transcripts are
+      read-only and are not copied, moved, or deleted.</span><br/>
+      <b><span data-ui-message=Terminal>Terminal</span></b><span data-ui-message=%3A%20start%20your%20login%20shell%20without%20an%20AI%20agent.%20Commands%20are%20never%20auto-approved%2C%20and%20exiting%20the%20shell%20ends%20the%20session.>: start your login shell without an AI agent. Commands
+      are never auto-approved, and exiting the shell ends the session.</span><br/>
+      <b><span data-ui-message=Open%20iTerm%20%26%20Start>Open iTerm &amp; Start</span></b><span data-ui-message=%3A%20new%20iTerm%20window%20running>: new iTerm window running </span> <code>siling run</code><span data-ui-message=.%20Requires%20macOS%20Automation%20permission%20for%20iTerm%20if%20the%20dashboard%20is%20running%20under%20LaunchAgent.>.
+      Requires macOS Automation permission for iTerm if the dashboard is
+      running under LaunchAgent.</span><br/>
+      <b><span data-ui-message=Start%20in%20background>Start in background</span></b><span data-ui-message=%3A%20spawn%20the%20tmux%20session%20only%2C%20no%20iTerm%20window.%20View%20it%20here%20or>: spawn the tmux session only, no iTerm
+      window. View it here or </span> <code>tmux attach -t &lt;name&gt;</code>.
     </div>
   </div>
 
@@ -13174,6 +13188,7 @@
 
   // ---------- New-session modal ----------
   const modal = $("new-modal");
+  const sessionHelp = window.SiLingSessionHelp({button:$("new-standard-help-toggle"), panel:$("new-standard-help"), visible:()=>!modal.hidden});
   const sessionOptions = window.SiLingSessionOptions({api, message:(key)=>ui.message(key),
     groups:()=>paneGroups.creationChoices(),
     target:()=>({agent:$("new-agent").value,node_id:selectedNodeId(),cwd:$("new-cwd").value.trim()}),
@@ -13280,6 +13295,7 @@
   const closeModal = () => {
     modal.hidden = true;
     sessionOptions.close();
+    sessionHelp.close();
     newSessionTargetSlot = null;
     paneSwitchSource = null;
     paneSwitchRequestId = "";
@@ -13488,7 +13504,7 @@
     $("new-switch-help").hidden = !paneSwitchSource;
     $("new-switch-action-field").hidden = !paneSwitchSource;
     $("new-switch-host-help").hidden = !paneSwitchSource;
-    $("new-standard-help").hidden = !!paneSwitchSource;
+    sessionHelp.available(!paneSwitchSource);
     $("new-kind").closest("label").hidden = !!paneSwitchSource;
     $("new-node").disabled = !!paneSwitchSource;
     for (const option of $("new-agent").options) option.disabled = !!paneSwitchSource && option.value === paneSwitchSource.agent;
