@@ -1625,6 +1625,11 @@ try {
     groups:groupFixture,frameLoads:()=>frameLoads,fail:value=>{failGroupSave=value;}});
   await checkSessionOptions({evaluate,waitFor,cdp,viewport,screenshot,pause,requests,groups:groupFixture,creations:creationRequests,mode:v=>{modelMode=v;},reply:()=>delayedModels,finish:()=>{pendingCreation.end(JSON.stringify({ok:true,run_id:'fixture-options-created'}));pendingCreation=undefined;}});
   await checkSessionHelp({evaluate,waitFor,viewport,cdp,screenshot,pause,requests});
+  // Run rename after the grouping checks: its deliberate mobile round trip
+  // changes accessibility state and suspends/reconnects desktop frames.
+  await renameCheck();
+  await waitFor(`document.querySelectorAll('.pane iframe').length===4`);
+  await waitFor(`[...document.querySelectorAll('.pane iframe')].every(f=>f.contentDocument?.querySelector('textarea'))`);
   await checkResources({evaluate, waitFor, viewport, screenshot, pause, cdp, requests,
     mode:value=>{resourceMode=value;}, delayed:()=>delayedResource, frameLoads:()=>frameLoads});
   readerMode='ok';

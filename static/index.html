@@ -6854,6 +6854,8 @@
       title.textContent = display;
       title.title = display;
     }
+    const menuTitle = card.querySelector(".pane-menu-title");
+    if (menuTitle) menuTitle.textContent = sessionTitle(s);
     const sshDisconnect = card.querySelector(".btn-disconnect-ssh");
     if (sshDisconnect) {
       sshDisconnect.hidden = !sessionIsTerminal(s);
@@ -8081,7 +8083,7 @@
         <div class="modal-body related-session-list"></div>
       </dialog>
       <dialog class="ui-dialog pane-menu" id="pane-menu-${++paneMenuSerial}" aria-label="Pane actions" data-ui-label=Pane%20actions>
-        <div class="modal-head"><h2>${ui.agentBadge(s.agent)} ${escapeHtml(sessionTitle(s))}</h2><button class="ui-icon-button" data-dialog-close aria-label="Close" data-ui-label=Close>${ui.icon("close")}</button></div>
+        <div class="modal-head"><h2>${ui.agentBadge(s.agent)} <span class="pane-menu-title">${escapeHtml(sessionTitle(s))}</span></h2><button class="ui-icon-button" data-dialog-close aria-label="Close" data-ui-label=Close>${ui.icon("close")}</button></div>
         <div class="modal-body">
           <div class="ui-menu-group compact-pane-tools" hidden>
             <button class="btn-compact-compose" data-dialog-close data-ui-message="Write%20a%20message">Write a message</button>

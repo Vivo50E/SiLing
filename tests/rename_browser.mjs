@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 export async function checkRename({evaluate,waitFor,viewport,screenshot,cdp,mode,submissions,release,pending}) {
+  await waitFor(`!!document.querySelector('[data-run-id="fixture-0"] iframe')?.contentDocument?.querySelector('textarea')`);
   await evaluate(`window.renameFrame=document.querySelector('[data-run-id="fixture-0"] iframe');window.savedPrompt=window.prompt;window.prompt=()=>{throw Error('prompt() is not supported.')};document.querySelector('.session-item[data-id="fixture-0"] .btn-rename').click()`);
   await waitFor(`document.querySelector('#rename-session-dialog').open`);
   assert.equal(await evaluate(`document.activeElement.id`),'rename-session-name');
@@ -22,6 +23,7 @@ export async function checkRename({evaluate,waitFor,viewport,screenshot,cdp,mode
   release();
   await waitFor(`!document.querySelector('#rename-session-dialog').open`);
   await waitFor(`document.querySelector('[data-run-id="fixture-0"] .title').textContent==='Named <literal>'`);
+  assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-0"] .pane-menu-title').textContent`),'Named <literal>','More menu title updates too');
   assert.ok(await evaluate(`document.querySelector('.session-item[data-id="fixture-0"]').textContent.includes('Named <literal>')`),'Sidebar title updates');
   assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-0"] iframe')===renameFrame`),true,'Rename preserves the terminal iframe');
   mode('ok');
