@@ -237,8 +237,16 @@ layout; mobile keeps its single-column presentation. This preference and arrange
 positions are saved in this browser. Filtering does not change saved slot positions,
 restart agents, reload terminal frames, or discard input drafts. A group can
 contain sessions not currently pinned; open them from the filtered session list.
-Explicitly locating a session outside the filter returns to All. New sessions
-start ungrouped; directories do not automatically determine membership.
+Explicitly locating a session outside the filter returns to All. **New session →
+Project group** assigns a group when creating a session, including on remote nodes.
+Opening New from a named group preselects that group; otherwise it defaults to
+Ungrouped. Directories do not automatically determine membership.
+
+The **Model** dropdown reads the selected node's installed Cursor, Claude or Codex
+CLI catalog without sending a prompt or starting inference. Results are cached for
+five minutes; **Refresh models** queries again. Catalogs depend on the CLI account
+and provider and do not guarantee access to every listed model. Choose **Custom
+model…** for other providers or when querying fails. Terminal does not query models.
 
 Groups are stored in `outputs/.pane-groups.json`, with locked, atomic writes.
 Other devices using this Dashboard receive changes on the normal session poll

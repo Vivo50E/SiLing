@@ -12,6 +12,7 @@ import { checkMobileCompose } from './mobile_compose_browser.mjs';
 import { checkResources } from './resources_browser.mjs';
 import { checkArchives } from './archives_browser.mjs';
 import { checkGroupOrder } from './group_order_browser.mjs';
+import { checkSessionOptions } from './session_options_browser.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const executable = process.env.UI_BROWSER;
@@ -56,6 +57,8 @@ let privateMode = 'ok';
 let privateReply;
 let frameLoads = 0;
 let pendingCreation;
+const creationRequests = [];
+let modelMode = "ok", delayedModels;
 let pendingRestart;
 let pendingSwitch;
 const switchRequests = [];
@@ -329,7 +332,13 @@ const server = http.createServer((req, res) => {
     if (url.pathname === '/api/resume') {
       let body='';req.on('data',c=>body+=c);req.on('end',()=>{resumeBody=JSON.parse(body);pendingResume=res;});return;
     }
-    if (url.pathname === '/api/create') { pendingCreation = res; return; }
+    if (url.pathname === '/api/create') {let body='';req.on('data',c=>body+=c);req.on('end',()=>{creationRequests.push(JSON.parse(body));pendingCreation=res;});return;}
+    if (url.pathname === '/api/models') {
+      const payload={models:[{id:url.searchParams.get('agent')+'-live',label:'Live model <sample>'}],error:''};
+      if(modelMode==='delay') {delayedModels=()=>res.end(JSON.stringify(payload));return;}
+      if(modelMode==='fail') {res.writeHead(503);res.end(JSON.stringify({detail:'Fixture catalog failure'}));return;}
+      res.end(JSON.stringify(payload));return;
+    }
     if (url.pathname.endsWith('/restart')) { pendingRestart = res; return; }
     let value = { ok: true };
     if (url.pathname === '/api/config') value = { projects_browser_url: '/fixture-tty/browser-default', remote_nodes: [], system_browser_available: systemBrowserAvailable };
@@ -406,7 +415,11 @@ try {
   if (!baseline) sessions[0].panel_state='blocked';
   await cdp('Page.addScriptToEvaluateOnNewDocument', { source: `if(!localStorage.getItem('orch_layout')){localStorage.setItem('orch_layout','cols-2x2');localStorage.setItem('orch_slots',JSON.stringify(['fixture-0','fixture-1','fixture-2','fixture-3']));localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'en',theme:'dark'}));}` });
   await cdp('Page.navigate', { url: `http://127.0.0.1:${server.address().port}/` });
-  if (process.env.UI_GROUP_ORDER_ONLY === '1') {
+  if (process.env.UI_SESSION_OPTIONS_ONLY === '1') {
+    await checkSessionOptions({evaluate,waitFor,cdp,viewport,screenshot,pause,requests,groups:groupFixture,creations:creationRequests,mode:v=>{modelMode=v;},reply:()=>delayedModels,finish:()=>{pendingCreation.end(JSON.stringify({ok:true,run_id:'fixture-options-created'}));pendingCreation=undefined;}});
+    assert.deepEqual(errors, [], 'No uncaught session options errors');
+    console.log(JSON.stringify({result:'PASS',suite:'session-options',screenshots:artifacts}));
+  } else if (process.env.UI_GROUP_ORDER_ONLY === '1') {
     await checkGroupOrder({evaluate,waitFor,cdp,viewport,screenshot,pause,requests,
       groups:groupFixture,frameLoads:()=>frameLoads,fail:value=>{failGroupSave=value;}});
     assert.deepEqual(errors, [], 'No uncaught group order browser errors');
@@ -1585,6 +1598,7 @@ try {
   await waitFor(`[...document.querySelectorAll('.pane iframe')].every(f=>f.contentDocument?.querySelector('textarea'))`);
   await checkGroupOrder({evaluate,waitFor,cdp,viewport,screenshot,pause,requests,
     groups:groupFixture,frameLoads:()=>frameLoads,fail:value=>{failGroupSave=value;}});
+  await checkSessionOptions({evaluate,waitFor,cdp,viewport,screenshot,pause,requests,groups:groupFixture,creations:creationRequests,mode:v=>{modelMode=v;},reply:()=>delayedModels,finish:()=>{pendingCreation.end(JSON.stringify({ok:true,run_id:'fixture-options-created'}));pendingCreation=undefined;}});
   await checkResources({evaluate, waitFor, viewport, screenshot, pause, cdp, requests,
     mode:value=>{resourceMode=value;}, delayed:()=>delayedResource, frameLoads:()=>frameLoads});
   readerMode='ok';

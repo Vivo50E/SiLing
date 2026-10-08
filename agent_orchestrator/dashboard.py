@@ -75,6 +75,7 @@ from .local_settings import dashboard_token, require_dashboard_auth
 from .native_activity import NativeActivityService
 from .resources import ResourceMonitor
 from .pane_groups import PaneGroups
+from .model_catalog import ModelCatalog
 from .session_archives import SessionArchives, ArchiveConflict
 from .remote_nodes import (
     RemoteNodeReconnectManager,
@@ -8456,6 +8457,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
     # running-code update until the Dashboard has actually restarted.
     runtime_version = build_info(PROJECT_DIR)
     pane_groups = PaneGroups(outputs_dir)
+    model_catalog = ModelCatalog()
     session_archives = SessionArchives(outputs_dir)
 
     def scan_session_snapshot() -> list[dict[str, Any]]:
@@ -11368,6 +11370,46 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             "linked_items_warning": linked_copy.get("warning", ""),
         }
 
+    @app.get("/api/models")
+    async def available_models(agent: str = "cursor", node_id: str = "local", cwd: str = "", refresh: bool = False):
+        if agent not in ("cursor", "claude", "codex"):
+            raise HTTPException(400, "Choose Cursor, Claude or Codex")
+        if node_id != "local":
+            node = remote_nodes.get(node_id)
+            if node is None:
+                raise HTTPException(404, "remote node not found")
+            return await _remote_json(node, "/api/models", params={"agent": agent, "cwd": cwd, "refresh": str(refresh).lower()})
+        return await model_catalog.query(agent, _resolve_session_cwd(cwd), refresh)
+
+    def creation_group(body):
+        group_id = body.pop("group_id", "")
+        if not isinstance(group_id, str):
+            raise HTTPException(400, "group_id must be text")
+        if group_id:
+            try:
+                data = pane_groups.read()
+            except (OSError, ValueError, TypeError) as exc:
+                raise HTTPException(503, "Project-group storage unavailable") from exc
+            if group_id not in data["groups"]:
+                raise HTTPException(400, "Project group no longer exists; refresh and try again")
+        return group_id
+
+    def assign_created_group(result, group_id, node_id="local", agent=""):
+        if group_id:
+            try:
+                run_id = result.get("run_id")
+                if not run_id:
+                    raise ValueError("Created session identity is unavailable")
+                # The run identity is sufficient even before session.json is visible.
+                pane_groups.change({"action": "assign", "group_id": group_id},
+                                   [{"run_id": run_id, "node_id": node_id, "agent": agent}])
+                result["group_id"] = group_id
+            except (OSError, ValueError, TypeError):
+                # Creation succeeded: never report a launch failure or encourage another launch.
+                result["group_warning"] = "Session created, but its group could not be saved. Assign it from Manage groups."
+        session_snapshots.request_refresh()
+        return result
+
     @app.post("/api/create")
     async def post_create(request: Request):
         """Spawn a new `orch run` session.
@@ -11375,6 +11417,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         Body:
           agent: "cursor" | "claude" | "codex" | "terminal" (default cursor)
           model: optional model shortcut
+          group_id: optional Dashboard project group
           effort: optional Claude Code effort (low|medium|high|xhigh|max)
           terminal_theme: optional terminal palette
           label: optional session label
@@ -11382,6 +11425,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
           mode:  "iterm" (default) or "background"
         """
         body = await request.json()
+        group_id = creation_group(body)
         node_id = str(body.pop("node_id", "local") or "local").strip()
         if node_id != "local":
             node = remote_nodes.get(node_id)
@@ -11395,7 +11439,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                 node, "/api/create", method="POST", body=body
             )
             remote_nodes.request_refresh()
-            return result
+            return assign_created_group(result, group_id, node_id, body.get("agent", "cursor"))
         agent = (body.get("agent") or "cursor").strip()
         model = (body.get("model") or "").strip()
         effort = (body.get("effort") or "").strip().lower()
@@ -11413,7 +11457,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         if mode not in ("iterm", "background"):
             raise HTTPException(400, "mode must be 'iterm' or 'background'")
 
-        return _spawn_session(
+        result = _spawn_session(
             agent,
             model,
             label,
@@ -11422,6 +11466,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             effort=effort,
             terminal_theme=terminal_theme,
         )
+        return assign_created_group(result, group_id, agent=agent)
 
     @app.post("/api/sessions/{run_id}/switch-type")
     async def switch_pane_type(run_id: str, request: Request):

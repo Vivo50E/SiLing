@@ -1,6 +1,15 @@
 /* Authored Dashboard copy only. Never translate terminal output or user data. */
 (() => {
   const zh = {
+    "Project group": "项目分组",
+    "Ungrouped": "未分组",
+    "Custom model…": "自定义模型…",
+    "Custom model": "自定义模型",
+    "Refresh models": "刷新模型",
+    "Loading models…": "正在查询模型…",
+    "Models unavailable. Retry or enter a custom model.": "模型列表暂不可用，请重试或输入自定义模型。",
+    "Models reported by the selected CLI; availability depends on its account and provider.": "模型来自所选 CLI 的目录，实际可用性取决于它的账户与模型服务。",
+    "Session created, but its group could not be saved. Assign it from Manage groups.": "会话已创建，但分组保存失败，请在管理分组中设置归属。",
     "Reply": "回复",
     "Hide reply": "收起回复",
     "Reply to {name}": "回复：{name}",

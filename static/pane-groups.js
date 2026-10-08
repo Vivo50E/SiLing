@@ -392,6 +392,7 @@
     renderBar();
     return {
       matches, decorate, applyVisibility, refreshLabels: renderBar,
+      creationChoices: () => ({groups: available ? groups : [], filter}),
       nameFor: id => groupFor(id)?.name || "",
       reveal(runId) {
         if (!matches({run_id:runId})) selectFilter("all");

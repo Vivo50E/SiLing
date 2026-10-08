@@ -1183,6 +1183,11 @@
   }
   .modal-close:hover { color: var(--text); }
   .modal-body { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  #new-modal .modal { max-height: calc(100dvh - 32px); }
+  #new-modal .modal-body { min-height: 0; overflow-y: auto; }
+  #new-modal .modal-body > * { flex-shrink: 0; }
+  #new-modal .modal-head, #new-modal .modal-foot { flex-shrink: 0; }
+  #new-modal .modal-foot { flex-wrap: wrap; }
   .settings-row {
     display: grid; grid-template-columns: minmax(0, 1fr) auto;
     gap: 14px; align-items: center;
@@ -2749,10 +2754,11 @@
   }
 </style>
 <link rel="stylesheet" href="/static/ui-foundation.css?v=7" />
-<script src="/static/ui-messages.js?v=14"></script>
+<script src="/static/ui-messages.js?v=15"></script>
 <script src="/static/ui-foundation.js?v=11"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=4" />
-<script src="/static/pane-groups.js?v=5"></script>
+<script src="/static/pane-groups.js?v=6"></script>
+<script src="/static/new-session-options.js?v=1"></script>
 <script src="/static/terminal-files.js?v=3"></script>
 <script src="/static/secret-operations.js?v=1"></script>
 <script src="/static/terminal-keys.js?v=1"></script>
@@ -2882,10 +2888,14 @@
             <option value="terminal" data-ui-message=terminal%20(login%20shell)>terminal (login shell)</option>
           </select>
         </label>
-        <label class="fld" id="new-model-field">
-          <span><span data-ui-message=Model>Model </span><em><span data-ui-message=(optional%20%E2%80%94%20e.g.%20composer-2-fast%2C%20claude-opus-4-7-high)>(optional — e.g. composer-2-fast, claude-opus-4-7-high)</span></em></span>
-          <input id="new-model" type="text" placeholder="leave blank for default" data-ui-placeholder=leave%20blank%20for%20default autocomplete="off" />
-        </label>
+        <label class="fld" id="new-group-field"><span id="new-group-label">Project group</span><select id="new-group"><option value="">Ungrouped</option></select></label>
+        <div class="fld" id="new-model-field">
+          <label for="new-model-choice" data-ui-message=Model>Model</label>
+          <select id="new-model-choice"><option value="" data-ui-message=default>default</option><option value="__custom__">Custom model…</option></select>
+          <input id="new-model" type="text" placeholder="leave blank for default" data-ui-placeholder=leave%20blank%20for%20default autocomplete="off" aria-label="Custom model" data-ui-aria=Custom%20model hidden />
+          <button id="new-model-refresh" type="button">Refresh models</button>
+          <span id="new-model-status" class="ui-secondary" role="status" aria-live="polite"></span>
+        </div>
         <label class="fld" id="new-effort-field" hidden>
           <span><span data-ui-message=Effort>Effort </span><em><span data-ui-message=(Claude%20Code%20only)>(Claude Code only)</span></em></span>
           <select id="new-effort">
@@ -3736,6 +3746,7 @@
       renderSelfUpdateStatus();
       idleNotif.refreshLabels();
       paneGroups.refreshLabels();
+      sessionOptions.update();
       renderList();
       updateMissionControlButton();
       for (const ctrl of paneCtrls.values()) {
@@ -6401,6 +6412,7 @@
         const archiveChanged = sessionArchives.receive(data.session_archives);
         const archiveClosed = reconcileArchivedPanes();
         paneGroups.receive(data.pane_groups);
+        if (!$("new-modal").hidden) sessionOptions.update();
         const remoteNodeStates = Array.isArray(data.remote_nodes)
           ? data.remote_nodes : [];
         updateMissionControlButton();
@@ -13162,6 +13174,11 @@
 
   // ---------- New-session modal ----------
   const modal = $("new-modal");
+  const sessionOptions = window.SiLingSessionOptions({api, message:(key)=>ui.message(key),
+    groups:()=>paneGroups.creationChoices(),
+    target:()=>({agent:$("new-agent").value,node_id:selectedNodeId(),cwd:$("new-cwd").value.trim()}),
+    visible:()=>!modal.hidden && !$("new-model-field").hidden,
+  });
   let newSessionTargetSlot = null;
   let paneSwitchSource = null;
   let paneSwitchRequestId = "";
@@ -13233,6 +13250,7 @@
       ? ui.message("New session")
       : ui.message("New session · pane {pane}", {pane:SLOT_MARKS[newSessionTargetSlot] || newSessionTargetSlot + 1});
     modal.hidden = false;
+    sessionOptions.resetGroup();
     void refreshNodePicker();
     updateNewSessionMode();
     setTimeout(() => $("new-label").focus(), 50);
@@ -13261,6 +13279,7 @@
   }
   const closeModal = () => {
     modal.hidden = true;
+    sessionOptions.close();
     newSessionTargetSlot = null;
     paneSwitchSource = null;
     paneSwitchRequestId = "";
@@ -13478,6 +13497,8 @@
     $("new-label-field").hidden = isImport;
     $("new-agent-field").hidden = isResume || isImport;
     $("new-model-field").hidden = isResume || isImport || isTerminal;
+    $("new-group-field").hidden = isResume || isImport || !!paneSwitchSource;
+    sessionOptions.update();
     $("new-effort-field").hidden = isResume || isImport || $("new-agent").value !== "claude";
     $("new-cwd-field").hidden = isImport;
     $("new-submit").hidden = !!remoteNode || isImport || !!paneSwitchSource;
@@ -13565,6 +13586,7 @@
             node_id: selectedNodeId(),
             agent: $("new-agent").value,
             model: $("new-model").value.trim(),
+            ...(!switchSource ? {group_id:$("new-group").value} : {}),
             effort: $("new-effort").value.trim(),
             label: $("new-label").value.trim(),
             cwd:   $("new-cwd").value.trim(),
@@ -13583,6 +13605,7 @@
         switchSource ? `/api/sessions/${encodeURIComponent(switchSource.run_id)}/switch-type` : isResume ? "/api/resume" : "/api/create",
         { method: "POST", body },
       );
+      if (result.group_warning) alert(ui.message(result.group_warning));
       if (switchSource && result.source_stop_warning) alert(ui.message(result.source_stop_warning));
       if (switchSource && result.source_stop_status === "pending") alert(ui.message("The original session is still stopping. Check Related sessions for its status."));
       const newRunId = String(result?.run_id || "");
