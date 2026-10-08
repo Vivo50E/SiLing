@@ -14,6 +14,7 @@ import { checkRename } from './rename_browser.mjs';
 import { checkArchives } from './archives_browser.mjs';
 import { checkGroupOrder } from './group_order_browser.mjs';
 import { checkSessionOptions } from './session_options_browser.mjs';
+import { checkSessionHelp } from './session_help_browser.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const executable = process.env.UI_BROWSER;
@@ -435,6 +436,10 @@ try {
     await renameCheck();
     assert.deepEqual(errors, [], 'No uncaught rename errors');
     console.log('PASS: rename-only browser checks');
+  } else if (process.env.UI_SESSION_HELP_ONLY === '1') {
+    await checkSessionHelp({evaluate,waitFor,viewport,cdp,screenshot,pause,requests});
+    assert.deepEqual(errors, [], 'No uncaught session help errors');
+    console.log(JSON.stringify({result:'PASS',suite:'session-help',screenshots:artifacts}));
   } else if (process.env.UI_SESSION_OPTIONS_ONLY === '1') {
     await checkSessionOptions({evaluate,waitFor,cdp,viewport,screenshot,pause,requests,groups:groupFixture,creations:creationRequests,mode:v=>{modelMode=v;},reply:()=>delayedModels,finish:()=>{pendingCreation.end(JSON.stringify({ok:true,run_id:'fixture-options-created'}));pendingCreation=undefined;}});
     assert.deepEqual(errors, [], 'No uncaught session options errors');
@@ -1619,6 +1624,7 @@ try {
   await checkGroupOrder({evaluate,waitFor,cdp,viewport,screenshot,pause,requests,
     groups:groupFixture,frameLoads:()=>frameLoads,fail:value=>{failGroupSave=value;}});
   await checkSessionOptions({evaluate,waitFor,cdp,viewport,screenshot,pause,requests,groups:groupFixture,creations:creationRequests,mode:v=>{modelMode=v;},reply:()=>delayedModels,finish:()=>{pendingCreation.end(JSON.stringify({ok:true,run_id:'fixture-options-created'}));pendingCreation=undefined;}});
+  await checkSessionHelp({evaluate,waitFor,viewport,cdp,screenshot,pause,requests});
   await checkResources({evaluate, waitFor, viewport, screenshot, pause, cdp, requests,
     mode:value=>{resourceMode=value;}, delayed:()=>delayedResource, frameLoads:()=>frameLoads});
   readerMode='ok';

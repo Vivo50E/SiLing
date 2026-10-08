@@ -242,6 +242,9 @@ Project group** assigns a group when creating a session, including on remote nod
 Opening New from a named group preselects that group; otherwise it defaults to
 Ungrouped. Directories do not automatically determine membership.
 
+The **?** button in New session shows mode and startup instructions on hover,
+keyboard focus or a tap. Escape or clicking outside dismisses the help.
+
 The **Model** dropdown reads the selected node's installed Cursor, Claude or Codex
 CLI catalog without sending a prompt or starting inference. Results are cached for
 five minutes; **Refresh models** queries again. Catalogs depend on the CLI account

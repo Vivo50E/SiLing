@@ -1,6 +1,7 @@
 /* Authored Dashboard copy only. Never translate terminal output or user data. */
 (() => {
   const zh = {
+    "Session options help": "会话选项说明",
     "Project group": "项目分组",
     "Ungrouped": "未分组",
     "Custom model…": "自定义模型…",
