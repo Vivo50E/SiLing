@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { checkMobileReader } from './mobile_browser.mjs';
 import { checkMobileCompose } from './mobile_compose_browser.mjs';
 import { checkResources } from './resources_browser.mjs';
+import { checkRename } from './rename_browser.mjs';
 import { checkArchives } from './archives_browser.mjs';
 import { checkGroupOrder } from './group_order_browser.mjs';
 import { checkSessionOptions } from './session_options_browser.mjs';
@@ -32,6 +33,9 @@ let updateHead = "b".repeat(40), updateMode = "ok", updateReply;
 const updateApplies = [];
 const updateCandidate = () => ({eligible:true,branch:"agent/self-improve-fixture",head:updateHead,short_head:updateHead.slice(0,7),target_head:"a".repeat(40),ahead:1});
 const requests = [];
+let renameMode='ok',renameReply;
+const renameSubmissions=[];
+const originalNames=new Map(sessions.map(s=>[s.run_id,s.display_name]));
 const mobileInputs = [];
 let mobileInputMode = 'ok', mobileInputReply;
 const archiveFixture = {version:1, revision:0, entries:{}};
@@ -84,6 +88,15 @@ let truncatePreview = false;
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   requests.push({ method: req.method, path: url.pathname });
+  if (req.method==='POST' && url.pathname.endsWith('/label')) {
+    res.setHeader('Content-Type','application/json');
+    let raw='';req.on('data',chunk=>raw+=chunk);req.on('end',()=>{
+      const body=JSON.parse(raw);renameSubmissions.push(body);
+      if(renameMode==='error'){res.writeHead(503);res.end(JSON.stringify({detail:'Fixture rename failure'}));return;}
+      const reply=()=>{const session=sessions.find(s=>s.run_id===decodeURIComponent(url.pathname.split('/')[3]));session.label=body.label.trim();session.display_name=session.label||originalNames.get(session.run_id);res.end(JSON.stringify({ok:true,label:session.label}));};
+      if(renameMode==='delay'){renameReply=reply;return;}reply();
+    });return;
+  }
   if (url.pathname.startsWith('/api/self-update')) {
     res.setHeader('Content-Type','application/json');
     if (url.pathname.endsWith('/verify')) {
@@ -415,7 +428,14 @@ try {
   if (!baseline) sessions[0].panel_state='blocked';
   await cdp('Page.addScriptToEvaluateOnNewDocument', { source: `if(!localStorage.getItem('orch_layout')){localStorage.setItem('orch_layout','cols-2x2');localStorage.setItem('orch_slots',JSON.stringify(['fixture-0','fixture-1','fixture-2','fixture-3']));localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'en',theme:'dark'}));}` });
   await cdp('Page.navigate', { url: `http://127.0.0.1:${server.address().port}/` });
-  if (process.env.UI_SESSION_OPTIONS_ONLY === '1') {
+  const renameCheck=()=>checkRename({evaluate,waitFor,viewport,screenshot,cdp,mode:value=>{renameMode=value;},submissions:renameSubmissions,release:()=>{renameReply();renameReply=null;},pending:()=>!!renameReply});
+  if (process.env.UI_RENAME_ONLY === '1') {
+    await viewport(1280,800);
+    await waitFor(`document.querySelectorAll('.pane iframe').length===4`);
+    await renameCheck();
+    assert.deepEqual(errors, [], 'No uncaught rename errors');
+    console.log('PASS: rename-only browser checks');
+  } else if (process.env.UI_SESSION_OPTIONS_ONLY === '1') {
     await checkSessionOptions({evaluate,waitFor,cdp,viewport,screenshot,pause,requests,groups:groupFixture,creations:creationRequests,mode:v=>{modelMode=v;},reply:()=>delayedModels,finish:()=>{pendingCreation.end(JSON.stringify({ok:true,run_id:'fixture-options-created'}));pendingCreation=undefined;}});
     assert.deepEqual(errors, [], 'No uncaught session options errors');
     console.log(JSON.stringify({result:'PASS',suite:'session-options',screenshots:artifacts}));

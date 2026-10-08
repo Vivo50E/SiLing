@@ -7045,7 +7045,7 @@
           ev.stopPropagation(); clearTimeout(clickTimer); void sessionArchives.change(id); return;
         }
         if (ev.target.closest(".btn-rename")) {
-          ev.stopPropagation(); renameSession(id); return;
+          ev.stopPropagation(); clearTimeout(clickTimer); renameSession(id, ev.target.closest(".btn-rename")); return;
         }
         if (isMobileView()) { handleSessionClick(ev, id); return; }
         // A normal click rebuilds the sidebar and replaces this DOM node.
@@ -7117,31 +7117,79 @@
     }
   }
 
-  async function renameSession(id) {
-    const s = sessions.find(x => x.run_id === id);
-    if (!s) return;
-    const current = s.label || s.auto_title || s.task || "";
-    const next = window.prompt(
-      ui.message("Rename this session (leave empty to use auto-title):"),
-      s.label || ""
-    );
-    if (next === null) return;  // cancel
+  const renameDialog = document.createElement("dialog");
+  renameDialog.id = "rename-session-dialog";
+  renameDialog.className = "ui-dialog";
+  renameDialog.setAttribute("aria-labelledby", "rename-session-heading");
+  renameDialog.innerHTML = `<div class="modal-head"><h2 id="rename-session-heading" data-ui-message="Rename%20session">Rename session</h2><button type="button" data-rename-cancel data-ui-label="Close">×</button></div>
+    <form class="modal-body">
+      <p id="rename-session-context" class="ui-secondary"></p>
+      <label for="rename-session-name" data-ui-message="Session%20name">Session name</label>
+      <input id="rename-session-name" type="text" autocomplete="off" aria-describedby="rename-session-help" style="width:100%;box-sizing:border-box" />
+      <p id="rename-session-help" class="ui-secondary" data-ui-message="Leave%20empty%20to%20use%20the%20automatic%20title.">Leave empty to use the automatic title.</p>
+      <p id="rename-session-error" role="alert" hidden></p>
+      <div class="settings-inline-actions"><button type="button" data-rename-cancel data-ui-message="Cancel">Cancel</button><button type="submit" class="primary" data-ui-message="Save%20name">Save name</button></div>
+    </form>`;
+  document.body.appendChild(renameDialog);
+  ui.containDialogFocus(renameDialog);
+  let renameState = null;
+  let renameBusy = false;
+  const renameInput = renameDialog.querySelector("input");
+  const renameError = renameDialog.querySelector("[role=alert]");
+  const setRenameBusy = busy => {
+    renameBusy = busy;
+    renameDialog.querySelectorAll("input, button").forEach(control => { control.disabled = busy; });
+    renameDialog.setAttribute("aria-busy", String(busy));
+  };
+  renameDialog.querySelectorAll("[data-rename-cancel]").forEach(button => {
+    button.addEventListener("click", () => { if (!renameBusy) renameDialog.close(); });
+  });
+  renameDialog.addEventListener("cancel", event => { if (renameBusy) event.preventDefault(); });
+  renameDialog.addEventListener("close", () => {
+    const state = renameState;
+    renameState = null;
+    const trigger = state?.trigger?.isConnected ? state.trigger
+      : [...document.querySelectorAll(".session-item")].find(row => row.dataset.id === state?.id)?.querySelector(".btn-rename");
+    trigger?.focus({preventScroll: true});
+  });
+  renameDialog.querySelector("form").addEventListener("submit", async event => {
+    event.preventDefault();
+    if (!renameState || renameBusy) return;
+    const id = renameState.id;
+    renameError.hidden = true;
+    setRenameBusy(true);
     try {
       await api(`/api/sessions/${encodeURIComponent(id)}/label`, {
-        method: "POST",
-        body: { label: next },
+        method: "POST", body: {label: renameInput.value},
       });
+      // A poll started before the save may still contain the old title.
+      if (refreshListInFlight) await refreshListInFlight;
       await refreshList();
-      // Also refresh pane header if this session is displayed
-      if (paneCtrls.has(id)) {
-        const ctrl = paneCtrls.get(id);
-        const s2 = sessions.find(x => x.run_id === id);
-        if (s2 && ctrl) {
-          const t = ctrl.cardEl.querySelector(".title");
-          if (t) t.textContent = sessionTitle(s2);
-        }
-      }
-    } catch (e) { alert(ui.message("rename failed: ") + e.message); }
+      const ctrl = paneCtrls.get(id);
+      const session = sessions.find(item => item.run_id === id);
+      if (ctrl && session) updatePaneHeader(ctrl, session);
+      renameDialog.close();
+    } catch (error) {
+      renameError.textContent = ui.message("rename failed: ") + error.message;
+      renameError.hidden = false;
+    } finally {
+      setRenameBusy(false);
+      if (renameDialog.open) renameInput.focus();
+    }
+  });
+  function renameSession(id, trigger = document.activeElement) {
+    const session = sessions.find(item => item.run_id === id);
+    if (!session || renameBusy || renameDialog.open) return;
+    renameState = {id, trigger};
+    renameInput.value = session.label || "";
+    renameInput.placeholder = session.auto_title || session.task || "";
+    $("rename-session-context").textContent = sessionTitle(session);
+    renameError.hidden = true;
+    setRenameBusy(false);
+    ui.translate(renameDialog);
+    renameDialog.showModal();
+    renameInput.focus();
+    renameInput.select();
   }
 
   function handleSessionClick(ev, id) {
@@ -8030,6 +8078,7 @@
               <input class="pane-ssh-host" placeholder="dev-server or user@host" data-ui-placeholder=dev-server%20or%20user%40host value="${escapeHtml(terminalSshHost(runId))}" aria-label="SSH file host">
             </label>
             <p class="ui-secondary" ${s.remote ? "hidden" : ""} data-i18n="sshFileHelp">File links use this SSH host. Saved in this browser; clear to use local files.</p>
+            <button class="btn-rename-session" ${["task", "run", "orphan"].includes(s.kind) ? "" : "hidden"} data-dialog-close data-ui-message="Rename%20session">Rename session</button>
             <button class="btn-secret-operations" ${s.alive ? "" : "disabled"} data-dialog-close data-ui-message="Secret%20operations">Secret operations</button>
             <button class="btn-secret-input" ${s.alive ? "" : "disabled"} data-dialog-close data-ui-message="Private%20input">Private input</button>
             <button class="btn-terminal-files" data-dialog-close data-i18n="terminalFiles">Terminal files</button>
@@ -8075,6 +8124,9 @@
         $("conn-status").textContent = ui.message("SSH disconnect requested");
       } catch (error) { alert(error.message); }
       finally { delete button.dataset.busy; button.disabled = false; }
+    });
+    card.querySelector(".btn-rename-session").addEventListener("click", () => {
+      paneMenu.addEventListener("close", () => renameSession(runId, card.querySelector(".btn-pane-more")), {once: true});
     });
     card.querySelector(".btn-secret-operations").addEventListener("click", () => {
       paneMenu.addEventListener("close", () => {

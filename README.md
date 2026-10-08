@@ -894,3 +894,5 @@ Settings → Appearance → **Always show pane priority** keeps the priority sel
 Terminal zoom preserves the last painted frame while tmux repaints at the new size, avoiding an intermediate text jump. The visual cover does not intercept input. During resizing it waits for 120 ms of quiet output before revealing the new frame, with a 600 ms maximum even if output never settles.
 
 During resize, a live prompt on the last terminal row keeps its bottom position in the retained frame, preventing a second downward jump when tmux restores history. Selected text, local scrollback browsing and cursors above the last row keep top alignment.
+
+Rename a session using the sidebar pencil or pane More → Rename session. The shared in-page dialog works in browsers and Electron; an empty name restores the automatic title, and failed saves preserve your input for retry.
