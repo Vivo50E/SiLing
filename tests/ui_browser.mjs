@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { checkMobileReader } from './mobile_browser.mjs';
 import { checkMobileCompose } from './mobile_compose_browser.mjs';
 import { checkResources } from './resources_browser.mjs';
+import { checkPaneMenu } from './pane_menu_browser.mjs';
 import { checkRename } from './rename_browser.mjs';
 import { checkArchives } from './archives_browser.mjs';
 import { checkGroupOrder } from './group_order_browser.mjs';
@@ -430,7 +431,12 @@ try {
   await cdp('Page.addScriptToEvaluateOnNewDocument', { source: `if(!localStorage.getItem('orch_layout')){localStorage.setItem('orch_layout','cols-2x2');localStorage.setItem('orch_slots',JSON.stringify(['fixture-0','fixture-1','fixture-2','fixture-3']));localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'en',theme:'dark'}));}` });
   await cdp('Page.navigate', { url: `http://127.0.0.1:${server.address().port}/` });
   const renameCheck=()=>checkRename({evaluate,waitFor,viewport,screenshot,cdp,mode:value=>{renameMode=value;},submissions:renameSubmissions,release:()=>{renameReply();renameReply=null;},pending:()=>!!renameReply});
-  if (process.env.UI_RENAME_ONLY === '1') {
+  if (process.env.UI_PANE_MENU_ONLY === '1') {
+    await viewport(1280,800);
+    await waitFor(`document.querySelectorAll('.pane iframe').length===4`);
+    await checkPaneMenu({evaluate,waitFor,cdp,viewport,screenshot});
+    assert.deepEqual(errors, [], 'No uncaught pane menu errors');
+  } else if (process.env.UI_RENAME_ONLY === '1') {
     await viewport(1280,800);
     await waitFor(`document.querySelectorAll('.pane iframe').length===4`);
     await renameCheck();
@@ -765,7 +771,7 @@ try {
   assert.equal(await evaluate(`document.querySelectorAll('#btn-mission-control svg').length`),1,'Polling keeps mission icon');
   let frames = frameLoads;
   await evaluate(`document.querySelector('#btn-search-primary').click();const search=document.querySelector('#sess-search-input');search.value='codex';search.dispatchEvent(new Event('input'));`);
-  await pause(150);
+  await waitFor(`document.querySelectorAll('.session-item').length===1`);
   assert.equal(await evaluate(`document.querySelectorAll('.session-item').length`), 1, 'Search filters live sessions by agent');
   await evaluate(`document.querySelector('#sess-search-clear').click()`);
   assert.equal(await evaluate(`document.querySelectorAll('.session-item').length`), 5);
@@ -1628,6 +1634,7 @@ try {
   // Run rename after the grouping checks: its deliberate mobile round trip
   // changes accessibility state and suspends/reconnects desktop frames.
   await renameCheck();
+  await checkPaneMenu({evaluate,waitFor,cdp,viewport,screenshot});
   await waitFor(`document.querySelectorAll('.pane iframe').length===4`);
   await waitFor(`[...document.querySelectorAll('.pane iframe')].every(f=>f.contentDocument?.querySelector('textarea'))`);
   await checkResources({evaluate, waitFor, viewport, screenshot, pause, cdp, requests,

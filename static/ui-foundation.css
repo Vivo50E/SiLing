@@ -213,3 +213,12 @@ html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-mo
 .secret-operations-dialog p { overflow-wrap: anywhere; white-space: normal; line-height: 1.5; }
 .secret-operation-row { border-top: 1px solid var(--border); padding: 8px 0; }
 .secret-operation-row button { margin-right: 8px; }
+
+/* Keep routine pane actions visible; disclose settings and lifecycle controls on demand. */
+.pane-menu .modal-body { gap: 8px; }
+.pane-menu-section { border: 1px solid var(--border); border-radius: 8px; }
+.pane-menu-section > summary { cursor: pointer; padding: 11px 12px; font-size: 13px; font-weight: 600; }
+.pane-menu-section > summary:hover { background: var(--bg-soft); }
+.pane-menu-section > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }
+.pane-menu-section > .ui-menu-group { padding: 0 12px 12px; }
+.pane-menu-section > .ui-menu-group:last-child { padding-bottom: 12px; }

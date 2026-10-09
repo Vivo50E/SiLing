@@ -898,4 +898,6 @@ Terminal zoom preserves the last painted frame while tmux repaints at the new si
 
 During resize, a live prompt on the last terminal row keeps its bottom position in the retained frame, preventing a second downward jump when tmux restores history. Selected text, local scrollback browsing and cursors above the last row keep top alignment.
 
+Pane More keeps Rename, Reconnect display, and Close pane at the top. Expand Appearance and position, Files and connections, Private input and secrets, or Session management for other controls; restart, archive, switch type, and terminate are under Session management. Closing a pane keeps its session running.
+
 Rename a session using the sidebar pencil or pane More → Rename session. The shared in-page dialog works in browsers and Electron; an empty name restores the automatic title, and failed saves preserve your input for retry.

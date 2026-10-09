@@ -2763,9 +2763,9 @@
     border-color: var(--warn);
   }
 </style>
-<link rel="stylesheet" href="/static/ui-foundation.css?v=7" />
-<script src="/static/ui-messages.js?v=17"></script>
-<script src="/static/ui-foundation.js?v=11"></script>
+<link rel="stylesheet" href="/static/ui-foundation.css?v=8" />
+<script src="/static/ui-messages.js?v=18"></script>
+<script src="/static/ui-foundation.js?v=12"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=4" />
 <script src="/static/pane-groups.js?v=6"></script>
 <script src="/static/new-session-options.js?v=1"></script>
@@ -8088,34 +8088,46 @@
           <div class="ui-menu-group compact-pane-tools" hidden>
             <button class="btn-compact-compose" data-dialog-close data-ui-message="Write%20a%20message">Write a message</button>
           </div>
-          <div class="ui-menu-group">
-            <label><span data-i18n="terminalTheme">Terminal theme</span><select class="pane-theme-select" data-theme="${escapeHtml(terminalThemeValue(s.terminal_theme))}">${terminalThemeOptionsHtml(s.terminal_theme)}</select></label>
-            <label ${s.remote ? "hidden" : ""}><span data-i18n="sshFileHost">SSH file host</span>
-              <input class="pane-ssh-host" placeholder="dev-server or user@host" data-ui-placeholder=dev-server%20or%20user%40host value="${escapeHtml(terminalSshHost(runId))}" aria-label="SSH file host">
-            </label>
-            <p class="ui-secondary" ${s.remote ? "hidden" : ""} data-i18n="sshFileHelp">File links use this SSH host. Saved in this browser; clear to use local files.</p>
+          <div class="ui-menu-group pane-menu-common">
             <button class="btn-rename-session" ${["task", "run", "orphan"].includes(s.kind) ? "" : "hidden"} data-dialog-close data-ui-message="Rename%20session">Rename session</button>
-            <button class="btn-secret-operations" ${s.alive ? "" : "disabled"} data-dialog-close data-ui-message="Secret%20operations">Secret operations</button>
-            <button class="btn-secret-input" ${s.alive ? "" : "disabled"} data-dialog-close data-ui-message="Private%20input">Private input</button>
-            <button class="btn-terminal-files" data-dialog-close data-i18n="terminalFiles">Terminal files</button>
-            <button class="btn-switch-type" data-dialog-close><span data-ui-message="Switch%20pane%20type">Switch pane type</span></button>
-            <button class="btn-disconnect-ssh" ${terminalSession ? "" : "hidden"} data-dialog-close><span data-ui-message="Disconnect%20SSH">Disconnect SSH</span></button>
             <button class="btn-reload" data-dialog-close>${ui.icon("refresh")}<span data-i18n="reconnect">Reconnect display</span></button>
-            <label><span data-i18n="move">Move / swap with pane</span><select class="pane-move-select"></select></label>
-          </div>
-          <div class="ui-menu-group">
             <button class="btn-unpin" data-dialog-close>${ui.icon("close")}<span data-i18n="closePane">Close pane</span></button>
             <p class="ui-secondary" data-i18n="closeHelp"></p>
-            <button class="btn-archive-session" data-dialog-close data-ui-message="Archive%20session">Archive session</button>
           </div>
-          <div class="ui-menu-group">
-            <button class="btn-restart-session" ${terminalSession || s.agent_exited === true ? "hidden" : ""} data-dialog-close>${ui.icon("refresh")}<span data-i18n="restartAgent">Restart agent</span></button>
-            <p class="ui-secondary" data-i18n="restartHelp" ${terminalSession ? "hidden" : ""}></p>
-            <button class="btn-recover-session" ${s.agent_exited === true ? "" : "hidden"} data-dialog-close><span data-ui-message=Resume%20exited%20agent>Resume exited agent</span></button>
-            <button class="btn-end-session" ${s.agent_exited === true ? "" : "hidden"} data-dialog-close><span data-ui-message=End%20exited%20session>End exited session</span></button>
-            <button class="btn-terminate danger" ${s.agent_exited === true ? "hidden" : ""} data-dialog-close><span data-ui-message=Terminate%20session>Terminate session</span></button>
-            <p class="ui-secondary" data-i18n="terminateHelp"></p>
-          </div>
+          <details class="pane-menu-section"><summary tabindex="0" data-ui-message="Appearance%20and%20position">Appearance and position</summary>
+            <div class="ui-menu-group">
+              <label><span data-i18n="terminalTheme">Terminal theme</span><select class="pane-theme-select" data-theme="${escapeHtml(terminalThemeValue(s.terminal_theme))}">${terminalThemeOptionsHtml(s.terminal_theme)}</select></label>
+              <label><span data-i18n="move">Move / swap with pane</span><select class="pane-move-select"></select></label>
+            </div>
+          </details>
+          <details class="pane-menu-section"><summary tabindex="0" data-ui-message="Files%20and%20connections">Files and connections</summary>
+            <div class="ui-menu-group">
+              <button class="btn-terminal-files" data-dialog-close data-i18n="terminalFiles">Terminal files</button>
+              <label ${s.remote ? "hidden" : ""}><span data-i18n="sshFileHost">SSH file host</span>
+                <input class="pane-ssh-host" placeholder="dev-server or user@host" data-ui-placeholder=dev-server%20or%20user%40host value="${escapeHtml(terminalSshHost(runId))}" aria-label="SSH file host">
+              </label>
+              <p class="ui-secondary" ${s.remote ? "hidden" : ""} data-i18n="sshFileHelp">File links use this SSH host. Saved in this browser; clear to use local files.</p>
+              <button class="btn-disconnect-ssh" ${terminalSession ? "" : "hidden"} data-dialog-close><span data-ui-message="Disconnect%20SSH">Disconnect SSH</span></button>
+            </div>
+          </details>
+          <details class="pane-menu-section"><summary tabindex="0" data-ui-message="Private%20input%20and%20secrets">Private input and secrets</summary>
+            <div class="ui-menu-group">
+              <button class="btn-secret-input" ${s.alive ? "" : "disabled"} data-dialog-close data-ui-message="Private%20input">Private input</button>
+              <button class="btn-secret-operations" ${s.alive ? "" : "disabled"} data-dialog-close data-ui-message="Secret%20operations">Secret operations</button>
+            </div>
+          </details>
+          <details class="pane-menu-section"><summary tabindex="0" data-ui-message="Session%20management">Session management</summary>
+            <div class="ui-menu-group">
+              <button class="btn-switch-type" data-dialog-close><span data-ui-message="Switch%20pane%20type">Switch pane type</span></button>
+              <button class="btn-archive-session" data-dialog-close data-ui-message="Archive%20session">Archive session</button>
+              <button class="btn-restart-session" ${terminalSession || s.agent_exited === true ? "hidden" : ""} data-dialog-close>${ui.icon("refresh")}<span data-i18n="restartAgent">Restart agent</span></button>
+              <p class="ui-secondary" data-i18n="restartHelp" ${terminalSession || s.agent_exited === true ? "hidden" : ""}></p>
+              <button class="btn-recover-session" ${s.agent_exited === true ? "" : "hidden"} data-dialog-close><span data-ui-message=Resume%20exited%20agent>Resume exited agent</span></button>
+              <button class="btn-end-session" ${s.agent_exited === true ? "" : "hidden"} data-dialog-close><span data-ui-message=End%20exited%20session>End exited session</span></button>
+              <button class="btn-terminate danger" ${s.agent_exited === true ? "hidden" : ""} data-dialog-close><span data-ui-message=Terminate%20session>Terminate session</span></button>
+              <p class="ui-secondary" data-i18n="terminateHelp"></p>
+            </div>
+          </details>
         </div>
       </dialog>
     `;

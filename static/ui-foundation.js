@@ -173,7 +173,7 @@
       if (event.key === "Escape") event.stopPropagation();
       if (event.key !== "Tab") return;
       const controls = [...dialog.querySelectorAll('button, input, textarea, select, a[href], [tabindex]')]
-        .filter(el => !el.disabled && el.tabIndex >= 0 && el.getClientRects().length && getComputedStyle(el).visibility !== "hidden");
+        .filter(el => !el.disabled && el.tabIndex >= 0 && el.getClientRects().length && (!el.checkVisibility || el.checkVisibility()) && getComputedStyle(el).visibility !== "hidden");
       const first = controls[0], last = controls.at(-1);
       if (!first) { event.preventDefault(); return; }
       if (event.shiftKey && document.activeElement === first) {
