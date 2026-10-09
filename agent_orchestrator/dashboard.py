@@ -540,6 +540,10 @@ def _tmux_send_keys(argv: list, *, retries: int = 2,
     return False, last_err
 
 
+class TerminalSelectionMissing(RuntimeError):
+    """The terminal is available, but its selection has ended."""
+
+
 def _tmux_copy_selection(session: str) -> str:
     """Read the cross-screen selection without changing user paste buffers."""
     def run(*args):
@@ -551,7 +555,7 @@ def _tmux_copy_selection(session: str) -> str:
     info = run("display-message", "-p", "-t", session,
                "#{pane_id} #{selection_present}").strip().split()
     if len(info) != 2 or info[1] != "1":
-        raise RuntimeError("No terminal text is selected")
+        raise TerminalSelectionMissing("No terminal text is selected")
     with tempfile.TemporaryDirectory(prefix="siling-selection-") as directory:
         target = Path(directory) / "text"
         done = Path(directory) / "done"
@@ -9849,6 +9853,8 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             raise HTTPException(409, "session has no terminal")
         try:
             return {"text": _tmux_copy_selection(session)}
+        except TerminalSelectionMissing:
+            return {"text": "", "selected": False}
         except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
             raise HTTPException(409, str(exc)) from exc
 
@@ -9863,6 +9869,8 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         try:
             adjusted = False if preview_only else _tmux_trim_selection(session)
             return {"adjusted": adjusted, "preview": _tmux_selection_preview(session)}
+        except TerminalSelectionMissing:
+            return {"adjusted": False, "preview": {}}
         except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
             raise HTTPException(409, str(exc)) from exc
 

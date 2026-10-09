@@ -28,7 +28,8 @@ const selectionServer=http.createServer((req,res)=>{
     const previewOnly=requestUrl.searchParams.get('preview_only')==='true';
     if(normalize && previewOnly) livePreviewReads++;
     const script=normalize ? `import json;from agent_orchestrator.dashboard import _tmux_trim_selection,_tmux_selection_preview;print(json.dumps({'adjusted':${previewOnly ? "False" : "_tmux_trim_selection('check')"},'preview':_tmux_selection_preview('check')}))` : "import json;from agent_orchestrator.dashboard import _tmux_copy_selection;print(json.dumps({'text':_tmux_copy_selection('check')}))";
-    const text=execFileSync(python,['-c',script],{cwd:root,env:{...process.env,TMUX:`${socket},0,0`},encoding:'utf8'});
+    const guardedScript="from agent_orchestrator.dashboard import TerminalSelectionMissing\ntry:\n " + script + "\nexcept TerminalSelectionMissing:\n print('{\"text\":\"\",\"selected\":false}')";
+    const text=execFileSync(python,['-c',guardedScript],{cwd:root,env:{...process.env,TMUX:`${socket},0,0`},encoding:'utf8'});
     res.setHeader('Access-Control-Allow-Origin','*');res.setHeader('Content-Type','application/json');res.end(text);
   }catch(error){res.writeHead(500);res.end(String(error));}
 });
@@ -462,6 +463,28 @@ finally:
   assert.equal(await evaluate('window.copiedText'),'if ready:\n    run()\n\ndone()','tmux common indentation is removed while nested code indentation survives');
   assert.ok(await evaluate(`document.querySelector('.siling-selection-margin').children.length>=3`),'tmux visible common margin is excluded from highlighting');
   await screenshot('multiline-dedent-tmux');
+  // Cancel externally so the browser still has a pending drag flag.
+  tmux('send-keys','-t','check','-X','cancel');
+  await evaluate('window.copyAlerts=[];window.alert=message=>copyAlerts.push(message)');
+  const previousCopy=await evaluate('window.copiedText');
+  const pressCopy=async()=>{
+    await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:'c',code:'KeyC',modifiers:4,windowsVirtualKeyCode:67});
+    await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'c',code:'KeyC',modifiers:4,windowsVirtualKeyCode:67});
+  };
+  await pressCopy();
+  for(let i=0;i<50 && !(await evaluate(`document.querySelector('[role="status"]')?.textContent.includes('Selection expired')`));i++) await pause(50);
+  assert.deepEqual(await evaluate('window.copyAlerts'),[],'Expired tmux selection never opens an alert');
+  assert.equal(await evaluate('window.copiedText'),previousCopy,'Expired selection preserves clipboard text');
+  assert.ok(await evaluate(`document.querySelector('[role="status"]')?.textContent.includes('Selection expired')`));
+  await pressCopy(); await pause(150);
+  assert.deepEqual(await evaluate('window.copyAlerts'),[]);
+  await screenshot('expired-copy-selection');
+  await dragLine(tmuxCodeRow,0,8,0,tmuxCodeRow+3);
+  await evaluate('window.copiedText=undefined');
+  await pressCopy();
+  for(let i=0;i<50 && !(await evaluate('window.copiedText'));i++) await pause(50);
+  assert.equal(await evaluate('window.copiedText'),previousCopy,'Selecting again restores normal copying');
+  console.log('PASS: stale tmux copy shows a nonblocking hint, preserves clipboard, and recovers after selecting again');
   tmux('send-keys','-t','check','-X','cancel');
   await pause(200);
   tmux('send-keys','-t','check','i=1; while [ $i -le 150 ]; do echo cross-screen-$i; i=$((i+1)); done','Enter');

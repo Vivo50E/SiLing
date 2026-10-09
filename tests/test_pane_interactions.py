@@ -158,14 +158,33 @@ class PaneInteractionTests(unittest.TestCase):
             lookup.return_value = None
             self.assertEqual(client.post("/api/sessions/missing/selection").status_code, 404)
             lookup.return_value = {"tmux_session": "private-test"}
-            copy.side_effect = RuntimeError("No terminal text is selected")
+            copy.side_effect = dashboard.TerminalSelectionMissing("No terminal text is selected")
+            missing = client.post("/api/sessions/example/selection")
+            self.assertEqual(missing.status_code, 200)
+            self.assertEqual(missing.json(), {"text": "", "selected": False})
+            copy.side_effect = RuntimeError("tmux connection failed")
             self.assertEqual(client.post("/api/sessions/example/selection").status_code, 409)
+            with patch.object(dashboard, "_tmux_trim_selection", return_value=False), \
+                    patch.object(dashboard, "_tmux_selection_preview",
+                                 side_effect=dashboard.TerminalSelectionMissing("selection ended")):
+                missing = client.post("/api/sessions/example/selection/trim")
+                self.assertEqual(missing.status_code, 200)
+                self.assertEqual(missing.json(), {"adjusted": False, "preview": {}})
 
     @unittest.skipUnless(shutil.which("node"), "Node.js required")
     def test_wrapped_links_highlight_and_open_the_complete_target(self):
         script = terminal_theme._TTYD_INTERACTION_SCRIPT.split(">", 1)[1].rsplit("</script>", 1)[0]
         result = subprocess.run(
             ["node", str(Path(__file__).with_name("terminal_links.cjs"))],
+            input=script, capture_output=True, text=True, timeout=10,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    @unittest.skipUnless(shutil.which("node"), "Node.js required")
+    def test_copy_discards_expired_selection_and_preserves_clipboard(self):
+        script = terminal_theme._TTYD_INTERACTION_SCRIPT.split(">", 1)[1].rsplit("</script>", 1)[0]
+        result = subprocess.run(
+            ["node", str(Path(__file__).with_name("terminal_copy.cjs"))],
             input=script, capture_output=True, text=True, timeout=10,
         )
         self.assertEqual(result.returncode, 0, result.stderr)

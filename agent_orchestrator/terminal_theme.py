@@ -714,7 +714,7 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     screen.addEventListener("mousedown", (event) => {
       if (event.button !== 0 || event.ctrlKey) return;
       clearHover();
-      selectionEpoch++; tmuxPreview = null; clearMargin();
+      selectionEpoch++; tmuxSelectionPending = false; tmuxPreview = null; clearMargin();
       clearTimeout(liveMarginTimer); liveMarginTimer = null; liveMarginDirty = false;
       startX = event.clientX;
       startY = event.clientY;
@@ -837,13 +837,16 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     });
     let tmuxPreview = null;
     let selectionEpoch = 0;
-    const updateTmuxMargin = async (previewOnly = false) => {
-      const epoch = selectionEpoch;
+    const updateTmuxMargin = async (previewOnly = false, epoch = selectionEpoch) => {
+      if (epoch !== selectionEpoch) return;
       const result = await window.silingTrimSelection(previewOnly);
       if (epoch !== selectionEpoch) return;
       tmuxPreview = null; clearMargin();
       const preview = result?.preview;
-      if (!preview || preview.rectangle
+      // Read-only previews can arrive before tmux has received the drag.
+      // Only the final adjustment may invalidate a pending selection.
+      if (!preview?.text && !previewOnly) tmuxSelectionPending = false;
+      if (!preview?.text || preview.rectangle
           || preview.end.y - preview.start.y + 1 !== preview.text.split(/\r?\n/).length) return;
       const normalized = dedentSelection(preview.text);
       if (!normalized.indent) return;
@@ -900,7 +903,8 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
         // Suppress the default drag-end copy-and-cancel: retain the highlighted
         // tmux selection so wheel scrolling and the copy shortcut can use it.
         if (tmuxSelectionPending && window.silingTrimSelection) {
-          selectionAdjustment = selectionAdjustment.then(() => updateTmuxMargin())
+          const epoch = selectionEpoch;
+          selectionAdjustment = selectionAdjustment.then(() => updateTmuxMargin(false, epoch))
             .catch(() => {}); // Keep the original selection if adjustment is unavailable.
         }
         setTimeout(clearMode, 0);
@@ -970,6 +974,28 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       clearMode();
     }, true);
 
+    let copyPending = false;
+    let copyNotice = null;
+    let copyNoticeTimer = null;
+    const showSelectionExpired = () => {
+      if (!copyNotice) {
+        copyNotice = document.createElement("div");
+        copyNotice.setAttribute("role", "status");
+        copyNotice.style.cssText = "position:fixed;bottom:12px;left:12px;right:12px;z-index:10000;"
+          + "padding:8px 12px;border-radius:6px;background:#252a34;color:#fff;"
+          + "font:13px system-ui;pointer-events:none";
+        document.documentElement.appendChild(copyNotice);
+      }
+      let language = document.documentElement.lang;
+      try { language = window.parent.document.documentElement.lang || language; } catch (_) {}
+      copyNotice.textContent = language?.startsWith("zh")
+        ? "选区已失效，请重新选择文字后复制。"
+        : "Selection expired. Select text again to copy.";
+      copyNotice.style.display = "block";
+      clearTimeout(copyNoticeTimer);
+      copyNoticeTimer = setTimeout(() => { copyNotice.style.display = "none"; }, 3000);
+    };
+    const expiredSelection = () => Object.assign(new Error("Selection expired"), {selectionExpired:true});
     document.addEventListener("keydown", (event) => {
       if (!inlineSelection()) return;
       const copy = event.key.toLowerCase() === "c"
@@ -978,20 +1004,45 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
         event.preventDefault();
         event.stopImmediatePropagation();
         const read = window.silingReadSelection;
-        if (!read) return;
-        const text = selectionAdjustment.then(read).then(result => {
-          if (!result.text) throw new Error("No terminal text is selected");
+        if (!read || copyPending) return;
+        copyPending = true;
+        const epoch = selectionEpoch;
+        const text = selectionAdjustment.then(() => {
+          if (epoch !== selectionEpoch || !tmuxSelectionPending) throw expiredSelection();
+          return read();
+        }).then(result => {
+          if (epoch !== selectionEpoch || !tmuxSelectionPending || !result?.text
+              || result.selected === false) throw expiredSelection();
           return tmuxPreview?.text === result.text ? tmuxPreview.normalized : result.text;
         });
+        const blob = text.then(value => new Blob([value], {type: "text/plain"}));
+        // Clipboard permission can fail before the pending read completes.
+        // Observe both promises even when the clipboard never consumes them.
+        let selectionError = null;
+        text.catch(error => { selectionError = error; });
+        blob.catch(() => {});
         // Construct ClipboardItem during the trusted key event. Safari keeps
         // its user gesture permission while the selection request completes.
-        const copying = window.ClipboardItem && navigator.clipboard?.write
-          ? navigator.clipboard.write([new ClipboardItem({
-              "text/plain": text.then(value => new Blob([value], {type: "text/plain"})),
-            })])
-          : text.then(value => navigator.clipboard.writeText(value));
-        copying.catch(error => window.alert("Copy failed: " + error.message));
-      } else if (event.key === "Escape"
+        let copying;
+        try {
+          copying = window.ClipboardItem && navigator.clipboard?.write
+            ? navigator.clipboard.write([new ClipboardItem({"text/plain": blob})])
+            : text.then(value => navigator.clipboard.writeText(value));
+        } catch (error) { copying = Promise.reject(error); }
+        Promise.resolve(copying).catch(error => {
+          if (epoch !== selectionEpoch) return;
+          // Some browsers wrap a rejected ClipboardItem promise in a generic
+          // DOMException. Retain the actual selection failure for classification.
+          error = selectionError || error;
+          if (error.selectionExpired || /No terminal text is selected$/.test(error.message || "")) {
+            tmuxSelectionPending = false;
+            selectionEpoch++; tmuxPreview = null; clearMargin();
+            showSelectionExpired();
+          } else {
+            window.alert("Copy failed: " + error.message);
+          }
+        }).finally(() => { copyPending = false; });
+      } else if (event.key === "Escape" || event.key === "Enter"
           || (!event.metaKey && !event.altKey && event.key.length === 1)) {
         tmuxSelectionPending = false;
         selectionEpoch++; tmuxPreview = null; clearMargin();
