@@ -47,5 +47,20 @@ Dashboard admin-token access before treating an agent as adversarial. Keys are
 transient in memory, not encrypted at rest; expiry/revoke erases the retained
 bytearray but cannot guarantee removal of Python, HTTP or TLS memory copies.
 A request already sent before revocation may finish. Do not paste these keys into
-ordinary shell commands or agent messages; private terminal input is a separate,
-weaker transport feature, not a broker operation.
+ordinary shell commands or agent messages. Terminal private-input delivery is
+retired: even old-page remote requests receive 410 before any forwarding.
+
+## Secret configuration boundary
+
+The explicit configuration writer sends credentials directly to `backend.env`,
+never through tmux, agent prompts, command arguments or API response content.
+SSH uses a fixed isolated Python helper, stdin payloads, noninteractive auth and
+verified host keys; Remote Nodes require HTTPS or loopback tunnels. It validates
+single-line dotenv values, rejects symlinks/hardlinks and tracked/unignored Git
+targets, stages outside Git on the same filesystem, and atomically replaces an
+owner-only file. It does not create backups, reload services or retry writes.
+Handled errors clean temporary files; abrupt termination can leave a `0600`
+staging file. Existing plaintext, OS memory copies and same-account/admin file
+access are outside this boundary. To keep the agent from reading the target,
+use separate OS privileges/hosts and withhold that file's access. This writer
+is not an encrypted vault or a substitute for the status-only operation broker.

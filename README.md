@@ -166,14 +166,30 @@ Python/HTTP/TLS may temporarily copy keys in memory; this is not cryptographic
 memory-zeroization or an encrypted persistent vault. Keep key values exclusively
 in the private value field, never in URLs, request bodies, ordinary commands or chat.
 
-Pane **More → Private input** provides a masked field for a waiting password or token
-prompt. SiLing clears it on send, close, or hiding the tab; it never saves it as a
-draft or sends it through ordinary message handling. Delivery uses stdin and a
-temporary, deleted tmux buffer, keeping the value out of command arguments and files.
-Requests require HTTPS or loopback access and are never automatically retried.
-The receiving program can still display or record input: this does not conceal shell
-commands, shell history, or messages/transcripts in an agent. Use it only at a prompt
-that accepts private input. Remote Nodes also require HTTPS or a loopback tunnel.
+Pane **More → Secret configuration** writes one environment variable directly to
+`backend.env` on the pane's Dashboard node or an explicitly selected SSH host.
+Choose an existing absolute directory, enter the variable name and masked value,
+and acknowledge the plaintext file boundary. Nothing is pasted into tmux or sent
+as an agent message. The old private-input API is retired, including forwarding
+requests from old pages to older Remote Nodes.
+
+The writer preserves other single-line dotenv entries, updates duplicate entries
+for the selected name, and replaces the file with owner-only (`0600`) permissions.
+It rejects symlinks, hard links, unsafe directories, multiline dotenv files, and
+tracked or unignored targets inside Git repositories. Add `backend.env` to your
+ignore rules before using it in a repository. Values cannot contain control
+characters, dollar signs or backticks. SSH requires preconfigured noninteractive
+authentication, a verified host key and Python 3; values travel on stdin only.
+HTTPS or loopback is required for Dashboard and Remote Node requests. The field
+clears on send, close or hidden tab; failures never restore or automatically retry
+it. Responses contain status only, without file content or SSH errors.
+
+This prevents the key from passing through chat or terminal input; it does not
+hide a plaintext file from agents/programs with file access. Use a separate OS
+account or SSH host for that isolation, or the volatile controlled-operation
+broker when a fixed API call is sufficient. Temporary `0600` staging files stay
+outside Git on the same filesystem and are removed on handled failure; a process
+crash may leave one behind. This is not an encrypted credential vault.
 
 Click an absolute local path or a `file://` link in a terminal to open it in SiLing’s
 Files preview. The clicked item is linked to that session automatically; agents do
@@ -900,6 +916,6 @@ Terminal zoom preserves the last painted frame while tmux repaints at the new si
 
 During resize, a live prompt on the last terminal row keeps its bottom position in the retained frame, preventing a second downward jump when tmux restores history. Selected text, local scrollback browsing and cursors above the last row keep top alignment.
 
-Pane More keeps Rename, Reconnect display, and Close pane at the top. Expand Appearance and position, Files and connections, Private input and secrets, or Session management for other controls; restart, archive, switch type, and terminate are under Session management. Closing a pane keeps its session running.
+Pane More keeps Rename, Reconnect display, and Close pane at the top. Expand Appearance and position, Files and connections, Secret configuration and operations, or Session management for other controls; restart, archive, switch type, and terminate are under Session management. Closing a pane keeps its session running.
 
 Rename a session using the sidebar pencil or pane More → Rename session. The shared in-page dialog works in browsers and Electron; an empty name restores the automatic title, and failed saves preserve your input for retry.

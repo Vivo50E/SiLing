@@ -65,7 +65,7 @@ from .plugins import Plugins
 from .workflows import DispatchRejected, Workflows, validate as validate_workflow
 from .agent_cli import resolve_agent_cli
 from .browser_open import open_system_browser, system_browser_available, validate_web_url
-from . import terminal_files, terminal_control, secret_input
+from . import terminal_files, terminal_control, secret_input, secret_config
 from .secret_broker import SecretBroker
 from .link_jobs import LinkJobs
 from .conversation_metrics import TranscriptMetricsCache
@@ -8718,7 +8718,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         return value
 
     async def _proxy_remote_http(request: Request, node, path: str):
-        sensitive = path.endswith('/secret-input') or '/secret-operations' in path
+        sensitive = path.endswith(('/secret-input', '/secret-config')) or '/secret-operations' in path
         if sensitive:
             destination = urlparse(node.upstream_url(path))
             if (destination.hostname != 'localhost' and not secret_input.trusted_transport(
@@ -8732,6 +8732,8 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                 "cookie", "accept-encoding",
             }
         }
+        if path.endswith('/secret-config'):
+            headers = {k:v for k,v in headers.items() if k.lower() not in {'origin','referer'}}
         headers.update(node.authorization_headers)
         try:
             client = remote_secret_client if sensitive else remote_http_client
@@ -8739,7 +8741,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                 request.method,
                 node.upstream_url(path),
                 headers=headers,
-                params=request.query_params,
+                params={} if path.endswith('/secret-config') else request.query_params,
                 content=await request.body(),
                 timeout=httpx.Timeout(
                     connect=node.connect_timeout_seconds,
@@ -8756,6 +8758,13 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                  if sensitive else f"remote node {node.label} unavailable: {exc}"},
                 status_code=502,
             )
+        if path.endswith('/secret-config'):
+            try:
+                ok = upstream.status_code == 200 and upstream.json() == {'ok': True}
+            except ValueError:
+                ok = False
+            return JSONResponse({'ok':True} if ok else {'detail':secret_config.FAILURE},
+                                status_code=200 if ok else 502, headers={'Cache-Control':'no-store'})
         response_headers = {
             key: value for key, value in upstream.headers.items()
             if key.lower() not in {
@@ -8833,13 +8842,22 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             )
             if not authenticated and request.url.path != "/":
                 # Allow GET / to render a page that prompts for a token.
-                return JSONResponse({"error": "invalid token"}, status_code=401)
+                return JSONResponse({"error": "invalid token"}, status_code=401, headers={"Cache-Control":"no-store"})
         private_input = request.url.path.startswith('/api/sessions/') and (
-            request.url.path.endswith('/secret-input') or '/secret-operations' in request.url.path)
+            request.url.path.endswith(('/secret-input', '/secret-config')) or '/secret-operations' in request.url.path)
         if private_input and not secret_input.trusted_transport(
                 request.url.scheme, request.client.host if request.client else ''):
             return JSONResponse({'detail': 'Private input requires HTTPS or a loopback connection'},
                                 status_code=403, headers={'Cache-Control': 'no-store'})
+        # Reject even remote IDs before forwarding to an older node.
+        if request.url.path.startswith('/api/sessions/') and request.url.path.endswith('/secret-input'):
+            return JSONResponse({'detail': 'Terminal secret pasting is disabled. Use secret configuration or a controlled operation.'},
+                                status_code=410, headers={'Cache-Control':'no-store'})
+        if request.url.path.endswith('/secret-config'):
+            origin = request.headers.get('origin')
+            if origin and not secret_config.same_origin(origin, str(request.url)):
+                return JSONResponse({'detail':'Secret configuration requires a same-origin browser request'},
+                                    status_code=403, headers={'Cache-Control':'no-store'})
         target = _remote_session_target(request.url.path)
         response = (
             await _proxy_remote_http(request, *target)
@@ -10761,36 +10779,31 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             raise HTTPException(409, str(exc)) from None
 
     @app.post("/api/sessions/{run_id}/secret-input")
-    async def post_secret_input(run_id: str, request: Request):
-        # Parse manually: framework validation must never reflect a bad value.
-        value = bytearray()
-        async for chunk in request.stream():
-            value.extend(chunk)
-            if len(value) > secret_input.MAX_SECRET_BYTES:
-                raise HTTPException(413, "Private input exceeds 4096 bytes")
+    async def post_secret_input(run_id: str):
+        raise HTTPException(410, "Terminal secret pasting is disabled")
+
+    @app.post("/api/sessions/{run_id}/secret-config")
+    async def post_secret_config(run_id: str, request: Request):
+        raw = bytearray()
+        spec = None
         try:
-            secret_input.validate(bytes(value))
-            enter = request.headers.get('x-siling-secret-enter', 'false')
-            if enter not in ('true', 'false'):
-                raise ValueError('Invalid private input option')
-            run = _lookup_run_light(outputs_dir, run_id)
-            if not run:
+            async for chunk in request.stream():
+                raw.extend(chunk)
+                if len(raw) > secret_config.MAX_REQUEST_BYTES:
+                    raise HTTPException(413, "Configuration request is too large")
+            spec = json.loads(raw)
+            secret_config.validate(spec)
+            if not _lookup_run_light(outputs_dir, run_id):
                 raise HTTPException(404, "run not found")
-            session = run.get('tmux_session', '')
-            if not session:
-                raise HTTPException(409, "Session has no live terminal")
-            pane, _error = _tmux_target_pane(session)
-            if not pane:
-                raise HTTPException(409, "Session has no live terminal")
-            # No ordinary send path, argv value, transcript, retry, or stderr.
-            ok = await asyncio.to_thread(secret_input.send, pane, bytes(value), enter == 'true')
-            if not ok:
-                raise HTTPException(502, "Delivery could not be confirmed. Check the terminal before sending again.")
+            await asyncio.to_thread(secret_config.write, dict(spec))
             return {"ok": True}
-        except ValueError as exc:
-            raise HTTPException(400, str(exc)) from None
+        except (ValueError, TypeError, OSError, RuntimeError, subprocess.SubprocessError):
+            # No submitted value, parsed content, path errors or SSH stderr.
+            raise HTTPException(400, secret_config.FAILURE) from None
         finally:
-            value[:] = b'\0' * len(value)
+            raw[:] = b'\0' * len(raw)
+            if isinstance(spec, dict):
+                spec['value'] = ''
 
     @app.post("/api/sessions/{run_id}/runtime-config")
     async def post_runtime_config(run_id: str, request: Request):

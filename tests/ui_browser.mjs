@@ -239,9 +239,9 @@ const server = http.createServer((req, res) => {
       brokerOperations.set(scope,[metadata]);res.end(JSON.stringify({operation:metadata}));
     });return;
   }
-  if (url.pathname.endsWith('/secret-input')) {
+  if (url.pathname.endsWith('/secret-config')) {
     let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{
-      privateSubmissions.push({path:url.pathname,body,enter:req.headers['x-siling-secret-enter']});
+      privateSubmissions.push({path:url.pathname,...JSON.parse(body)});
       const reply=()=>{
         res.setHeader('Content-Type','application/json');
         res.writeHead(privateMode==='unauthorized'?401:privateMode==='failure'?502:200);
@@ -1144,59 +1144,69 @@ try {
   console.log('PASS: ordinary Terminal file context, selected relative file discovery, persistence UI and frame preservation');
   const framesBeforePrivate=frameLoads;
   const privateCard='[data-run-id="fixture-2"]';
-  await evaluate(`document.querySelector('${privateCard} .pane-input textarea').value='private test preserved draft'`);
-  const openPrivate=async()=>{
-    await evaluate(`document.querySelector('${privateCard} .btn-pane-more').click();document.querySelector('${privateCard} .btn-secret-input').click()`);
-    await waitFor(`!!document.querySelector('.private-input-dialog[open]')`);
+  const promptsBeforeConfig=sentPrompts.length;
+  await evaluate(`document.querySelector('${privateCard} .pane-input textarea').value='config test preserved draft'`);
+  const openPrivate=async(card=privateCard)=>{
+    await evaluate(`document.querySelector('${card} .btn-pane-more').click();document.querySelector('${card} .btn-secret-input').click()`);
+    await waitFor(`!!document.querySelector('.secret-config-dialog[open]')`);
   };
-  const privateValue=()=>evaluate(`document.querySelector('[data-private-value]').value`);
+  const privateValue=()=>evaluate(`document.querySelector('.secret-config-dialog [data-value]').value`);
+  const closeConfig=async()=>{await evaluate(`document.querySelector('.secret-config-dialog [data-close]').click()`);await waitFor(`!document.querySelector('.secret-config-dialog')`);};
+  const fillConfig=async(value)=>evaluate(`{const d=document.querySelector('.secret-config-dialog');d.querySelector('[data-directory]').value='/fixture/config';d.querySelector('[data-name]').value='SLACK_BOT_TOKEN';d.querySelector('[data-value]').value=${JSON.stringify(value)};d.querySelector('[data-confirm]').checked=true;}`);
   for(const language of ['zh','en']) {
     await evaluate(`{const c=document.querySelector('[data-appearance="language"]');c.value=${JSON.stringify(language)};c.dispatchEvent(new Event('change'));}`);
     await openPrivate();
-    assert.equal(await evaluate(`document.querySelector('[data-private-value]').type`),'password');
-    assert.equal(await evaluate(`document.querySelector('[data-private-value]').autocomplete`),'new-password');
-    assert.equal(await evaluate(`document.activeElement.hasAttribute('data-private-value')`),true);
-    await evaluate(`document.querySelector('[data-private-value]').value='fixture-private-cancel'`);
+    assert.equal(await evaluate(`document.querySelector('.secret-config-dialog [data-value]').type`),'password');
+    assert.equal(await evaluate(`document.querySelector('.secret-config-dialog [data-value]').autocomplete`),'new-password');
+    assert.equal(await evaluate(`document.querySelector('.secret-config-dialog').textContent.includes(${JSON.stringify(language==='zh'?'明文':'plaintext')})`),true);
+    await fillConfig('fixture-config-cancel');
     await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
     await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
-    await waitFor(`!document.querySelector('.private-input-dialog')`);
-    assert.equal(privateSubmissions.length,0,'Cancel never sends private input');
+    await waitFor(`!document.querySelector('.secret-config-dialog')`);
+    assert.equal(privateSubmissions.length,0,'Cancel never submits a key');
   }
-  await openPrivate();
-  assert.equal(await privateValue(),'','Reopening never restores private input');
-  await evaluate(`document.querySelector('[data-private-value]').value='fixture-private-hidden';Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));delete document.hidden`);
-  assert.equal(await privateValue(),'','Hiding the tab clears private input');
+  await openPrivate('[data-run-id="fixture-0"]');
+  assert.equal(await privateValue(),'');
+  await evaluate(`document.querySelector('.secret-config-dialog [data-value]').value='fixture-config-hidden';Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));delete document.hidden`);
+  assert.equal(await privateValue(),'','Hiding the tab clears the key');
   const storageBeforePrivate=await evaluate(`JSON.stringify(localStorage)`);
-  privateMode='delay';
-  await evaluate(`document.querySelector('[data-private-value]').value='fixture-private-$() 中文';document.querySelector('[data-private-enter]').checked=false;document.querySelector('[data-private-send]').click();document.querySelector('[data-private-send]').click()`);
-  await waitFor(`document.querySelector('[data-private-send]').disabled`);
-  assert.equal(await privateValue(),'','Sending immediately clears private input');
+  privateMode='delay'; await fillConfig('fixture-config-中文');
+  await evaluate(`document.querySelector('.secret-config-dialog [data-submit]').click();document.querySelector('.secret-config-dialog [data-submit]').click()`);
+  await waitFor(`document.querySelector('.secret-config-dialog [data-submit]').disabled`);
+  assert.equal(await privateValue(),'','Submitting immediately clears the key');
   for(let i=0;i<50&&!privateReply;i++) await pause(50);
-  assert.equal(privateSubmissions.length,1,'Duplicate click sends once');
-  assert.deepEqual(privateSubmissions[0],{path:'/api/sessions/fixture-2/secret-input',body:'fixture-private-$() 中文',enter:'false'});
+  assert.equal(privateSubmissions.length,1,'Duplicate click writes once');
+  assert.deepEqual(privateSubmissions[0],{path:'/api/sessions/fixture-0/secret-config',directory:'/fixture/config',host:'',name:'SLACK_BOT_TOKEN',value:'fixture-config-中文',confirm:true});
   privateReply();privateReply=null;
-  await waitFor(`!document.querySelector('.private-input-dialog')`);
-  assert.equal(await evaluate(`JSON.stringify(localStorage)`),storageBeforePrivate,'Private input writes no browser storage');
+  await waitFor(`document.querySelector('.secret-config-dialog [data-status]').textContent.includes('Saved')`);
+  await closeConfig();
+  assert.equal(await evaluate(`JSON.stringify(localStorage)`),storageBeforePrivate,'No credential or configuration fields enter browser storage');
   for(const mode of ['failure','unauthorized']) {
-    privateMode=mode;await openPrivate();
-    await evaluate(`document.querySelector('[data-private-value]').value='fixture-private-never-reflect';document.querySelector('[data-private-send]').click()`);
-    await waitFor(`!!document.querySelector('[data-private-status]').textContent`);
-    assert.equal(await privateValue(),'','Failure cannot restore private input');
-    assert.ok(await evaluate(`!document.querySelector('.private-input-dialog').textContent.includes('fixture-private-never-reflect')`),'Server errors cannot expose private values');
-    assert.ok(await evaluate(`document.querySelector('[data-private-status]').textContent.includes('Check the terminal')`));
-    await evaluate(`document.querySelector('[data-private-close]').click()`);
-    await waitFor(`!document.querySelector('.private-input-dialog')`);
+    privateMode=mode;await openPrivate();await fillConfig('fixture-config-never-reflect');
+    await evaluate(`document.querySelector('.secret-config-dialog [data-submit]').click()`);
+    await waitFor(`!!document.querySelector('.secret-config-dialog [data-status]').textContent`);
+    assert.equal(await privateValue(),'');
+    assert.ok(await evaluate(`!document.querySelector('.secret-config-dialog').textContent.includes('fixture-config-never-reflect')`));
+    assert.ok(await evaluate(`document.querySelector('.secret-config-dialog [data-status]').textContent.includes('Check the destination')`));
+    await closeConfig();
   }
-  assert.equal(privateSubmissions.length,3,'Failure and authentication rejection never automatically replay input');
-  assert.equal(await evaluate(`document.querySelector('${privateCard} .pane-input textarea').value`),'private test preserved draft');
-  assert.equal(frameLoads,framesBeforePrivate,'Private input preserves terminal frames');
+  assert.equal(privateSubmissions.length,3,'Failures never replay keys');
+  assert.equal(sentPrompts.length,promptsBeforeConfig,'Config writes never use agent messaging');
+  assert.equal(await evaluate(`document.querySelector('${privateCard} .pane-input textarea').value`),'config test preserved draft');
+  assert.equal(frameLoads,framesBeforePrivate,'Configuration preserves terminal frames');
+  assert.equal(requests.filter(r=>r.path.endsWith('/secret-input')).length,0,'Retired terminal input is never called');
   await cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   await openPrivate();
-  assert.ok(await evaluate(`(()=>{const r=document.querySelector('.private-input-dialog').getBoundingClientRect();return r.x>=0&&r.right<=innerWidth;})()`),'Private input fits a narrow screen');
-  await screenshot('private-input-mobile');
-  await evaluate(`document.querySelector('[data-private-close]').click()`);
+  await evaluate(`{const d=document.querySelector('.secret-config-dialog');d.querySelector('[data-destination]').value='ssh';d.querySelector('[data-destination]').dispatchEvent(new Event('change'));}`);
+  assert.equal(await evaluate(`document.querySelector('.secret-config-dialog [data-host-label]').hidden`),false);
+  await fillConfig('fixture-config-target-change');
+  await evaluate(`{const d=document.querySelector('.secret-config-dialog');d.querySelector('[data-destination]').value='node';d.querySelector('[data-destination]').dispatchEvent(new Event('change'));}`);
+  assert.equal(await privateValue(),'','Changing destination clears the secret and confirmation');
+  assert.equal(await evaluate(`document.querySelector('.secret-config-dialog [data-confirm]').checked`),false);
+  assert.ok(await evaluate(`(()=>{const r=document.querySelector('.secret-config-dialog').getBoundingClientRect();return r.x>=0&&r.right<=innerWidth&&r.height<=innerHeight;})()`),'Configuration fits a narrow screen');
+  await screenshot('secret-config-mobile'); await closeConfig();
   await cdp('Emulation.clearDeviceMetricsOverride');
-  console.log('PASS: masked bilingual private input, cancellation, hidden-tab clearing, no draft/storage, exact target, one-shot delivery, generic failures and mobile layout');
+  console.log('PASS: bilingual secret configuration, masked values, cancellation, tab clearing, exact destination, no messages/storage/terminal input, failed-auth protection and mobile layout');
   const framesBeforeBroker=frameLoads;
   const promptsBeforeBroker=sentPrompts.length;
   const openBroker=async()=>{

@@ -2772,6 +2772,7 @@
 <script src="/static/session-help.js?v=1"></script>
 <script src="/static/terminal-files.js?v=3"></script>
 <script src="/static/secret-operations.js?v=1"></script>
+<script src="/static/secret-config.js?v=1"></script>
 <script src="/static/terminal-keys.js?v=1"></script>
 <link rel="stylesheet" href="/static/browser-panes.css?v=1" />
 <script src="/static/browser-panes.js?v=1"></script>
@@ -8110,9 +8111,9 @@
               <button class="btn-disconnect-ssh" ${terminalSession ? "" : "hidden"} data-dialog-close><span data-ui-message="Disconnect%20SSH">Disconnect SSH</span></button>
             </div>
           </details>
-          <details class="pane-menu-section"><summary tabindex="0" data-ui-message="Private%20input%20and%20secrets">Private input and secrets</summary>
+          <details class="pane-menu-section"><summary tabindex="0" data-ui-message="Secret%20configuration%20and%20operations">Secret configuration and operations</summary>
             <div class="ui-menu-group">
-              <button class="btn-secret-input" ${s.alive ? "" : "disabled"} data-dialog-close data-ui-message="Private%20input">Private input</button>
+              <button class="btn-secret-input" data-dialog-close data-ui-message="Secret%20configuration">Secret configuration</button>
               <button class="btn-secret-operations" ${s.alive ? "" : "disabled"} data-dialog-close data-ui-message="Secret%20operations">Secret operations</button>
             </div>
           </details>
@@ -8162,7 +8163,7 @@
       }, {once: true});
     });
     card.querySelector(".btn-secret-input").addEventListener("click", () => {
-      paneMenu.addEventListener("close", () => openPrivateInput(runId, card), {once: true});
+      paneMenu.addEventListener("close", () => window.SilingSecretConfig.open({api, ui, runId, card}), {once: true});
     });
     card.querySelector(".btn-terminal-files").addEventListener("click", () => {
       void terminalFileController().configure(runId).catch(error => alert(error.message));
@@ -9194,69 +9195,6 @@
     }
   }
 
-  function openPrivateInput(runId, card) {
-    if (!window.isSecureContext) {
-      alert(ui.message("Private input requires HTTPS or localhost."));
-      return;
-    }
-    if (document.querySelector('.private-input-dialog')) return;
-    const dialog = document.createElement("dialog");
-    dialog.className = "ui-dialog private-input-dialog";
-    dialog.setAttribute("aria-label", ui.message("Private input"));
-    dialog.innerHTML = `
-      <div class="modal-head"><h2 data-ui-message="Private%20input">Private input</h2><button type="button" data-private-close aria-label="Close" data-ui-label="Close">×</button></div>
-      <form class="modal-body" autocomplete="off">
-        <p data-private-target></p>
-        <p class="ui-secondary" id="private-input-help" data-ui-message="Use only at a password or token prompt. The receiving program can still display or record input; this does not hide shell commands or agent messages.">Use only at a password or token prompt. The receiving program can still display or record input; this does not hide shell commands or agent messages.</p>
-        <label><span data-ui-message="Password%20or%20token">Password or token</span><input type="password" data-private-value autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="4096" aria-describedby="private-input-help" required></label>
-        <label style="display:flex;align-items:center;margin:12px 0"><input type="checkbox" data-private-enter checked><span data-ui-message="Send%20Enter%20after%20input">Send Enter after input</span></label>
-        <p class="ui-secondary" data-ui-message="SiLing does not save this input. It is cleared when sent, closed, or the tab is hidden.">SiLing does not save this input. It is cleared when sent, closed, or the tab is hidden.</p>
-        <p data-private-status role="status" aria-live="polite"></p>
-        <button type="submit" class="primary" data-private-send data-ui-message="Send%20private%20input">Send private input</button>
-      </form>`;
-    document.body.append(dialog);
-    ui.translate(dialog);
-    dialog.querySelector('[data-private-target]').textContent = card.querySelector('.pane-drag-region')?.textContent.trim() || runId;
-    ui.containDialogFocus(dialog);
-    const input = dialog.querySelector('[data-private-value]');
-    const status = dialog.querySelector('[data-private-status]');
-    const send = dialog.querySelector('[data-private-send]');
-    const clear = () => { input.value = ''; };
-    const hide = () => { if (document.hidden) clear(); };
-    document.addEventListener('visibilitychange', hide);
-    window.addEventListener('pagehide', clear);
-    dialog.querySelector('[data-private-close]').onclick = () => {clear(); dialog.close();};
-    dialog.addEventListener('cancel', clear);
-    dialog.addEventListener('close', () => {
-      clear(); document.removeEventListener('visibilitychange', hide);
-      window.removeEventListener('pagehide', clear); dialog.remove();
-      if (card.isConnected) card.querySelector('.btn-pane-more').focus({preventScroll:true});
-    }, {once:true});
-    dialog.querySelector('form').onsubmit = async event => {
-      event.preventDefault();
-      if (send.disabled) return;
-      if (!card.isConnected || card.dataset.runId !== runId) {clear(); dialog.close(); return;}
-      const value = input.value;
-      if (!value || new TextEncoder().encode(value).length > 4096 || /[\x00-\x1f\x7f]/.test(value)) {
-        status.textContent = ui.message('Enter one line, up to 4096 bytes, without control characters.');
-        return;
-      }
-      send.disabled = true;
-      input.disabled = true;
-      clear();
-      try {
-        await api(`/api/sessions/${encodeURIComponent(runId)}/secret-input`, {
-          method: 'POST', body: value, promptForToken: false, cache: 'no-store',
-          headers: {'Content-Type':'text/plain;charset=UTF-8', 'X-Siling-Secret-Enter':String(dialog.querySelector('[data-private-enter]').checked)},
-        });
-        if (dialog.isConnected) dialog.close();
-      } catch (_) {
-        // No upstream response text or auth replay may repeat/expose the value.
-        if (dialog.isConnected) status.textContent = ui.message('Delivery could not be confirmed. Check the terminal before sending again.');
-      } finally { input.disabled = false; send.disabled = false; }
-    };
-    dialog.showModal(); input.focus();
-  }
 
   async function sendText(runId, text, enter = true) {
     // Backend caps paste at 4 MB and chunks internally. Very large pastes
