@@ -34,6 +34,7 @@ MODEL=""
 EFFORT=""
 LABEL=""
 RESUME_ID=""
+FORK_ID=""
 NATIVE_SESSION_ID=""
 NATIVE_RESUME_SOURCE=""
 RUN_NAME_OVERRIDE=""
@@ -46,6 +47,7 @@ while [[ $# -gt 0 ]]; do
         --model|-m)   MODEL="$2"; shift 2 ;;
         --effort)     EFFORT="$2"; shift 2 ;;
         --label|-l)   LABEL="$2"; shift 2 ;;
+        --fork-id) FORK_ID="$2"; shift 2 ;;
         --resume-id)  RESUME_ID="$2"; shift 2 ;;
         --native-session-id) NATIVE_SESSION_ID="$2"; shift 2 ;;
         --native-resume-source) NATIVE_RESUME_SOURCE="$2"; shift 2 ;;
@@ -185,6 +187,24 @@ fi
 
 _append_effort_arg
 
+if [ -n "$FORK_ID" ]; then
+    if [ -n "$RESUME_ID" ] || [[ ! "$FORK_ID" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+        echo "Invalid fork identity or conflicting resume request" >&2; exit 2
+    fi
+    case "$AGENT_TYPE" in
+        claude)
+            AGENT_CMD="$AGENT_CMD --resume $(printf '%q' "$FORK_ID") --fork-session"
+            ;;
+        codex)
+            AGENT_CMD="$AGENT_BIN_Q fork --no-alt-screen --dangerously-bypass-approvals-and-sandbox -c check_for_update_on_startup=false"
+            if [ -n "$MODEL" ]; then AGENT_CMD="$AGENT_CMD -m $(printf '%q' "$MODEL")"; fi
+            _append_effort_arg
+            AGENT_CMD="$AGENT_CMD $(printf '%q' "$FORK_ID")"
+            ;;
+        *) echo "Native fork is supported only for Claude and Codex" >&2; exit 2 ;;
+    esac
+fi
+
 if [ -n "$NATIVE_SESSION_ID" ] && [ -z "$RESUME_ID" ]; then
     case "$AGENT_TYPE" in
         claude)
@@ -310,6 +330,7 @@ cat > "$SESSION_JSON" <<EOF
   "tmux_session": "$SESSION",
   "log_file": "logs/${TASK_NAME}.log",
   "started_at": "$(date +%Y-%m-%dT%H:%M:%S)",
+  "forked_from_resume_id": "$FORK_ID",
   "resume_agent": "$METADATA_RESUME_AGENT",
   "resume_id": "$METADATA_RESUME_ID",
   "resume_cmd": "$METADATA_RESUME_CMD",

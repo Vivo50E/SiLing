@@ -916,6 +916,8 @@ Terminal zoom preserves the last painted frame while tmux repaints at the new si
 
 During resize, a live prompt on the last terminal row keeps its bottom position in the retained frame, preventing a second downward jump when tmux restores history. Selected text, local scrollback browsing and cursors above the last row keep top alignment.
 
+Use **More → Session management → Fork to new pane** to branch a Claude or Codex conversation using its native CLI fork command. The original keeps running and the child gets its own conversation identity. The dialog also offers configuration-only copies for Claude, Codex, Cursor and Terminal; these start fresh and do not copy command history or SSH connections. Both sessions use the same working directory (not a Git worktree), so file edits are shared. Linked files, appearance and group membership are inherited. Saved history is used; unsent input and in-progress output may be absent. A full layout expands to the next size where possible; at maximum capacity the child remains in the session list.
+
 Pane More keeps Rename, Reconnect display, and Close pane at the top. Expand Appearance and position, Files and connections, Secret configuration and operations, or Session management for other controls; restart, archive, switch type, and terminate are under Session management. Closing a pane keeps its session running.
 
 Rename a session using the sidebar pencil or pane More → Rename session. The shared in-page dialog works in browsers and Electron; an empty name restores the automatic title, and failed saves preserve your input for retry.

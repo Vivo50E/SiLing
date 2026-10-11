@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { checkMobileReader } from './mobile_browser.mjs';
 import { checkMobileCompose } from './mobile_compose_browser.mjs';
 import { checkResources } from './resources_browser.mjs';
+import { checkFork } from './fork_browser.mjs';
 import { checkPaneMenu } from './pane_menu_browser.mjs';
 import { checkRename } from './rename_browser.mjs';
 import { checkArchives } from './archives_browser.mjs';
@@ -62,6 +63,8 @@ const privateSubmissions = [];
 let privateMode = 'ok';
 let privateReply;
 let frameLoads = 0;
+let forkMode='ok',forkReply;
+const forkSubmissions=[];
 let pendingCreation;
 const creationRequests = [];
 let modelMode = "ok", delayedModels;
@@ -237,6 +240,17 @@ const server = http.createServer((req, res) => {
       if(brokerFailure) {res.writeHead(400);res.end(JSON.stringify({detail:input.value}));return;}
       const {value,...metadata}=input;metadata.expires_at=Date.now()/1000+input.ttl;
       brokerOperations.set(scope,[metadata]);res.end(JSON.stringify({operation:metadata}));
+    });return;
+  }
+  if (url.pathname.endsWith('/fork')) {
+    let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{
+      const input=JSON.parse(body);forkSubmissions.push(input);
+      if(forkMode==='failure'){res.writeHead(503);res.end(JSON.stringify({detail:'Fixture retry'}));return;}
+      const reply=()=>{
+        if(!sessions.some(s=>s.run_id==='fixture-fork'))sessions.push({...sessions.find(s=>s.run_id==='fixture-1'),run_id:'fixture-fork',display_name:'Forked sample',resume_id:'independent-native-id'});
+        res.setHeader('Content-Type','application/json');res.end(JSON.stringify({ok:true,run_id:'fixture-fork'}));
+      };
+      if(forkMode==='delay')forkReply=reply;else reply();
     });return;
   }
   if (url.pathname.endsWith('/secret-config')) {
@@ -431,7 +445,12 @@ try {
   await cdp('Page.addScriptToEvaluateOnNewDocument', { source: `if(!localStorage.getItem('orch_layout')){localStorage.setItem('orch_layout','cols-2x2');localStorage.setItem('orch_slots',JSON.stringify(['fixture-0','fixture-1','fixture-2','fixture-3']));localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'en',theme:'dark'}));}` });
   await cdp('Page.navigate', { url: `http://127.0.0.1:${server.address().port}/` });
   const renameCheck=()=>checkRename({evaluate,waitFor,viewport,screenshot,cdp,mode:value=>{renameMode=value;},submissions:renameSubmissions,release:()=>{renameReply();renameReply=null;},pending:()=>!!renameReply});
-  if (process.env.UI_PANE_MENU_ONLY === '1') {
+  const forkCheck=()=>checkFork({evaluate,waitFor,cdp,viewport,screenshot,mode:value=>{forkMode=value;},submissions:forkSubmissions,release:()=>forkReply()});
+  if (process.env.UI_FORK_ONLY === '1') {
+    await waitFor(`!!document.querySelector('#grid')`);
+    await forkCheck();
+    assert.deepEqual(errors, [], 'No uncaught fork errors');
+  } else if (process.env.UI_PANE_MENU_ONLY === '1') {
     await viewport(1280,800);
     await waitFor(`document.querySelectorAll('.pane iframe').length===4`);
     await checkPaneMenu({evaluate,waitFor,cdp,viewport,screenshot});
@@ -1652,6 +1671,7 @@ try {
   readerMode='ok';
   await checkArchives({evaluate, waitFor, viewport, screenshot, pause, cdp, requests,
     mode:value=>{archiveMode=value;}, view:archiveFixture, submissions:archiveSubmissions, sessions, groups:groupFixture});
+  await forkCheck();
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));
   }

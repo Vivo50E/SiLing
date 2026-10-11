@@ -2764,7 +2764,7 @@
   }
 </style>
 <link rel="stylesheet" href="/static/ui-foundation.css?v=8" />
-<script src="/static/ui-messages.js?v=18"></script>
+<script src="/static/ui-messages.js?v=19"></script>
 <script src="/static/ui-foundation.js?v=12"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=4" />
 <script src="/static/pane-groups.js?v=6"></script>
@@ -8119,6 +8119,7 @@
           </details>
           <details class="pane-menu-section"><summary tabindex="0" data-ui-message="Session%20management">Session management</summary>
             <div class="ui-menu-group">
+              <button class="btn-fork-pane" data-dialog-close data-ui-message="Fork%20to%20new%20pane">Fork to new pane</button>
               <button class="btn-switch-type" data-dialog-close><span data-ui-message="Switch%20pane%20type">Switch pane type</span></button>
               <button class="btn-archive-session" data-dialog-close data-ui-message="Archive%20session">Archive session</button>
               <button class="btn-restart-session" ${terminalSession || s.agent_exited === true ? "hidden" : ""} data-dialog-close>${ui.icon("refresh")}<span data-i18n="restartAgent">Restart agent</span></button>
@@ -8139,6 +8140,9 @@
     card.querySelector(".btn-archive-session").onclick = () => void sessionArchives.change(runId);
     const moveSelect = card.querySelector(".pane-move-select");
     ui.wireDialog(card.querySelector(".pane-related-menu"), card.querySelector(".btn-related-sessions"), () => renderRelatedSessions(card, runId));
+    card.querySelector(".btn-fork-pane").addEventListener("click", () => {
+      paneMenu.addEventListener("close", () => openForkPane(runId), {once:true});
+    });
     card.querySelector(".btn-switch-type").addEventListener("click", () => openSwitchPaneModal(runId));
     card.querySelector(".btn-disconnect-ssh").addEventListener("click", async event => {
       const button = event.currentTarget;
@@ -9454,6 +9458,81 @@
       return await api(`/api/sessions/${encodeURIComponent(runId)}/kill`, { method: "POST" });
     } catch (e) { alert(ui.message("force kill failed: ") + e.message); }
   }
+
+  const forkDialog = document.createElement("dialog");
+  forkDialog.className = "ui-dialog";
+  forkDialog.id = "fork-pane-dialog";
+  forkDialog.setAttribute("aria-labelledby", "fork-pane-heading");
+  forkDialog.innerHTML = `<div class="modal-head"><h2 id="fork-pane-heading" data-ui-message="Fork%20to%20new%20pane">Fork to new pane</h2><button data-fork-close data-ui-label="Close">×</button></div>
+    <form><div class="modal-body">
+      <p id="fork-pane-source"></p>
+      <label><span data-ui-message="Inherit">Inherit</span><select id="fork-pane-kind">
+        <option value="conversation" data-ui-message="Conversation%20history">Conversation history</option>
+        <option value="configuration" data-ui-message="Configuration%20only">Configuration only</option>
+      </select></label>
+      <p id="fork-pane-explanation" class="ui-secondary"></p>
+      <p class="ui-secondary" data-ui-message="The%20original%20pane%20keeps%20running.%20Both%20sessions%20share%20the%20working%20directory%3B%20file%20changes%20affect%20both.">The original pane keeps running. Both sessions share the working directory; file changes affect both.</p>
+      <p id="fork-pane-error" role="alert" hidden></p>
+      <button type="submit" class="primary" data-ui-message="Create%20fork">Create fork</button>
+      <button type="button" data-fork-close data-ui-message="Cancel">Cancel</button>
+    </div></form>`;
+  document.body.appendChild(forkDialog);
+  ui.containDialogFocus(forkDialog);
+  let forkSource = null, forkRequestId = "", forkBusy = false, forkTrigger = null;
+  function describeFork() {
+    const native = ["claude", "codex"].includes(forkSource?.agent);
+    const configuration = $("fork-pane-kind").value === "configuration";
+    ui.setMessage($("fork-pane-explanation"), configuration
+      ? "Start a fresh session with the same agent, model and directory. Conversation history, running commands and SSH connections are not copied."
+      : "Create an independent conversation from the agent's saved history. Unsaved input and in-progress output may not be included.");
+    $("fork-pane-kind").querySelector('[value="conversation"]').disabled = !native;
+  }
+  function openForkPane(runId) {
+    if (forkBusy) return;
+    forkSource = sessions.find(row => row.run_id === runId);
+    if (!forkSource) return;
+    forkTrigger = paneCtrls.get(runId)?.cardEl.querySelector(".btn-pane-more");
+    forkRequestId = crypto.randomUUID();
+    $("fork-pane-source").textContent = sessionTitle(forkSource);
+    $("fork-pane-kind").value = ["claude", "codex"].includes(forkSource.agent) ? "conversation" : "configuration";
+    $("fork-pane-error").hidden = true;
+    describeFork();ui.translate(forkDialog);forkDialog.showModal();
+  }
+  $("fork-pane-kind").addEventListener("change", () => {forkRequestId = crypto.randomUUID();describeFork();});
+  forkDialog.addEventListener("cancel", event => {if(forkBusy)event.preventDefault();});
+  forkDialog.addEventListener("close", () => forkTrigger?.isConnected && forkTrigger.focus());
+  forkDialog.querySelectorAll("[data-fork-close]").forEach(button => button.addEventListener("click", () => {if(!forkBusy)forkDialog.close();}));
+  forkDialog.querySelector("form").addEventListener("submit", async event => {
+    event.preventDefault();if(forkBusy || !forkSource)return;
+    forkBusy = true;forkDialog.setAttribute("aria-busy","true");
+    const controls = [...forkDialog.querySelectorAll("button,select")];controls.forEach(el=>el.disabled=true);
+    $("fork-pane-error").hidden = true;
+    try {
+      const result = await api(`/api/sessions/${encodeURIComponent(forkSource.run_id)}/fork`, {method:"POST",body:{kind:$("fork-pane-kind").value,request_id:forkRequestId}});
+      if(!result?.ok || !result.run_id)throw new Error(ui.message("Fork did not return a new session"));
+      const id = result.run_id;
+      pendingRecoveredSessions.set(id,{expiresAt:Date.now()+30000,zoom:false});
+      if(slotOf(id)<0) {
+        const empty = slots.indexOf(null);
+        if(empty>=0) {slots[empty]=id;saveSlots();renderGrid();}
+        else {
+          const larger = [...$("layout-picker").querySelectorAll("button")].map(b=>b.dataset.layout)
+            .filter(name=>layoutSize(name)>slots.length).sort((a,b)=>layoutSize(a)-layoutSize(b))[0];
+          if(larger)setLayoutAndSlots(larger,[...slots,id]);
+          else alert(ui.message("Session created. All panes are occupied; open the new session from the session list."));
+        }
+      }
+      forkDialog.close();
+      if(result.fork_warning)alert(ui.message(result.fork_warning));
+      if(refreshListInFlight)await refreshListInFlight;
+      await refreshList();
+      setTimeout(refreshList,1500);
+    } catch(error) {
+      $("fork-pane-error").textContent = ui.message(error.message);$("fork-pane-error").hidden = false;
+    } finally {
+      forkBusy=false;forkDialog.removeAttribute("aria-busy");controls.forEach(el=>el.disabled=false);
+    }
+  });
 
   async function restartAgentSession(runId) {
     const s = sessions.find(x => x.run_id === runId);

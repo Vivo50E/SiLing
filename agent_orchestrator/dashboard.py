@@ -3316,6 +3316,8 @@ def _saved_resume_meta(data: dict[str, Any]) -> dict[str, str]:
 
 
 def _add_resume_fields(row: dict[str, Any], data: dict[str, Any]) -> None:
+    row["forked_from_resume_id"] = data.get("forked_from_resume_id", "")
+    row["forked_from_run_id"] = data.get("forked_from_run_id", "")
     row["logical_session_id"] = data.get("logical_session_id", "")
     row["resumed_from_run_id"] = data.get("resumed_from_run_id", "")
     meta = _saved_resume_meta(data)
@@ -3449,6 +3451,7 @@ def _find_codex_resume_near_start(
     *,
     before_s: float = 10.0,
     after_s: float = 180.0,
+    fork_parent_id: str = "",
 ) -> tuple[dict[str, str], list[dict[str, str]]]:
     root = Path.home() / ".codex" / "sessions"
     started_epoch = _parse_iso_epoch(started_at)
@@ -3476,6 +3479,8 @@ def _find_codex_resume_near_start(
             )
             if (
                 not resume_id
+                or (fork_parent_id and (resume_id == fork_parent_id
+                    or payload.get("forked_from_id") != fork_parent_id))
                 or (cwd and not _cwd_paths_match(cwd, pcwd))
                 or not candidate_start
             ):
@@ -3499,6 +3504,9 @@ def _find_codex_resume_near_start(
         return {}, []
     if len(candidates) == 1:
         return candidates[0][1], flat_candidates
+    if fork_parent_id:
+        # Multiple concurrent forks of one parent are ambiguous; never guess.
+        return {}, flat_candidates
     first_dist = candidates[0][0]
     second_dist = candidates[1][0]
     if first_dist <= 10.0 and second_dist - first_dist >= 5.0:
@@ -3599,6 +3607,10 @@ def _discover_resume_metadata(r: dict[str, Any],
         saved["resume_agent"] = agent
         saved["resume_cmd"] = _resume_cmd_for(agent, saved["resume_id"])
         return saved
+    if r.get("forked_from_resume_id"):
+        # A fork may display inherited transcript/commands. Wait for its own
+        # captured ID instead of guessing from that output or a shared cwd.
+        return {}
     text_meta = _extract_resume_from_text(agent, terminal_text)
     if text_meta:
         return text_meta
@@ -7312,7 +7324,8 @@ def _capture_native_resume_for_run(
         agent = _norm_agent(r.get("agent", ""))
         if agent == "codex":
             meta, candidates = _find_codex_resume_near_start(
-                r.get("cwd", ""), r.get("started_at", ""))
+                r.get("cwd", ""), r.get("started_at", ""),
+                **({"fork_parent_id": r["forked_from_resume_id"]} if r.get("forked_from_resume_id") else {}))
             if meta and _persist_resume_metadata(r, meta):
                 _persist_resume_capture_status(r, "captured", candidates=candidates)
                 print(f"[resume-capture] captured codex id "
@@ -8711,7 +8724,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             ]
         if (isinstance(value, str)
                 and parent_key in {
-                    "source_run_id", "resumed_from", "restarted_from", "parent_run_id", "switched_from",
+                    "source_run_id", "resumed_from", "restarted_from", "parent_run_id", "switched_from", "forked_from", "forked_from_run_id",
                 }
                 and value and not parse_qualified_run_id(value)):
             return qualify_run_id(node_id, value)
@@ -8745,7 +8758,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                 content=await request.body(),
                 timeout=httpx.Timeout(
                     connect=node.connect_timeout_seconds,
-                    read=max(60.0 if path.endswith(("/restart", "/switch-type")) else 30.0,
+                    read=max(60.0 if path.endswith(("/restart", "/switch-type", "/fork")) else 30.0,
                              node.request_timeout_seconds),
                     write=max(30.0, node.request_timeout_seconds),
                     pool=node.connect_timeout_seconds,
@@ -11026,6 +11039,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         effort: str = "",
         effort_mode: str = "",
         terminal_theme: Optional[str] = None,
+        fork_id: str = "",
     ) -> dict:
         """Build `run.sh` args, spawn the session, and return
         {"ok": True, "method": ..., "command": ..., "tmux_session": ...(optional)}.
@@ -11112,6 +11126,9 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             parts += ["--label", shlex.quote(label)]
         arg_list += ["--run-name", run_name]
         parts += ["--run-name", shlex.quote(run_name)]
+        if fork_id:
+            arg_list += ["--fork-id", fork_id]
+            parts += ["--fork-id", shlex.quote(fork_id)]
         if resume_id:
             arg_list += ["--resume-id", resume_id]
             parts += ["--resume-id", shlex.quote(resume_id)]
@@ -11488,6 +11505,86 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             terminal_theme=terminal_theme,
         )
         return assign_created_group(result, group_id, agent=agent)
+
+    @app.post("/api/sessions/{run_id}/fork")
+    async def fork_pane(run_id: str, request: Request):
+        raw = await request.body()
+        if len(raw) > 20000:
+            raise HTTPException(413, "Fork request is too large")
+        try:
+            body = json.loads(raw)
+            if not isinstance(body, dict):
+                raise ValueError("JSON body must be an object")
+            key = body.get("request_id")
+            if not isinstance(key, str) or not 1 <= len(key) <= 240:
+                raise ValueError("A fork request_id is required")
+            kind = body.get("kind", "conversation")
+            if kind not in ("conversation", "configuration"):
+                raise ValueError("Choose conversation or configuration")
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        receipt = hashlib.sha256((run_id + "\0" + key).encode()).hexdigest()
+        path = outputs_dir / ".pane-forks.json"
+        with edit_json(path, create=True) as data:
+            previous = data.get(receipt)
+            if previous:
+                if previous["kind"] != kind:
+                    raise HTTPException(409, "Fork request changed; reopen the fork form")
+                if previous.get("result"):
+                    return {**previous["result"], "replayed": True}
+                raise HTTPException(409, "Previous fork may have started; check Sessions before trying again")
+        source = _lookup_run(outputs_dir, run_id)
+        if not source:
+            raise HTTPException(404, "source session not found")
+        source = _run_with_native_model_effort(source)
+        agent = _norm_agent(source.get("agent", ""))
+        if agent not in ("claude", "codex", "cursor", "terminal"):
+            raise HTTPException(409, "This agent does not support pane forking")
+        fork_id = ""
+        if kind == "conversation":
+            if agent not in ("claude", "codex"):
+                raise HTTPException(409, "Native conversation fork requires Claude or Codex; choose configuration only")
+            fork_id = str(source.get("resume_id") or "")
+            if not re.fullmatch(r"[a-zA-Z0-9_-]+", fork_id):
+                raise HTTPException(409, "Source conversation identity is not available yet")
+            try:
+                executable = resolve_agent_cli(agent)
+                command = [executable, "fork", "--help"] if agent == "codex" else [executable, "--help"]
+                help_result = await asyncio.to_thread(subprocess.run, command, capture_output=True, text=True, timeout=10)
+                marker = "fork" if agent == "codex" else "--fork-session"
+                if help_result.returncode or marker not in help_result.stdout:
+                    raise ValueError("Installed agent CLI does not support native fork")
+            except (OSError, ValueError, subprocess.SubprocessError) as exc:
+                raise HTTPException(409, str(exc)) from exc
+        cwd = _resolve_session_cwd(source.get("cwd") or "")
+        label = (str(source.get("display_name") or source.get("label") or source.get("task") or agent) + " (fork)")[:80]
+        # Claim only after preflight. Persist uncertain launches to prevent
+        # retries after a lost response from creating duplicate children.
+        with edit_json(path, create=True) as data:
+            if receipt in data:
+                raise HTTPException(409, "Fork is already starting; retry this request shortly")
+            data[receipt] = {"kind": kind, "status": "starting"}
+        result = _spawn_session(agent, source.get("model") or "", label, cwd, "background",
+                                effort=source.get("effort") or "", effort_mode=source.get("effort_mode") or "",
+                                terminal_theme=source.get("terminal_theme"), fork_id=fork_id)
+        result.update(forked_from=run_id, fork_kind=kind, source_preserved=True)
+        # Record success before any optional metadata copy can fail.
+        with edit_json(path, create=True) as data:
+            data[receipt].update(status="started", result=result)
+        try:
+            with edit_json(Path(result["run_dir"]) / "session.json") as metadata:
+                metadata["forked_from_run_id"] = run_id
+            _copy_linked_folders_to_spawned_run(outputs_dir, source, result, exclude_run_id=run_id, label=label)
+            _copy_snapshot_ui_metadata_to_spawned_run(result, source)
+            source_group = pane_groups.view([source]).get("members", {}).get(run_id)
+            if source_group:
+                assign_created_group(result, source_group, agent=agent)
+        except (OSError, ValueError, KeyError, TypeError):
+            result["fork_warning"] = "Session created, but some inherited settings could not be saved"
+        with edit_json(path, create=True) as data:
+            data[receipt].update(result=result)
+        session_snapshots.request_refresh()
+        return result
 
     @app.post("/api/sessions/{run_id}/switch-type")
     async def switch_pane_type(run_id: str, request: Request):
