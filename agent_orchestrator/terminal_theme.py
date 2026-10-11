@@ -125,6 +125,15 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     if (!terminal || !screen || !mouse || !selection) return false;
     if (mouse.__orchInteractionPatch) return true;
 
+    // Avoid CoreText's implicit CJK/emoji fallback for ttyd's stock font on
+    // macOS. Keep the existing Latin font order, custom fonts and other
+    // platforms untouched. Apply once before the initial fit, not per repaint.
+    const stockFont = "Consolas,Liberation Mono,Menlo,Courier,monospace";
+    if (/Mac/.test(window.navigator?.platform || "")
+        && terminal.options.fontFamily === stockFont) {
+      terminal.options.fontFamily = 'Consolas,Liberation Mono,Menlo,Courier,"PingFang SC","Apple Color Emoji",monospace';
+    }
+
     // ttyd 1.7.x's bundled xterm lacks DEC 2026. tmux can synchronize its
     // internal screen yet still send a client repaint over several WS chunks.
     // Hold only paint, not parsing/input, until that client frame is complete.

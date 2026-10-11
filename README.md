@@ -41,7 +41,9 @@ The following are additions and improvements maintained in
   Terminal, Codex and Cursor panes. Cursor full-screen and partial repaints use
   [synchronized output](docs/cursor-redraw.md) through tmux and browser painting
   to hide intermediate replay screens, including separate clear/repaint writes.
-  Terminal sizing is rechecked after container and font changes.
+  Terminal sizing is rechecked after container and font changes. On macOS,
+  the default terminal font explicitly selects Chinese and emoji fallbacks to
+  reduce system font lookup; custom terminal fonts are preserved.
 - **Links and file previews:** optional in-Dashboard web browsing, local terminal
   paths that open in Files, read-only remote file snapshots from SSH terminals
   with a configured file host, more reliable wrapped links (including long URL

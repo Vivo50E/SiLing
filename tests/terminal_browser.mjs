@@ -90,9 +90,22 @@ try {
   assert.ok(history.split('\n').some(line=>line==='SMOKE_INPUT_OK'));
   const injection=execFileSync(python,['-c',"from agent_orchestrator.terminal_theme import _TTYD_INTERACTION_SCRIPT as s;print(s.split('>',1)[1].rsplit('</script>',1)[0])"],{cwd:root,encoding:'utf8'});
   await evaluate(`Object.defineProperty(window,'frameElement',{value:{dataset:{inlineSelection:'true',nativeSelection:'true'}}});window.localMessages=[];Object.defineProperty(window,'parent',{value:{postMessage: message=>window.localMessages.push(message)}});void 0;`);
+  const originalFont=await evaluate('term.options.fontFamily');
+  const originalCell=await evaluate('term._core._renderService.dimensions.css.cell.width');
   await evaluate(injection);
   // Let initial font fitting and ttyd's 300 ms resize overlay settle.
   await pause(500);
+  if (await evaluate('/Mac/.test(navigator.platform)')) {
+    assert.equal(await evaluate('term.options.fontFamily'), 'Consolas,Liberation Mono,Menlo,Courier,"PingFang SC","Apple Color Emoji",monospace');
+    assert.equal(await evaluate('term._core._renderService.dimensions.css.cell.width'), originalCell,
+      'Native fallbacks must preserve the default ASCII cell width');
+  } else assert.equal(await evaluate('term.options.fontFamily'), originalFont);
+  await evaluate(`new Promise(resolve => term.write('\\x1b[?1049h\\x1b[2J\\x1b[HAB中文─🙂Z', resolve))`);
+  await pause(150);
+  assert.deepEqual(await evaluate(`(()=>{const line=term.buffer.active.getLine(0);return [line.getCell(2).getChars(),line.getCell(2).getWidth(),line.getCell(4).getChars(),line.getCell(7).getWidth()]})()`),
+    ['中',2,'文',2], 'Chinese and emoji retain terminal cell boundaries');
+  await screenshot('native-font-fallback');
+  await evaluate(`new Promise(resolve => term.write('\\x1b[?1049l', resolve))`);
   // Browser rendering must remain frozen across split synchronized updates.
   await evaluate(`new Promise(resolve => term.write('\\x1b[?1049hBASELINE\\x1b[?25l', resolve))`);
   await pause(100);
