@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { checkMobileReader } from './mobile_browser.mjs';
 import { checkMobileCompose } from './mobile_compose_browser.mjs';
 import { checkResources } from './resources_browser.mjs';
+import { checkPanePlacement } from './pane_placement_browser.mjs';
 import { checkPlainPolling } from './plain_polling_browser.mjs';
 import { checkFork } from './fork_browser.mjs';
 import { checkPaneMenu } from './pane_menu_browser.mjs';
@@ -452,7 +453,11 @@ try {
   const plainCheck=()=>checkPlainPolling({evaluate,waitFor,cdp,viewport,pause,
     configure:text=>{plainText=text;plainFailure=false;if(!sessions.some(s=>s.run_id==='fixture-plain-perf'))sessions.push({run_id:'fixture-plain-perf',kind:'task',agent:'terminal',display_name:'Large ended log',alive:false});},
     text:value=>{plainText=value;},failure:value=>{plainFailure=value;},reads:()=>plainReads});
-  if (process.env.UI_PLAIN_ONLY === '1') {
+  const placementCheck=()=>checkPanePlacement({evaluate,waitFor,cdp,viewport,pause,configure:rows=>{forkMode="ok";sessions.push(...rows);}});
+  if (process.env.UI_PLACEMENT_ONLY === '1') {
+    await placementCheck();
+    assert.deepEqual(errors, [], 'No uncaught placement errors');
+  } else if (process.env.UI_PLAIN_ONLY === '1') {
     await plainCheck();
     assert.deepEqual(errors, [], 'No uncaught plain log errors');
   } else if (process.env.UI_FORK_ONLY === '1') {
@@ -1682,6 +1687,7 @@ try {
     mode:value=>{archiveMode=value;}, view:archiveFixture, submissions:archiveSubmissions, sessions, groups:groupFixture});
   await forkCheck();
   await plainCheck();
+  await placementCheck();
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));
   }

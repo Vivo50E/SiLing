@@ -2764,7 +2764,7 @@
   }
 </style>
 <link rel="stylesheet" href="/static/ui-foundation.css?v=8" />
-<script src="/static/ui-messages.js?v=19"></script>
+<script src="/static/ui-messages.js?v=20"></script>
 <script src="/static/ui-foundation.js?v=12"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=4" />
 <script src="/static/pane-groups.js?v=6"></script>
@@ -2801,7 +2801,7 @@
       </div>
     </div>
     <div class="sess-search" id="sess-search">
-      <input type="search" id="sess-search-input" placeholder="Filter by name…" data-ui-placeholder=Filter%20by%20name%E2%80%A6
+      <input type="search" id="sess-search-input" placeholder="Search names, including ended sessions…" data-ui-placeholder=Search%20names%2C%20including%20ended%20sessions%E2%80%A6
              autocomplete="off" spellcheck="false" />
       <button class="search-clear" id="sess-search-clear" title="Clear search" data-ui-title=Clear%20search>×</button>
     </div>
@@ -4631,9 +4631,19 @@
     if (existing >= 0) return existing;
     const free = slots.findIndex(x => x == null);
     if (free >= 0) { slots[free] = runId; return free; }
-    // No free slot: overwrite slot 0 (oldest).
-    slots[0] = runId;
-    return 0;
+    const larger = [...$("layout-picker").querySelectorAll("button")].map(b => b.dataset.layout)
+      .filter(name => layoutSize(name) > slots.length)
+      .sort((a, b) => layoutSize(a) - layoutSize(b))[0];
+    if (larger) {
+      const index = slots.length;
+      layout = larger;
+      saveLayout();
+      applyLayoutChrome(layout);
+      slots = normalizeSlotsForLayout([...slots, runId], layoutSize(layout));
+      return index;
+    }
+    alert(ui.message("All panes are occupied. Close a pane, then open this session. Existing panes were kept."));
+    return -1;
   }
   function clearSlot(idx) { if (idx >= 0 && idx < slots.length) slots[idx] = null; }
   function swapSlots(a, b) {
@@ -5517,6 +5527,7 @@
     const runId = btn.dataset.runId;
     if (!runId) return;
     const slot = placeInFirstFree(runId);
+    if (slot < 0) return;
     saveSlots();
     renderGrid();
     closeMissionControl();
@@ -5528,6 +5539,7 @@
     const runId = target?.dataset.runId;
     if (!runId) return;
     const slot = placeInFirstFree(runId);
+    if (slot < 0) return;
     saveSlots();
     renderGrid();
     closeMissionControl();
@@ -6982,7 +6994,8 @@
       el.innerHTML = '<div style="padding: 24px 14px; color: var(--text-dim); font-size: 12px;"><span data-ui-message=No%20sessions%20in%20outputs%2F.>No sessions in outputs/.</span></div>';
       return;
     }
-    const base = sessions.filter(s => sessionArchives.listed(s) && paneGroups.matches(s));
+    const base = sessions.filter(s => (sessionArchives.listed(s)
+      || (searchQuery.trim() && !sessionArchives.isArchived(s.run_id))) && paneGroups.matches(s));
     renderSidebarPriorityFilter(base);
     const activityFiltered = sidebarWorkingOnly
       ? base.filter(sessionAgentWorking) : base;
@@ -7220,7 +7233,7 @@
       if (idx >= 0) {
         clearSlot(idx);
       } else {
-        placeInFirstFree(id);
+        if (placeInFirstFree(id) < 0) return;
         shouldHighlight = true;
       }
       saveSlots(); renderList(); renderGrid();
@@ -7237,17 +7250,8 @@
       highlightPaneForSessionSoon(id);
       return;
     }
-    // Plain click:
-    //   - If we have >1 slot (layout 2/3/4) and this session is NOT pinned,
-    //     add it to the next free slot; otherwise focus (replace slot 0).
-    //   - Single-pane layout: always replace slot 0.
-    if (slots.length <= 1) {
-      slots[0] = id;
-    } else {
-      const existing = slotOf(id);
-      if (existing < 0) placeInFirstFree(id);
-      // else: already placed, do nothing (keeps it where it is)
-    }
+    // Ordinary clicks preserve every occupied slot, including a single pane.
+    if (placeInFirstFree(id) < 0) return;
     saveSlots(); renderList(); renderGrid(); closeSidebar();
     highlightPaneForSessionSoon(id);
   }
@@ -9525,7 +9529,7 @@
           const larger = [...$("layout-picker").querySelectorAll("button")].map(b=>b.dataset.layout)
             .filter(name=>layoutSize(name)>slots.length).sort((a,b)=>layoutSize(a)-layoutSize(b))[0];
           if(larger)setLayoutAndSlots(larger,[...slots,id]);
-          else alert(ui.message("Session created. All panes are occupied; open the new session from the session list."));
+          else alert(ui.message("Session created. All panes are occupied; close a pane before opening it from the session list. Existing panes were kept."));
         }
       }
       forkDialog.close();
@@ -13731,7 +13735,7 @@
           saveSlots();
           renderGrid();
         } else {
-          alert(ui.message("Session created. All panes are occupied; open the new session from the session list."));
+          alert(ui.message("Session created. All panes are occupied; close a pane before opening it from the session list. Existing panes were kept."));
         }
       }
       closeModal();
@@ -13888,7 +13892,7 @@
       // Contextual placeholder: Projects gets a hint about Enter→content.
       input.placeholder = sessView === ui.message("projects")
         ? "Filter name · Enter to search log contents"
-        : ui.message("Filter by name…");
+        : ui.message("Search names, including ended sessions…");
     };
     const showStatus = (msg) => {
       if (!msg) { status.hidden = true; status.textContent = ""; return; }

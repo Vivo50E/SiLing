@@ -133,7 +133,11 @@ intervene.
   you return to the bottom.
 - Send input to any agent without switching terminal windows.
 - Zoom, reconnect, stop, close, or open linked files per pane.
-- Drag tasks between slots without restarting the underlying session.
+- Drag tasks between slots without restarting the underlying session. Opening
+  another session expands a full grid when possible; at the 16-pane limit it
+  asks you to free a slot instead of replacing an existing pane. Name searches
+  include unarchived ended sessions so their logs and Resume action remain
+  discoverable even after they leave the layout.
 - Keep Codex, Claude Code, and Cursor Agent work in the same view.
 
 The browser is only the control surface. Background tmux sessions continue
