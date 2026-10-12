@@ -137,7 +137,9 @@ intervene.
   another session expands a full grid when possible; at the 16-pane limit it
   asks you to free a slot instead of replacing an existing pane. Name searches
   include unarchived ended sessions so their logs and Resume action remain
-  discoverable even after they leave the layout.
+  discoverable even after they leave the layout. The list and totals show each
+  native conversation once, preferring an active run and otherwise the newest
+  run; historical logs remain intact. Forks with distinct conversation IDs stay separate.
 - Keep Codex, Claude Code, and Cursor Agent work in the same view.
 
 The browser is only the control surface. Background tmux sessions continue

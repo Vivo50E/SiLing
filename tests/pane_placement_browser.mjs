@@ -3,7 +3,8 @@ export async function checkPanePlacement({evaluate,waitFor,cdp,viewport,pause,co
   const ids=Array.from({length:16},(_,i)=>'placement-'+i);
   configure([...ids.map(run_id=>({run_id,kind:'task',agent:'claude',resume_id:'native-'+run_id,display_name:run_id,alive:true})),
     {run_id:'placement-extra',kind:'task',agent:'terminal',display_name:'Extra live session',alive:true},
-    {run_id:'placement-ended',kind:'task',agent:'claude',resume_id:'original-conversation',display_name:'Recovered PM',alive:false}]);
+    {run_id:'placement-ended',kind:'task',agent:'claude',resume_id:'original-conversation',display_name:'Recovered PM',alive:false,started_at:'2026-10-09T13:48:14Z'}]);
+  await waitFor(`!!document.querySelector('#session-list .session-item')`);
   await viewport(1280,900);
   const boot=async(layout,slots)=>{
     await evaluate(`localStorage.clear();localStorage.setItem('orch_layout',${JSON.stringify(layout)});localStorage.setItem('orch_slots',${JSON.stringify(JSON.stringify(slots))});localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'en'}));`);
@@ -44,5 +45,24 @@ export async function checkPanePlacement({evaluate,waitFor,cdp,viewport,pause,co
   await waitFor(`JSON.parse(localStorage.orch_slots)[15]==='placement-ended'`);
   assert.deepEqual((await evaluate('JSON.parse(localStorage.orch_slots)')).slice(0,15),ids.slice(0,15));
   assert.ok(await evaluate(`!!document.querySelector('[data-run-id="placement-ended"] .btn-resume-ended')`),'Recovered log retains resume action');
+  const row=(run_id,resume_id,extra={})=>({run_id,resume_id,kind:'run',agent:'claude',display_name:'Recovered PM',alive:false,started_at:'2026-10-01T12:00:00Z',...extra});
+  configure([
+    row('history-1','original-conversation'),row('history-2','original-conversation'),
+    row('active-old','active-conversation',{alive:true}),
+    row('ended-new','active-conversation',{started_at:'2026-10-10T12:00:00Z'}),
+    row('fork-distinct','fork-conversation',{parent_run_id:'placement-ended'}),
+    row('remote-distinct','original-conversation',{remote:true,node_id:'other-host',node_online:true}),
+    row('agent-distinct','original-conversation',{agent:'codex'}),
+    row('terminal-1','',{agent:'terminal'}),row('terminal-2','',{agent:'terminal'})
+  ]);
+  await cdp('Page.reload');
+  await waitFor(`!!document.querySelector('.session-item[data-id="active-old"]')`);
+  await evaluate(`const q=document.querySelector('#sess-search-input');q.value='Recovered PM';q.dispatchEvent(new Event('input'))`);
+  await waitFor(`!!document.querySelector('.session-item[data-id="placement-ended"]')`);
+  const listed=await evaluate(`[...document.querySelectorAll('#session-list .session-item')].map(el=>el.dataset.id).sort()`);
+  assert.deepEqual(listed,['placement-ended','active-old','fork-distinct','remote-distinct','agent-distinct','terminal-1','terminal-2'].sort(),
+    'One row per conversation, active before newest, distinct forks/hosts/agents and unknown identities preserved');
+  assert.equal(await evaluate(`!!document.querySelector('[data-run-id="placement-ended"] .btn-resume-ended')`),true,'Deduplication preserves the existing ended pane');
+  console.log('PASS: conversation deduplication keeps newest/active runs, separate identities and existing panes');
   console.log('PASS: automatic growth preserves frame/draft; full-grid click, toggle and fork preserve all panes; ended-session search restores history into a free slot');
 }

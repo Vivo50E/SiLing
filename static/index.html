@@ -6030,16 +6030,7 @@
       return native.reason || `${agent}${mode}${round} finished — waiting for input.`;
     }
 
-    function nativeIdentity(s) {
-      if (!s) return "";
-      const resumeId = String(s.resume_id || s.resume?.id || "").trim().toLowerCase();
-      if (!resumeId) return "";
-      const rawAgent = String(s.agent || "").trim().toLowerCase();
-      const agent = rawAgent.includes("codex") ? "codex"
-        : rawAgent.includes("claude") ? "claude" : rawAgent;
-      const node = String(s.node_id || "local").trim().toLowerCase();
-      return agent ? `${node}:${agent}:${resumeId}` : "";
-    }
+    function nativeIdentity(s) { return conversationIdentity(s); }
 
     function canonicalSession(s) {
       if (!s) return null;
@@ -6471,9 +6462,10 @@
         // for sessions that are done producing output and waiting on the
         // user. Runs on every poll (no-op when the user hasn't opted in).
         idleNotif.check(sessions);
-        const aliveCount = sessions.filter(session => session.alive).length;
+        const conversations = conversationSessions(sessions);
+        const aliveCount = conversations.filter(session => session.alive && !session.agent_exited).length;
         ui.setMessage($("conn-status"), "Alive {alive} · Ended {ended} · Total {total} · {time}", {
-          alive: aliveCount, ended: sessions.length - aliveCount, total: sessions.length,
+          alive: aliveCount, ended: conversations.length - aliveCount, total: conversations.length,
           time: new Date().toLocaleTimeString(document.documentElement.lang),
         });
 
@@ -6981,6 +6973,33 @@
     `;
   }
 
+  // Keep all runs for pane/log lookup; list native conversations only once.
+  function conversationIdentity(s) {
+    if (!s) return "";
+    const resumeId = String(s.resume_id || s.resume?.id || "").trim().toLowerCase();
+    if (!resumeId) return "";
+    const rawAgent = String(s.agent || "").trim().toLowerCase();
+    const agent = rawAgent.includes("codex") ? "codex"
+      : rawAgent.includes("claude") ? "claude" : rawAgent;
+    const node = String(s.node_id || "local").trim().toLowerCase();
+    return agent ? `${node}:${agent}:${resumeId}` : "";
+  }
+
+  function conversationSessions(rows) {
+    const representatives = new Map();
+    for (const row of rows) {
+      const key = conversationIdentity(row) || JSON.stringify(["run", row.run_id]);
+      const previous = representatives.get(key);
+      const active = value => !!value.alive && !value.agent_exited;
+      if (!previous || (active(row) && !active(previous))
+          || (active(row) === active(previous)
+            && parseEpochMs(row.started_at) > parseEpochMs(previous.started_at))) {
+        representatives.set(key, row);
+      }
+    }
+    return [...representatives.values()];
+  }
+
   function renderList() {
     sessionArchives.render();
     mobileReader?.update();
@@ -6994,7 +7013,7 @@
       el.innerHTML = '<div style="padding: 24px 14px; color: var(--text-dim); font-size: 12px;"><span data-ui-message=No%20sessions%20in%20outputs%2F.>No sessions in outputs/.</span></div>';
       return;
     }
-    const base = sessions.filter(s => (sessionArchives.listed(s)
+    const base = conversationSessions(sessions).filter(s => (sessionArchives.listed(s)
       || (searchQuery.trim() && !sessionArchives.isArchived(s.run_id))) && paneGroups.matches(s));
     renderSidebarPriorityFilter(base);
     const activityFiltered = sidebarWorkingOnly
