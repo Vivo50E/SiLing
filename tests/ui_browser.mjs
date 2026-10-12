@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { checkMobileReader } from './mobile_browser.mjs';
 import { checkMobileCompose } from './mobile_compose_browser.mjs';
 import { checkResources } from './resources_browser.mjs';
+import { checkPlainPolling } from './plain_polling_browser.mjs';
 import { checkFork } from './fork_browser.mjs';
 import { checkPaneMenu } from './pane_menu_browser.mjs';
 import { checkRename } from './rename_browser.mjs';
@@ -32,6 +33,7 @@ const sessions = ['claude', 'codex', 'terminal', 'cursor', 'custom-agent'].map((
   tmux_session: `fixture-${i}`, terminal_theme: 'soft-dark', panel_state: i === 0 ? 'p0' : '',
   remote: i === 4, node_id: i === 4 ? 'fixture-remote' : '', node_online: i !== 4,
 }));
+let plainText='',plainFailure=false,plainReads=0;
 let updateHead = "b".repeat(40), updateMode = "ok", updateReply;
 const updateApplies = [];
 const updateCandidate = () => ({eligible:true,branch:"agent/self-improve-fixture",head:updateHead,short_head:updateHead.slice(0,7),target_head:"a".repeat(40),ahead:1});
@@ -314,6 +316,7 @@ const server = http.createServer((req, res) => {
     return res.end(JSON.stringify({ok:true,kind:'markdown',name:'report.md',path:'/fixture/report.md',content:previewSource,truncated:truncatePreview}));
   }
   if (url.pathname.endsWith('/pane')) {
+    if(url.pathname.includes('/fixture-plain-perf/')){plainReads++;res.setHeader('Content-Type','text/plain');if(plainFailure){res.writeHead(503);return res.end('fixture unavailable');}return res.end(plainText);}
     res.setHeader('Content-Type', 'text/plain');
     return res.end(Array.from({length: 300}, (_, i) => `history-${i} <literal>`).join('\n'));
   }
@@ -446,7 +449,13 @@ try {
   await cdp('Page.navigate', { url: `http://127.0.0.1:${server.address().port}/` });
   const renameCheck=()=>checkRename({evaluate,waitFor,viewport,screenshot,cdp,mode:value=>{renameMode=value;},submissions:renameSubmissions,release:()=>{renameReply();renameReply=null;},pending:()=>!!renameReply});
   const forkCheck=()=>checkFork({evaluate,waitFor,cdp,viewport,screenshot,mode:value=>{forkMode=value;},submissions:forkSubmissions,release:()=>forkReply()});
-  if (process.env.UI_FORK_ONLY === '1') {
+  const plainCheck=()=>checkPlainPolling({evaluate,waitFor,cdp,viewport,pause,
+    configure:text=>{plainText=text;plainFailure=false;if(!sessions.some(s=>s.run_id==='fixture-plain-perf'))sessions.push({run_id:'fixture-plain-perf',kind:'task',agent:'terminal',display_name:'Large ended log',alive:false});},
+    text:value=>{plainText=value;},failure:value=>{plainFailure=value;},reads:()=>plainReads});
+  if (process.env.UI_PLAIN_ONLY === '1') {
+    await plainCheck();
+    assert.deepEqual(errors, [], 'No uncaught plain log errors');
+  } else if (process.env.UI_FORK_ONLY === '1') {
     await waitFor(`!!document.querySelector('#grid')`);
     await forkCheck();
     assert.deepEqual(errors, [], 'No uncaught fork errors');
@@ -1672,6 +1681,7 @@ try {
   await checkArchives({evaluate, waitFor, viewport, screenshot, pause, cdp, requests,
     mode:value=>{archiveMode=value;}, view:archiveFixture, submissions:archiveSubmissions, sessions, groups:groupFixture});
   await forkCheck();
+  await plainCheck();
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));
   }

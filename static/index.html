@@ -8949,17 +8949,22 @@
     paneEl.classList.add("empty");
 
     // Plain-mode freeze state, mirroring the rich-mode one.
-    const plain = { frozen: false, pendingText: null };
+    const plain = { frozen: false, pendingText: null, renderedText: null };
     ctrl.plain = plain;
     const atBottomPlain = () => {
-      // 40px tolerance so trivial sub-pixel rounding near the bottom
-      // still counts as "at bottom". Also honors the user's Ctrl+End
-      // intent via ctrl.autoScroll if anything sets it.
+      // Use the actual scroll position. The legacy autoScroll flag starts
+      // true and is never cleared, so it cannot indicate the reader's intent.
       const gap = paneEl.scrollHeight - paneEl.scrollTop - paneEl.clientHeight;
-      return gap < 40 || ctrl.autoScroll;
+      return gap < 40;
     };
     const applyPlain = (text) => {
-      paneEl.textContent = text || ui.message("(empty)");
+      const renderedText = text || ui.message("(empty)");
+      // Ended sessions can return megabytes of identical history every poll.
+      // Replacing it forces shaping/layout at scrollHeight and clears native
+      // selections, blocking input in every pane sharing this renderer.
+      if (plain.renderedText === renderedText) return;
+      paneEl.textContent = renderedText;
+      plain.renderedText = renderedText;
       paneEl.classList.toggle("empty", !text);
       // Only scroll to bottom here when we were already at bottom; the
       // caller checks that before invoking.
@@ -9030,6 +9035,7 @@
       } catch (e) {
         if (e && e.name === "AbortError") return;
         if (ctrl.plainPoll === pollState && !plain.frozen) {
+          plain.renderedText = null; // The same snapshot must restore after an error.
           paneEl.textContent = ui.message("(disconnected — retrying…)");
           paneEl.classList.add("empty");
         }

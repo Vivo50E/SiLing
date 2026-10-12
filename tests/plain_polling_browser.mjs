@@ -1,0 +1,35 @@
+import assert from 'node:assert/strict';
+export async function checkPlainPolling({evaluate,waitFor,cdp,viewport,pause,configure,text,failure,reads}) {
+  const sample='plain-history 中文 <literal> '+ 'x'.repeat(65)+'\n';
+  const large=sample.repeat(13000);
+  configure(large);
+  await viewport(1280,800);
+  await evaluate(`localStorage.clear();localStorage.setItem('orch_layout','cols-2x2');localStorage.setItem('orch_slots',JSON.stringify(['fixture-plain-perf',null,null,null]));localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'en',theme:'dark'}));`);
+  await cdp('Page.reload');
+  const pane=`document.querySelector('[data-run-id="fixture-plain-perf"] .pane')`;
+  await waitFor(`${pane}?.textContent.length===${large.length}`);
+  await evaluate(`window.plainTestPane=${pane};window.plainTestNode=plainTestPane.firstChild;window.plainChanges=0;window.plainObserver=new MutationObserver(r=>plainChanges+=r.length);plainObserver.observe(plainTestPane,{childList:true,subtree:true,characterData:true});const r=document.createRange();r.setStart(plainTestNode,0);r.setEnd(plainTestNode,13);getSelection().removeAllRanges();getSelection().addRange(r);`);
+  const start=reads();
+  for(let i=0;i<100&&reads()<start+3;i++)await pause(100);
+  assert.ok(reads()>=start+3,'Observe multiple real polling responses');
+  await pause(200);
+  assert.equal(await evaluate('plainChanges'),0,'Identical megabyte snapshots must not rebuild the DOM');
+  assert.equal(await evaluate('plainTestPane.firstChild===plainTestNode'),true);
+  assert.equal(await evaluate('getSelection().toString()'),'plain-history','Polling preserves native selection at the bottom');
+  await evaluate('getSelection().removeAllRanges();plainTestPane.scrollTop=0;plainTestPane.dispatchEvent(new Event("scroll"))');
+  text(large+'new-tail\n');
+  const freezeStart=reads();
+  for(let i=0;i<100&&reads()<freezeStart+2;i++)await pause(100);
+  assert.equal(await evaluate('plainTestPane.textContent.length'),large.length,'Reading history freezes changed output');
+  await evaluate(`plainTestPane.closest('.pane-card').querySelector('.jump-bottom-btn').click()`);
+  await waitFor(`plainTestPane.textContent.endsWith('new-tail\\n')`);
+  failure(true);
+  await waitFor(`plainTestPane.textContent.includes('disconnected')`);
+  failure(false);
+  await waitFor(`plainTestPane.textContent.endsWith('new-tail\\n')`);
+  text('');await waitFor(`plainTestPane.textContent==='(empty)'`);
+  text('<script>literal text</script>');await waitFor(`plainTestPane.textContent==='<script>literal text</script>'`);
+  assert.equal(await evaluate('plainTestPane.querySelector("script")'),null);
+  await evaluate('plainObserver.disconnect();getSelection().removeAllRanges()');
+  console.log('PASS: identical megabyte logs skip DOM replacement, preserve selection, freeze/flush changed output and restore after disconnect/empty snapshots');
+}

@@ -128,6 +128,9 @@ organized; smaller layouts give each agent more room when you need to read or
 intervene.
 
 - Use full interactive TTY panes or lightweight plain-text streaming.
+  Unchanged log snapshots keep their existing text and selection instead of
+  repeatedly laying out large histories; scrolling up pauses updates until
+  you return to the bottom.
 - Send input to any agent without switching terminal windows.
 - Zoom, reconnect, stop, close, or open linked files per pane.
 - Drag tasks between slots without restarting the underlying session.
