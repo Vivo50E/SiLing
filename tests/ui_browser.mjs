@@ -14,6 +14,7 @@ import { checkPanePlacement } from './pane_placement_browser.mjs';
 import { checkPlainPolling } from './plain_polling_browser.mjs';
 import { checkFork } from './fork_browser.mjs';
 import { checkPaneMenu } from './pane_menu_browser.mjs';
+import { checkSidebarMenu } from './sidebar_menu_browser.mjs';
 import { checkArrangeNames } from './arrange_names_browser.mjs';
 import { checkWorkingDirectory } from './working_directory_browser.mjs';
 import { checkRename } from './rename_browser.mjs';
@@ -473,7 +474,13 @@ try {
     sessions.push(...rows);groupFixture.groups=[{id:'arr-b',name:'B',color:'blue'},{id:'arr-a',name:'A',color:'teal'}];
     groupFixture.members=Object.fromEntries(rows.filter(r=>r.group).map(r=>[r.run_id,r.group]));
   }});
-  if (process.env.UI_ARRANGE_NAMES_ONLY === '1') {
+  const sidebarMenuCheck=()=>checkSidebarMenu({evaluate,waitFor,cdp,viewport,screenshot,configure:()=>{
+    sessions.push(...[0,1,2].map(i=>({run_id:'side-'+i,kind:'run',agent:'claude',resume_id:'side-native-'+i,alive:true,display_name:'Sidebar '+i,cwd:'/fixture'})));
+  }});
+  if (process.env.UI_SIDEBAR_MENU_ONLY === '1') {
+    await sidebarMenuCheck();
+    assert.deepEqual(errors, [], 'No uncaught sidebar menu errors');
+  } else if (process.env.UI_ARRANGE_NAMES_ONLY === '1') {
     await arrangeNamesCheck();
     assert.deepEqual(errors, [], 'No uncaught arrange errors');
   } else if (process.env.UI_CWD_ONLY === '1') {
@@ -1715,6 +1722,7 @@ try {
   await placementCheck();
   await cwdCheck();
   await arrangeNamesCheck();
+  await sidebarMenuCheck();
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));
   }

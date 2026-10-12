@@ -132,7 +132,9 @@ intervene.
   repeatedly laying out large histories; scrolling up pauses updates until
   you return to the bottom.
 - Send input to any agent without switching terminal windows.
-- Zoom, reconnect, stop, close, or open linked files per pane.
+- Zoom, reconnect, stop, close, or open linked files per pane. The sidebar’s
+  **…** button opens the same menu for an open pane. Unplaced sessions expose
+  session actions without changing the layout, plus an explicit **Open pane** action.
 - In **More → Session management → Change working directory**, save the
   directory for the next restart or resume. Agents can optionally restart after
   confirmation. Saving alone preserves the current process and draft; in a

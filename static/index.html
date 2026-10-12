@@ -357,6 +357,7 @@
   .session-item:hover .btn-rename,
   .session-item.active .btn-rename { opacity: 0.8; }
   .session-item .btn-rename:hover { opacity: 1 !important; border-color: var(--accent); }
+  .session-item .btn-session-more { margin-left:auto; flex-shrink:0; padding:2px 6px; }
   .tag-auto {
     display: inline-block; padding: 0 4px;
     font-size: 9px; color: var(--warn); border: 1px solid var(--warn);
@@ -6971,7 +6972,7 @@
           ${canLabel ? `<button class="btn-rename" title="Rename (label)" data-ui-title=Rename%20(label) aria-label="Rename session" data-ui-label=Rename%20session>${ui.icon("edit")}</button>` : ""}
           <button class="btn-archive-session" title="Archive session" data-ui-title="Archive%20session" aria-label="Archive session" data-ui-label="Archive%20session">${ui.icon("archive")}</button>
         </div>
-        <div class="si-agent">${ui.agentBadge(s.agent)}<span class="ui-secondary">${escapeHtml(_dot.title)}</span></div>
+        <div class="si-agent">${ui.agentBadge(s.agent)}<span class="ui-secondary">${escapeHtml(_dot.title)}</span><button class="btn-session-more" aria-haspopup="dialog" aria-expanded="false" aria-label="Pane actions" title="Pane actions" data-ui-label="Pane%20actions" data-ui-title="Pane%20actions">${ui.icon("more")}</button></div>
       </div>
     `;
   }
@@ -7093,6 +7094,9 @@
       const id = node.dataset.id;
       let clickTimer = null;
       node.addEventListener("click", (ev) => {
+        if (ev.target.closest(".btn-session-more")) {
+          ev.stopPropagation(); clearTimeout(clickTimer); openSidebarPaneMenu(id, ev.target.closest(".btn-session-more")); return;
+        }
         if (ev.target.closest(".btn-archive-session")) {
           ev.stopPropagation(); clearTimeout(clickTimer); void sessionArchives.change(id); return;
         }
@@ -7112,7 +7116,7 @@
         clickTimer = setTimeout(() => handleSessionClick(click, id), 260);
       });
       node.addEventListener("dblclick", (ev) => {
-        if (ev.target.closest(".btn-rename, .btn-archive-session")) return;
+        if (ev.target.closest(".btn-rename, .btn-archive-session, .btn-session-more")) return;
         ev.preventDefault();
         ev.stopPropagation();
         clearTimeout(clickTimer);
@@ -7129,6 +7133,69 @@
         setDragActive(false);
       });
     });
+  }
+
+  function sidebarMoreButton(id) {
+    return [...document.querySelectorAll("#session-list .session-item")]
+      .find(row => row.dataset.id === id)?.querySelector(".btn-session-more");
+  }
+  function returnToSidebarMore(id) {
+    requestAnimationFrame(() => {
+      const button = sidebarMoreButton(id);
+      button?.setAttribute("aria-expanded", "false");
+      if (!document.querySelector("dialog[open]")) button?.focus({preventScroll:true});
+    });
+  }
+  const sidebarPaneMenu = document.createElement("dialog");
+  sidebarPaneMenu.id = "sidebar-pane-menu";
+  sidebarPaneMenu.className = "ui-dialog pane-menu";
+  sidebarPaneMenu.setAttribute("aria-labelledby", "sidebar-pane-menu-title");
+  document.body.appendChild(sidebarPaneMenu);
+  ui.containDialogFocus(sidebarPaneMenu);
+  let sidebarMenuRunId = "";
+  sidebarPaneMenu.addEventListener("close", () => returnToSidebarMore(sidebarMenuRunId));
+  sidebarPaneMenu.addEventListener("click", event => {if (event.target === sidebarPaneMenu) sidebarPaneMenu.close();});
+  function openSidebarPaneMenu(id, trigger) {
+    const row = sessions.find(s => s.run_id === id);
+    if (!row) return;
+    const ctrl = paneCtrls.get(id);
+    const menu = ctrl?.cardEl.querySelector(".pane-menu");
+    trigger?.setAttribute("aria-controls", menu && !isMobileView() ? menu.id : sidebarPaneMenu.id);
+    trigger?.setAttribute("aria-expanded", "true");
+    if (menu && !isMobileView()) {
+      // The same controls and handlers as the pane header; no layout changes.
+      menu.addEventListener("close", () => returnToSidebarMore(id), {once:true});
+      ctrl.cardEl.querySelector(".btn-pane-more").click();
+      return;
+    }
+    sidebarMenuRunId = id;
+    sidebarPaneMenu.replaceChildren();
+    const head = document.createElement("div"); head.className = "modal-head";
+    const title = document.createElement("h2"); title.id = "sidebar-pane-menu-title"; title.textContent = sessionTitle(row);
+    const close = document.createElement("button"); close.textContent = "×"; close.setAttribute("aria-label", ui.message("Close")); close.onclick = () => sidebarPaneMenu.close();
+    head.append(title, close);sidebarPaneMenu.append(head);
+    const body = document.createElement("div"); body.className = "modal-body ui-menu-group";sidebarPaneMenu.append(body);
+    function action(label, run, enabled = true) {
+      const button = document.createElement("button");button.textContent = ui.message(label);button.dataset.action = label;button.disabled = !enabled;
+      button.onclick = () => {
+        sidebarPaneMenu.addEventListener("close", () => {void run();}, {once:true});
+        sidebarPaneMenu.close();
+      };
+      body.append(button);
+    }
+    const online = !(row.remote && row.node_online === false);
+    action("Open pane", () => {
+      if (isMobileView()) {mobileReader?.open(id);closeSidebar();return;}
+      if (placeInFirstFree(id) < 0) return;
+      saveSlots();renderList();renderGrid();
+      openSidebarPaneMenu(id, sidebarMoreButton(id));
+    });
+    action("Rename session", () => renameSession(id, sidebarMoreButton(id)), ["run","task","orphan"].includes(row.kind) && online);
+    action("Change working directory", () => openWorkingDirectory(id, sidebarMoreButton(id)), ["run","task"].includes(row.kind) && online);
+    action("Files", () => openFolderViewer(id), online);
+    action("Fork to new pane", () => openForkPane(id), online);
+    action("Archive session", () => sessionArchives.change(id), sessionArchives.supported(row));
+    sidebarPaneMenu.showModal();
   }
 
   async function deleteEndedSession(id) {
@@ -7204,7 +7271,7 @@
     cwdDialog.querySelector("[type=submit]").textContent = ui.message("Save directory");
     cwdInput.value = s.launch_cwd || s.cwd || "";
     cwdRestart.checked = false;
-    cwdRestart.disabled = !(s.alive && !s.agent_exited && ["claude", "codex", "cursor"].includes(s.agent) && s.resume_id);
+    cwdRestart.disabled = !(paneCtrls.has(runId) && s.alive && !s.agent_exited && ["claude", "codex", "cursor"].includes(s.agent) && s.resume_id);
     cwdDialog.querySelector(".cwd-restart").hidden = cwdRestart.disabled;
     cwdError.hidden = true; cwdError.textContent = "";
     cwdDialog.showModal(); cwdInput.focus(); cwdInput.select();
