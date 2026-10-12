@@ -93,7 +93,7 @@
       }
       $("btn-arrange-groups").textContent = t("Arrange by group", "按分组整理");
       $("btn-arrange-groups").disabled = !available;
-      $("btn-arrange-groups").title = t("Group open panes in tab order; ungrouped panes last", "按分组标签顺序排列已打开的面板，未分组放最后");
+      $("btn-arrange-groups").title = t("Group open panes in tab order, then sort by name; ungrouped panes last", "按分组标签顺序排列，同组内按名称排序，未分组放最后");
       $("group-auto-layout-label").textContent = t("Fit layout when entering a group", "进入分组时自动调整布局");
       $("group-auto-layout-help").textContent = t("Size the desktop grid to open panes in the selected group. All restores your original layout. Saved in this browser.", "按所选分组已打开的面板数量调整桌面网格；回到全部恢复原布局。仅保存在当前浏览器。");
       $("btn-pane-groups").textContent = t("Manage groups", "管理分组");

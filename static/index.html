@@ -2768,7 +2768,7 @@
 <script src="/static/ui-messages.js?v=21"></script>
 <script src="/static/ui-foundation.js?v=12"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=4" />
-<script src="/static/pane-groups.js?v=6"></script>
+<script src="/static/pane-groups.js?v=7"></script>
 <script src="/static/new-session-options.js?v=1"></script>
 <script src="/static/session-help.js?v=1"></script>
 <script src="/static/terminal-files.js?v=3"></script>
@@ -4537,8 +4537,10 @@
     api, ui, sessions: () => sessions.filter(s => !sessionArchives.isArchived(s.run_id)), language: () => document.documentElement.lang,
     changed: () => { renderList(); paneGroups.applyVisibility(); },
     arrange: rank => {
-      const occupied = slots.filter(Boolean).map((id, index) => ({id, index, rank: rank(id)}));
-      occupied.sort((a, b) => a.rank - b.rank || a.index - b.index);
+      const names = new Map(sessions.map(s => [s.run_id, sessionTitle(s)]));
+      const collator = new Intl.Collator(document.documentElement.lang || undefined, {numeric:true, sensitivity:"base"});
+      const occupied = slots.filter(Boolean).map((id, index) => ({id, index, rank: rank(id), name:names.get(id) || id}));
+      occupied.sort((a, b) => a.rank - b.rank || collator.compare(a.name, b.name) || a.index - b.index);
       slots = normalizeSlotsForLayout(occupied.map(item => item.id), slots.length);
       saveSlots();
       renderList();

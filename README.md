@@ -264,7 +264,8 @@ Sorting tabs does not move panes until you choose **Arrange by group**.
 
 Choose **All**, **Ungrouped**, or a group to filter the current open panes and
 live session list. **Arrange by group** packs open panes in group-tab order, keeping
-relative order within each group and putting ungrouped panes last; empty slots follow.
+natural name order within each group (2 before 10, ignoring case), with ties
+keeping their previous order. Ungrouped panes are sorted last; empty slots follow.
 **Settings → Appearance → Fit layout when entering a group** (off by default)
 fits the desktop grid to the selected group's open panes. All restores the manual
 layout; mobile keeps its single-column presentation. This preference and arranged
