@@ -2762,9 +2762,10 @@
     color: var(--warn);
     border-color: var(--warn);
   }
+  #working-directory-dialog .cwd-restart:not([hidden]) { display:flex; align-items:center; gap:8px; }
 </style>
 <link rel="stylesheet" href="/static/ui-foundation.css?v=8" />
-<script src="/static/ui-messages.js?v=20"></script>
+<script src="/static/ui-messages.js?v=21"></script>
 <script src="/static/ui-foundation.js?v=12"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=4" />
 <script src="/static/pane-groups.js?v=6"></script>
@@ -7166,6 +7167,72 @@
     }
   }
 
+  const cwdDialog = document.createElement("dialog");
+  cwdDialog.id = "working-directory-dialog";
+  cwdDialog.className = "ui-dialog";
+  cwdDialog.setAttribute("aria-labelledby", "working-directory-heading");
+  cwdDialog.innerHTML = `<form class="modal-body">
+    <h2 id="working-directory-heading"></h2><p class="cwd-context ui-secondary"></p>
+    <label for="working-directory-path"></label>
+    <input id="working-directory-path" type="text" required autocomplete="off" spellcheck="false" style="width:100%;box-sizing:border-box" aria-describedby="working-directory-help" />
+    <p id="working-directory-help" class="ui-secondary"></p>
+    <label class="cwd-restart"><input type="checkbox" style="width:auto;margin:0;flex:0 0 auto" /><span></span></label>
+    <p class="cwd-error" role="alert" hidden></p>
+    <div class="settings-inline-actions"><button type="button" class="cwd-cancel"></button><button type="submit" class="primary"></button></div>
+  </form>`;
+  document.body.appendChild(cwdDialog);
+  ui.containDialogFocus(cwdDialog);
+  let cwdRunId = "", cwdBusy = false, cwdOpener = null;
+  const cwdInput = cwdDialog.querySelector("input[type=text]");
+  const cwdRestart = cwdDialog.querySelector("input[type=checkbox]");
+  const cwdError = cwdDialog.querySelector(".cwd-error");
+  cwdDialog.querySelector(".cwd-cancel").onclick = () => { if (!cwdBusy) cwdDialog.close(); };
+  cwdDialog.addEventListener("cancel", event => { if (cwdBusy) event.preventDefault(); });
+  cwdDialog.addEventListener("close", () => { cwdRunId = ""; cwdOpener?.focus({preventScroll:true}); });
+  function openWorkingDirectory(runId, opener) {
+    const s = sessions.find(row => row.run_id === runId);
+    if (!s || cwdBusy || cwdDialog.open) return;
+    cwdRunId = runId; cwdOpener = opener;
+    cwdDialog.querySelector("h2").textContent = ui.message("Change working directory");
+    cwdDialog.querySelector(".cwd-context").textContent = sessionTitle(s);
+    cwdDialog.querySelector("label[for]").textContent = ui.message("Launch directory on the session host");
+    cwdDialog.querySelector("#working-directory-help").textContent = ui.message("Used on the next restart or resume. The running process is unchanged. In a Terminal or SSH shell, use cd to change its current directory.");
+    cwdDialog.querySelector(".cwd-restart span").textContent = ui.message("Restart agent after saving (confirmation required)");
+    cwdDialog.querySelector(".cwd-cancel").textContent = ui.message("Cancel");
+    cwdDialog.querySelector("[type=submit]").textContent = ui.message("Save directory");
+    cwdInput.value = s.launch_cwd || s.cwd || "";
+    cwdRestart.checked = false;
+    cwdRestart.disabled = !(s.alive && !s.agent_exited && ["claude", "codex", "cursor"].includes(s.agent) && s.resume_id);
+    cwdDialog.querySelector(".cwd-restart").hidden = cwdRestart.disabled;
+    cwdError.hidden = true; cwdError.textContent = "";
+    cwdDialog.showModal(); cwdInput.focus(); cwdInput.select();
+  }
+  cwdDialog.querySelector("form").addEventListener("submit", async event => {
+    event.preventDefault();
+    if (cwdBusy || !cwdRunId) return;
+    const runId = cwdRunId, restart = cwdRestart.checked && !cwdRestart.disabled;
+    const controls = [...cwdDialog.querySelectorAll("input, button")];
+    const disabled = controls.map(control => control.disabled);
+    cwdBusy = true; controls.forEach(control => { control.disabled = true; });
+    cwdError.hidden = true;
+    const abort = new AbortController();
+    const timeout = setTimeout(() => abort.abort(), 15000);
+    try {
+      const result = await api(`/api/sessions/${encodeURIComponent(runId)}/working-directory`, {method:"POST", body:{cwd:cwdInput.value}, signal:abort.signal});
+      if (!result?.ok || !result.launch_cwd) throw Error(ui.message("Directory was not saved"));
+      const row = sessions.find(s => s.run_id === runId);
+      if (row) row.launch_cwd = result.launch_cwd;
+      cwdDialog.close();
+      if (restart) await restartAgentSession(runId);
+    } catch (error) {
+      cwdError.textContent = error.message; cwdError.hidden = false;
+    } finally {
+      clearTimeout(timeout);
+      cwdBusy = false; controls.forEach((control, i) => { control.disabled = disabled[i]; });
+      if (cwdDialog.open) cwdInput.focus();
+    }
+  });
+
   const renameDialog = document.createElement("dialog");
   renameDialog.id = "rename-session-dialog";
   renameDialog.className = "ui-dialog";
@@ -8143,6 +8210,7 @@
           <details class="pane-menu-section"><summary tabindex="0" data-ui-message="Session%20management">Session management</summary>
             <div class="ui-menu-group">
               <button class="btn-fork-pane" data-dialog-close data-ui-message="Fork%20to%20new%20pane">Fork to new pane</button>
+              <button class="btn-working-directory" ${["run", "task"].includes(s.kind) && !(s.remote && s.node_online === false) ? "" : "disabled"} data-dialog-close data-ui-message="Change%20working%20directory">Change working directory</button>
               <button class="btn-switch-type" data-dialog-close><span data-ui-message="Switch%20pane%20type">Switch pane type</span></button>
               <button class="btn-archive-session" data-dialog-close data-ui-message="Archive%20session">Archive session</button>
               <button class="btn-restart-session" ${terminalSession || s.agent_exited === true ? "hidden" : ""} data-dialog-close>${ui.icon("refresh")}<span data-i18n="restartAgent">Restart agent</span></button>
@@ -8165,6 +8233,9 @@
     ui.wireDialog(card.querySelector(".pane-related-menu"), card.querySelector(".btn-related-sessions"), () => renderRelatedSessions(card, runId));
     card.querySelector(".btn-fork-pane").addEventListener("click", () => {
       paneMenu.addEventListener("close", () => openForkPane(runId), {once:true});
+    });
+    card.querySelector(".btn-working-directory").addEventListener("click", () => {
+      paneMenu.addEventListener("close", () => openWorkingDirectory(runId, card.querySelector(".btn-pane-more")), {once:true});
     });
     card.querySelector(".btn-switch-type").addEventListener("click", () => openSwitchPaneModal(runId));
     card.querySelector(".btn-disconnect-ssh").addEventListener("click", async event => {
@@ -13499,7 +13570,7 @@
     const sel = $("new-resume-from");
     const rid = sel.value;
     const s = resumableSessions.find(x => x.run_id === rid);
-    if (s && s.cwd) $("new-cwd").value = s.cwd;
+    if (s && (s.launch_cwd || s.cwd)) $("new-cwd").value = s.launch_cwd || s.cwd;
     if (s && !$("new-label").value.trim()) {
       $("new-label").placeholder = sessionTitle(s) || "session";
     }

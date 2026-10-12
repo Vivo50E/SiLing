@@ -6864,6 +6864,7 @@ def _discover_runs_unlocked(
                     "model": st.get("model", "") or "",
                     "effort": st.get("effort", "") or "",
                     "cwd": cwd,
+                    "launch_cwd": st.get("launch_cwd", ""),
                     "panel_state": st.get("panel_state", ""),
                     "terminal_theme": _normalize_terminal_theme(st.get("terminal_theme", "")),
                     "linked_folders": _normalize_linked_folders(st.get("linked_folders")),
@@ -6902,6 +6903,7 @@ def _discover_runs_unlocked(
                 "model": data.get("model", ""),
                 "effort": data.get("effort", ""),
                 "cwd": cwd,
+                "launch_cwd": data.get("launch_cwd", ""),
                 "tmux_session": session,
                 "alive": alive,
                 "status": "running" if alive else (saved_status or "finished"),
@@ -7207,6 +7209,7 @@ def _lookup_run_light(outputs_dir: Path, run_id: str) -> Optional[dict[str, Any]
                 "model": st.get("model", "") or "",
                 "effort": st.get("effort", "") or "",
                 "cwd": st.get("cwd", "") or "",
+                "launch_cwd": st.get("launch_cwd", ""),
                 "panel_state": st.get("panel_state", ""),
                 "terminal_theme": _normalize_terminal_theme(st.get("terminal_theme", "")),
                 "linked_folders": _normalize_linked_folders(st.get("linked_folders")),
@@ -7236,6 +7239,7 @@ def _lookup_run_light(outputs_dir: Path, run_id: str) -> Optional[dict[str, Any]
                 "model": data.get("model", "") or "",
                 "effort": data.get("effort", "") or "",
                 "cwd": data.get("cwd", "") or "",
+                "launch_cwd": data.get("launch_cwd", ""),
                 "tmux_session": data.get("tmux_session", "") or "",
                 "alive": False,
                 "status": data.get("status", "") or "finished",
@@ -10818,6 +10822,38 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             if isinstance(spec, dict):
                 spec['value'] = ''
 
+    @app.post("/api/sessions/{run_id}/working-directory")
+    async def post_working_directory(run_id: str, request: Request):
+        """Save a launch preference without sending commands to a live shell."""
+        row = _lookup_run_light(outputs_dir, run_id)
+        if not row:
+            raise HTTPException(404, "run not found")
+        if row.get("kind") not in ("run", "task") or not row.get("run_dir"):
+            raise HTTPException(409, "working directory requires a persisted session")
+        try:
+            body = await request.json()
+        except (ValueError, UnicodeDecodeError) as exc:
+            raise HTTPException(400, "invalid JSON body") from exc
+        raw = body.get("cwd") if isinstance(body, dict) else None
+        if not isinstance(raw, str) or not raw.strip() or len(raw) > 4096 or any(ord(c) < 32 for c in raw):
+            raise HTTPException(400, "cwd must be a nonempty directory path")
+        expanded = os.path.expanduser(os.path.expandvars(raw.strip()))
+        if not os.path.isabs(expanded):
+            raise HTTPException(400, "working directory must be an absolute path")
+        cwd = str(Path(_resolve_session_cwd(expanded)).resolve())
+        if not os.access(cwd, os.R_OK | os.X_OK):
+            raise HTTPException(400, "working directory is not accessible")
+        metadata = Path(row["run_dir"]) / ("session.json" if row["kind"] == "run" else "state.json")
+        if not metadata.is_file():
+            raise HTTPException(409, "session metadata is unavailable")
+        with edit_json(metadata) as data:
+            target = data if row["kind"] == "run" else data.get(row.get("task"))
+            if not isinstance(target, dict):
+                raise HTTPException(409, "session metadata is unavailable")
+            target["launch_cwd"] = cwd
+        session_snapshots.request_refresh()
+        return {"ok": True, "run_id": run_id, "launch_cwd": cwd}
+
     @app.post("/api/sessions/{run_id}/runtime-config")
     async def post_runtime_config(run_id: str, request: Request):
         """Change an idle Codex/Claude session's model and effort in place."""
@@ -12037,6 +12073,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                 "effort": r.get("effort", ""),
                 "effort_mode": r.get("effort_mode", ""),
                 "cwd": r.get("cwd", ""),
+                "launch_cwd": r.get("launch_cwd", ""),
                 "started_at": r.get("started_at", ""),
                 "status": r.get("status", ""),
                 "resume_id": r.get("resume_id", ""),
@@ -12338,7 +12375,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                 if "terminal_theme" in src else None
             )
         )
-        cwd = _resolve_session_cwd(body.get("cwd") or src.get("cwd") or "")
+        cwd = _resolve_session_cwd(body.get("cwd") or src.get("launch_cwd") or src.get("cwd") or "")
         label = (body.get("label") or "").strip()
         if not label:
             base = src.get("display_name") or src.get("task") or "resumed"
@@ -12578,7 +12615,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             src = _run_with_native_model_effort(src)
             if not str(src.get("cwd") or "").strip():
                 raise HTTPException(409, "no saved working directory; agent was not stopped")
-            cwd = _resolve_session_cwd(src.get("cwd") or "")
+            cwd = _resolve_session_cwd(src.get("launch_cwd") or src.get("cwd") or "")
             src = {**src, "cwd": cwd}
             try:
                 cli = resolve_agent_cli(agent)

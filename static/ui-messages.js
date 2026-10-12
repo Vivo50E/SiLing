@@ -171,6 +171,12 @@
     "New web pane": "新建网页面板",
     "External browser": "外部浏览器",
     "Applies to web links in terminals, Markdown and Files. Desktop web panes use the native browser; web clients use an iframe.": "适用于终端、Markdown 和 Files 中的网页链接。桌面客户端的网页面板使用原生浏览器；网页端使用 iframe。",
+    "Change working directory": "更改工作目录",
+    "Launch directory on the session host": "会话所在主机的启动目录",
+    "Used on the next restart or resume. The running process is unchanged. In a Terminal or SSH shell, use cd to change its current directory.": "用于下次重启或恢复，不改变正在运行的进程。Terminal 或 SSH 中的当前目录请使用 cd 修改。",
+    "Restart agent after saving (confirmation required)": "保存后重启 agent（需确认）",
+    "Save directory": "保存目录",
+    "Directory was not saved": "目录未保存",
     "All panes are occupied. Free a pane or choose a larger layout.": "所有面板均已占用，请关闭一个面板或选择更大的布局。",
     "The original session is still stopping. Check Related sessions for its status.": "旧会话仍在结束过程中，请在“关联会话”查看状态。",
 

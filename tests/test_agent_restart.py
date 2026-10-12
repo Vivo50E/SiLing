@@ -62,6 +62,25 @@ class AgentRestartTests(unittest.TestCase):
     def restart(self):
         return self.client.post("/api/sessions/source/restart", headers={"Authorization": "Bearer fixture-token"})
 
+    def test_restart_and_resume_use_saved_launch_directory(self):
+        target = self.root / "new project"
+        target.mkdir()
+        self.src["launch_cwd"] = str(target)
+        response = self.restart()
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(self.spawn.call_args.args[0][-1], str(target))
+        self.assertEqual(self.src["cwd"], str(self.root))
+        self.src["alive"] = False
+        response = self.client.post("/api/resume", json={"run_id": "source"},
+                                    headers={"Authorization": "Bearer fixture-token"})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(self.spawn.call_args.args[0][-1], str(target))
+
+    def test_missing_launch_directory_does_not_stop_agent(self):
+        self.src["launch_cwd"] = str(self.root / "missing")
+        self.assertEqual(self.restart().status_code, 400)
+        self.stop.assert_not_called()
+
     def test_restart_requires_authentication(self):
         self.assertEqual(self.client.post("/api/sessions/source/restart").status_code, 401)
         self.stop.assert_not_called()

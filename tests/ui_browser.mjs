@@ -14,6 +14,7 @@ import { checkPanePlacement } from './pane_placement_browser.mjs';
 import { checkPlainPolling } from './plain_polling_browser.mjs';
 import { checkFork } from './fork_browser.mjs';
 import { checkPaneMenu } from './pane_menu_browser.mjs';
+import { checkWorkingDirectory } from './working_directory_browser.mjs';
 import { checkRename } from './rename_browser.mjs';
 import { checkArchives } from './archives_browser.mjs';
 import { checkGroupOrder } from './group_order_browser.mjs';
@@ -39,6 +40,8 @@ let updateHead = "b".repeat(40), updateMode = "ok", updateReply;
 const updateApplies = [];
 const updateCandidate = () => ({eligible:true,branch:"agent/self-improve-fixture",head:updateHead,short_head:updateHead.slice(0,7),target_head:"a".repeat(40),ahead:1});
 const requests = [];
+let cwdMode='ok';
+const cwdSubmissions=[];
 let renameMode='ok',renameReply;
 const renameSubmissions=[];
 const originalNames=new Map(sessions.map(s=>[s.run_id,s.display_name]));
@@ -103,6 +106,15 @@ const server = http.createServer((req, res) => {
       if(renameMode==='error'){res.writeHead(503);res.end(JSON.stringify({detail:'Fixture rename failure'}));return;}
       const reply=()=>{const session=sessions.find(s=>s.run_id===decodeURIComponent(url.pathname.split('/')[3]));session.label=body.label.trim();session.display_name=session.label||originalNames.get(session.run_id);res.end(JSON.stringify({ok:true,label:session.label}));};
       if(renameMode==='delay'){renameReply=reply;return;}reply();
+    });return;
+  }
+  if (url.pathname.endsWith('/working-directory')) {
+    res.setHeader('Content-Type','application/json');
+    let raw='';req.on('data',chunk=>raw+=chunk);req.on('end',()=>{
+      const body=JSON.parse(raw);cwdSubmissions.push(body);
+      if(cwdMode==='error'){res.writeHead(400);res.end(JSON.stringify({detail:'Directory unavailable'}));return;}
+      const session=sessions.find(s=>s.run_id===decodeURIComponent(url.pathname.split('/')[3]));
+      session.launch_cwd=body.cwd;res.end(JSON.stringify({ok:true,launch_cwd:body.cwd}));
     });return;
   }
   if (url.pathname.startsWith('/api/self-update')) {
@@ -454,7 +466,12 @@ try {
     configure:text=>{plainText=text;plainFailure=false;if(!sessions.some(s=>s.run_id==='fixture-plain-perf'))sessions.push({run_id:'fixture-plain-perf',kind:'task',agent:'terminal',display_name:'Large ended log',alive:false});},
     text:value=>{plainText=value;},failure:value=>{plainFailure=value;},reads:()=>plainReads});
   const placementCheck=()=>checkPanePlacement({evaluate,waitFor,cdp,viewport,pause,configure:rows=>{forkMode="ok";sessions.push(...rows);}});
-  if (process.env.UI_PLACEMENT_ONLY === '1') {
+  const cwdCheck=()=>checkWorkingDirectory({evaluate,waitFor,cdp,viewport,screenshot,submissions:cwdSubmissions,requests,
+    mode:value=>{cwdMode=value;},configure:()=>{sessions.push({run_id:'cwd-agent',kind:'run',agent:'claude',alive:true,resume_id:'cwd-native',cwd:'/original',display_name:'Directory fixture'},{run_id:'cwd-terminal',kind:'run',agent:'terminal',alive:true,cwd:'/original',display_name:'Shell fixture'});}});
+  if (process.env.UI_CWD_ONLY === '1') {
+    await cwdCheck();
+    assert.deepEqual(errors, [], 'No uncaught directory errors');
+  } else if (process.env.UI_PLACEMENT_ONLY === '1') {
     await placementCheck();
     assert.deepEqual(errors, [], 'No uncaught placement errors');
   } else if (process.env.UI_PLAIN_ONLY === '1') {
@@ -1688,6 +1705,7 @@ try {
   await forkCheck();
   await plainCheck();
   await placementCheck();
+  await cwdCheck();
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));
   }

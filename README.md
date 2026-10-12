@@ -133,6 +133,11 @@ intervene.
   you return to the bottom.
 - Send input to any agent without switching terminal windows.
 - Zoom, reconnect, stop, close, or open linked files per pane.
+- In **More → Session management → Change working directory**, save the
+  directory for the next restart or resume. Agents can optionally restart after
+  confirmation. Saving alone preserves the current process and draft; in a
+  Terminal or SSH shell, use `cd` to change the current shell directory.
+  Paths are validated on the host running the session.
 - Drag tasks between slots without restarting the underlying session. Opening
   another session expands a full grid when possible; at the 16-pane limit it
   asks you to free a slot instead of replacing an existing pane. Name searches
