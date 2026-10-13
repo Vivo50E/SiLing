@@ -2766,13 +2766,15 @@
   #working-directory-dialog .cwd-restart:not([hidden]) { display:flex; align-items:center; gap:8px; }
 </style>
 <link rel="stylesheet" href="/static/ui-foundation.css?v=8" />
-<script src="/static/ui-messages.js?v=21"></script>
-<script src="/static/ui-foundation.js?v=12"></script>
+<script src="/static/ui-messages.js?v=22"></script>
+<script src="/static/ui-foundation.js?v=13"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=4" />
 <script src="/static/pane-groups.js?v=7"></script>
 <script src="/static/new-session-options.js?v=1"></script>
 <script src="/static/session-help.js?v=1"></script>
 <script src="/static/terminal-files.js?v=3"></script>
+<link rel="stylesheet" href="/static/pane-reviews.css?v=1">
+<script src="/static/pane-reviews.js?v=1"></script>
 <script src="/static/secret-operations.js?v=1"></script>
 <script src="/static/secret-config.js?v=1"></script>
 <script src="/static/terminal-keys.js?v=1"></script>
@@ -6884,6 +6886,8 @@
     if (round) round.textContent = s.max_rounds ? `${s.round || 0}/${s.max_rounds}` : "";
     updatePaneIdleBadge(ctrl);
     const linkedCount = (s.linked_folders || []).length;
+    const reviewsButton = card.querySelector(".btn-reviews");
+    if (reviewsButton) reviewsButton.disabled = !!(s.remote && s.node_online === false);
     const folders = card.querySelector(".btn-folders");
     if (folders) folders.innerHTML = ui.buttonContent("folder", ui.message("files") + (linkedCount ? ` ${linkedCount}` : ""));
     const endSession = card.querySelector(".btn-end-session");
@@ -8222,6 +8226,7 @@
             ${panelStateOptionsHtml(s.panel_state)}
           </select>
           <button class="btn-related-sessions" hidden><span data-ui-message="Related%20sessions">Related sessions</span></button>
+          <button class="btn-reviews ui-icon-button" data-ui-icon="review" title="Related PRs / MRs" aria-label="Related PRs / MRs" data-ui-title="Related%20PRs%20%2F%20MRs" data-ui-label="Related%20PRs%20%2F%20MRs">${ui.icon("review")}</button>
           <button class="btn-folders" title="Linked task files and folders" data-ui-title=Linked%20task%20files%20and%20folders aria-label="Linked task files and folders" data-ui-label=Linked%20task%20files%20and%20folders><span data-ui-message=files>files</span></button>
           <button class="btn-zoom" title="Open a larger pane view" data-ui-title=Open%20a%20larger%20pane%20view aria-label="Zoom pane" data-ui-label=Zoom%20pane>${ui.icon("zoom")}</button>
           <button class="btn-pane-more" data-i18n-label="more">${ui.icon("more")}</button>
@@ -8652,6 +8657,7 @@
       }
     });
     btnFolders.addEventListener("click", () => openFolderViewer(runId));
+    card.querySelector(".btn-reviews").addEventListener("click", event => window.SilingPaneReviews.open({runId,title:sessionTitle(s),trigger:event.currentTarget,api,ui,openUrl:openPreferredWebUrl,changed:()=>void refreshList()}));
     card.querySelector(".btn-resume-ended").addEventListener("click", event => recoverExitedSession(runId, event.currentTarget));
     btnRestartSession.addEventListener("click", () => restartAgentSession(runId));
     btnRecoverSession.addEventListener("click", () => recoverExitedSession(

@@ -1,6 +1,27 @@
 /* Authored Dashboard copy only. Never translate terminal output or user data. */
 (() => {
   const zh = {
+    "Related PRs / MRs": "相关 PR / MR",
+    "Add a PR/MR link": "添加 PR/MR 链接",
+    "Add": "添加",
+    "Loading PRs / MRs…": "正在查询 PR / MR…",
+    "Could not load PRs / MRs. Retry.": "PR/MR 加载失败，请重试。",
+    "No related PR/MR found. Add a link below.": "未找到相关 PR/MR，可以在下方添加链接。",
+    "Enter a GitHub PR or GitLab MR URL.": "请输入 GitHub PR 或 GitLab MR 链接。",
+    "Related branch results, linked URLs and recent output. Nothing is polled in the background.": "汇总当前分支、已关联链接和最近输出，仅打开或刷新时查询。",
+    "No repository directory is available. Add a PR/MR link below.": "没有可用的仓库目录，可以在下方添加 PR/MR 链接。",
+    "No Git branch or remote found. Add a PR/MR link below.": "未找到 Git 分支或远端，可以在下方添加 PR/MR 链接。",
+    "Repository host is not supported for automatic lookup. Add a PR/MR link below.": "该仓库主机暂不支持自动查询，可以在下方添加 PR/MR 链接。",
+    "Branch lookup unavailable. Check gh/glab installation and login on the session host; existing links are still available.": "分支查询不可用，请检查会话主机上的 gh/glab 安装和登录状态；已有链接仍可打开。",
+    "open": "打开中",
+    "opened": "打开中",
+    "closed": "已关闭",
+    "merged": "已合并",
+    "draft": "草稿",
+    "branch": "当前分支",
+    "linked": "已关联",
+    "output": "最近输出",
+
     "Session options help": "会话选项说明",
     "Project group": "项目分组",
     "Ungrouped": "未分组",

@@ -17,6 +17,7 @@ import { checkPaneMenu } from './pane_menu_browser.mjs';
 import { checkSidebarMenu } from './sidebar_menu_browser.mjs';
 import { checkArrangeNames } from './arrange_names_browser.mjs';
 import { checkMissingConversation } from './missing_conversation_browser.mjs';
+import { checkReviews } from './reviews_browser.mjs';
 import { checkWorkingDirectory } from './working_directory_browser.mjs';
 import { checkRename } from './rename_browser.mjs';
 import { checkArchives } from './archives_browser.mjs';
@@ -81,6 +82,7 @@ let pendingRestart;
 let pendingSwitch;
 const switchRequests = [];
 let sshDisconnects = 0;
+let reviewMode='ok';
 let missingConversationStatus='missing';
 let pendingResume;
 let resumeBody;
@@ -103,6 +105,13 @@ let truncatePreview = false;
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   requests.push({ method: req.method, path: url.pathname });
+  if (url.pathname.endsWith('/reviews')) {
+    res.setHeader('Content-Type','application/json');
+    if(reviewMode==='error'){res.writeHead(503);res.end(JSON.stringify({detail:'Fixture unavailable'}));return;}
+    res.end(JSON.stringify({branch:'feature/demo',warning:'',items:reviewMode==='empty'?[]:[
+      {url:'https://github.com/demo/repo/pull/4',title:'Improve dashboard <img src=x>',project:'demo/repo',kind:'PR',number:4,state:'open',source:'branch'},
+      {url:'https://gitlab.example/team/repo/-/merge_requests/8',title:'Fix terminal layout',project:'team/repo',kind:'MR',number:8,state:'merged',source:'linked'}]}));return;
+  }
   if (url.pathname === '/api/sessions/missing-native/stop') {
     res.setHeader('Content-Type','application/json');res.end(JSON.stringify({ok:true}));return;
   }
@@ -491,7 +500,14 @@ try {
     pending:()=>pendingResume ? resumeBody : null,
     finish:()=>{sessions.push({run_id:'new-native',kind:'run',agent:'claude',alive:true,resume_id:'fresh-id',display_name:'Missing conversation'});pendingResume.end(JSON.stringify({ok:true,run_id:'new-native',started_new_conversation:true}));pendingResume=undefined;}
   });
-  if (process.env.UI_MISSING_CONVERSATION_ONLY === '1') {
+  const reviewsCheck=()=>checkReviews({evaluate,waitFor,cdp,viewport,screenshot,pause,requests,mode:value=>{reviewMode=value;},configure:()=>{
+    systemBrowserAvailable=false;failBrowserOpen=false;reviewMode='ok';
+    sessions.push({run_id:'reviews-agent',kind:'run',agent:'claude',alive:true,display_name:'Dashboard review'}, {run_id:'reviews-shell',kind:'run',agent:'terminal',alive:true,display_name:'Shell review'});
+  }});
+  if (process.env.UI_REVIEWS_ONLY === '1') {
+    await reviewsCheck();
+    assert.deepEqual(errors, [], 'No uncaught review errors');
+  } else if (process.env.UI_MISSING_CONVERSATION_ONLY === '1') {
     await missingConversationCheck();
     assert.deepEqual(errors, [], 'No uncaught recovery errors');
   } else if (process.env.UI_SIDEBAR_MENU_ONLY === '1') {
@@ -1466,8 +1482,9 @@ try {
   const reopened=sessions.find(s=>s.run_id==='fixture-resumed');
   reopened.agent='terminal';reopened.alive=false;reopened.resume_id='';
   pendingResume=undefined;
-  await evaluate(`document.querySelector('#btn-refresh').click()`);await pause(200);
+  await evaluate(`document.querySelector('#btn-refresh').click()`);
   const reopenButton='[data-run-id="fixture-resumed"] .btn-resume-ended';
+  await waitFor(`document.querySelector('${reopenButton}')?.textContent==='Reopen terminal' && !document.querySelector('${reopenButton}').hidden`);
   assert.equal(await evaluate(`document.querySelector('${reopenButton}').hidden`),false,'Ended shell can reopen without an agent id');
   assert.equal(await evaluate(`document.querySelector('${reopenButton}').textContent`),'Reopen terminal');
   await screenshot('ended-terminal-reopen');
@@ -1741,6 +1758,7 @@ try {
   await arrangeNamesCheck();
   await sidebarMenuCheck();
   await missingConversationCheck();
+  await reviewsCheck();
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));
   }

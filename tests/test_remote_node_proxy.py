@@ -99,6 +99,10 @@ def _fake_remote_node() -> FastAPI:
     def native_activity():
         return {"sessions": [], "updated_at": time.time()}
 
+    @app.get("/api/sessions/{run_id}/reviews")
+    def reviews(run_id: str, branch: bool = True):
+        return {"run_id": run_id, "branch_lookup": branch, "items": [{"url": "https://gitlab.example/g/r/-/merge_requests/1"}]}
+
     @app.get("/api/sessions/{run_id}/tty")
     def tty(run_id: str):
         assert run_id == "remote-run 1"
@@ -311,6 +315,11 @@ class RemoteNodeProxyTest(unittest.TestCase):
                     self.assertEqual(unsupported.status_code, 404)
                     self.assertEqual(len(remote_state.input_calls), 2)
                     self.assertEqual(remote_state.send_calls, 1, "No fallback or retry on old nodes")
+
+                    review = client.get(f"/api/sessions/{run_id}/reviews", params={"branch": "false"})
+                    self.assertEqual(review.status_code, 200)
+                    self.assertFalse(review.json()["branch_lookup"])
+                    self.assertEqual(review.json()["items"][0]["url"], "https://gitlab.example/g/r/-/merge_requests/1")
 
                     read = client.get(
                         f"/api/sessions/{run_id}/read",

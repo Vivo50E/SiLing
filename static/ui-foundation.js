@@ -44,6 +44,7 @@
   }
   // Small original SVG set, bundled locally; no external fonts, CDN, or brand logos.
   const paths = {
+    review: "M6 8v8M9 5a3 3 0 1 1-6 0 3 3 0 0 1 6 0M9 19a3 3 0 1 1-6 0 3 3 0 0 1 6 0M21 19a3 3 0 1 1-6 0 3 3 0 0 1 6 0M18 16V9a4 4 0 0 0-4-4h-1m2-2-2 2 2 2",
     plus: "M12 5v14M5 12h14", search: "M21 21l-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0",
     grid: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",
     settings: "M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M10 15v6",

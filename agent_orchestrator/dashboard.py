@@ -75,6 +75,7 @@ from .local_settings import dashboard_token, require_dashboard_auth
 from .native_activity import NativeActivityService
 from .resources import ResourceMonitor
 from .pane_groups import PaneGroups
+from . import reviews
 from .model_catalog import ModelCatalog
 from .session_archives import SessionArchives, ArchiveConflict
 from .remote_nodes import (
@@ -10107,6 +10108,29 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             lines = text.splitlines()
             text = "\n".join(lines[-tail:])
         return text
+
+    @app.get("/api/sessions/{run_id}/reviews")
+    def get_session_reviews(run_id: str, branch: bool = True):
+        run = _lookup_run_light(outputs_dir, run_id)
+        if not run:
+            raise HTTPException(404, "session not found")
+        text = ""
+        if run.get("run_dir") and run.get("log_file"):
+            try:
+                path = Path(run["run_dir"]) / run["log_file"]
+                if path.is_file():
+                    with path.open("rb") as log:
+                        log.seek(0, 2)
+                        log.seek(max(0, log.tell() - 262144))
+                        text = log.read(262144).decode("utf-8", "replace")
+            except OSError:
+                pass
+        session = run.get("tmux_session")
+        if session and tmux_alive(session):
+            text += "\n" + (tmux_capture_lines(session, 200, "tail") or "")
+        # A shell may have cd'ed or SSH'ed elsewhere; its launch cwd is not
+        # evidence of the repository currently shown in the terminal.
+        return reviews.collect(run, text, lookup=branch and _norm_agent(run.get("agent", "")) != "terminal")
 
     @app.get("/api/sessions/{run_id}/folders")
     def get_session_folders(run_id: str):

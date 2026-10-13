@@ -125,6 +125,9 @@ export async function checkArchives({evaluate, waitFor, viewport, screenshot, pa
   await closeArchives();
   await viewport(1280,900);
   await waitFor(`!!document.querySelector('.session-item[data-id="fixture-2"]')`);
+  // Finish the legitimate mobile-to-desktop attachments before measuring
+  // whether the following failed-metadata page boot starts any terminals.
+  await waitFor(`['fixture-1','fixture-3'].every(id=>document.querySelector('#grid [data-run-id="'+id+'"] iframe')?.contentDocument?.querySelector('textarea'))`);
   mode('metadata-error');
   await evaluate(`localStorage.setItem('orch_slots',JSON.stringify(['fixture-0','fixture-1','fixture-2','fixture-3']))`);
   const unavailableStart=requests.length;

@@ -131,6 +131,13 @@ intervene.
   Unchanged log snapshots keep their existing text and selection instead of
   repeatedly laying out large histories; scrolling up pauses updates until
   you return to the bottom.
+- The pull-request icon beside **Files** opens related GitHub PRs / GitLab MRs.
+  It combines linked URLs, recent pane output and the current Git branch, with
+  titles and states when the provider returns them. Branch lookup uses the
+  session host’s existing `gh` / `glab` login (GitHub/GitLab-named hosts); no
+  background polling or terminal input is added. Shell/SSH panes use links and
+  output, not their potentially stale launch directory. Add a URL in the dialog
+  to keep it with the session; links follow the configured web-opening preference.
 - Send input to any agent without switching terminal windows.
 - Zoom, reconnect, stop, close, or open linked files per pane. The sidebar’s
   **…** button opens the same menu for an open pane. Unplaced sessions expose
