@@ -37,6 +37,11 @@ class AgentRestartTests(unittest.TestCase):
                     "display_name": "Keep my name", "panel_state": "p1",
                     "terminal_theme": "light", "run_dir": str(self.root / "old")}
         self.alive = True
+        self.native_root = self.root / "claude-config"
+        self.stack.enter_context(patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(self.native_root)}))
+        self.transcript = self.native_root / "projects" / "original-project" / "conversation-123.jsonl"
+        self.transcript.parent.mkdir(parents=True)
+        self.transcript.write_text('{"type":"user","message":{"content":"fixture"}}\n')
         self.resolve_cli = self.stack.enter_context(patch.object(dashboard, "resolve_agent_cli", return_value="/fixture/claude"))
         self.auth = self.stack.enter_context(patch.object(dashboard.cursor_runtime, "check_auth"))
         self.lookup = self.stack.enter_context(patch.object(dashboard, "_lookup_run", side_effect=lambda *_: dict(self.src)))
@@ -61,6 +66,77 @@ class AgentRestartTests(unittest.TestCase):
 
     def restart(self):
         return self.client.post("/api/sessions/source/restart", headers={"Authorization": "Bearer fixture-token"})
+
+    def test_missing_claude_conversation_never_stops_or_launches(self):
+        self.src["agent"] = "claude"
+        self.transcript.unlink()
+        response = self.restart()
+        self.assertEqual(response.status_code, 409, response.text)
+        self.stop.assert_not_called()
+        self.kill.assert_not_called()
+        self.src["alive"] = False
+        response = self.client.post("/api/resume", json={"run_id": "source"},
+                                    headers={"Authorization": "Bearer fixture-token"})
+        self.assertEqual(response.status_code, 409)
+        self.spawn.assert_not_called()
+
+    def test_confirmed_new_conversation_gets_new_identity_and_keeps_metadata(self):
+        self.src.update(agent="claude", alive=False, launch_cwd=str(self.root))
+        self.transcript.unlink()
+        groups = dashboard.PaneGroups(self.root / "outputs")
+        groups.change({"action": "create", "name": "Fixture group", "color": "blue"})
+        group_id = next(iter(groups.read()["groups"]))
+        groups.change({"action": "assign", "group_id": group_id}, [self.src])
+        response = self.client.post("/api/resume", json={"run_id": "source", "start_new_if_missing": True},
+                                    headers={"Authorization": "Bearer fixture-token"})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertTrue(response.json()["started_new_conversation"])
+        args = self.spawn.call_args.args[0]
+        self.assertNotIn("--resume-id", args)
+        self.assertIn("--native-session-id", args)
+        self.assertNotEqual(args[args.index("--native-session-id") + 1], "conversation-123")
+        self.assertEqual(args[args.index("--label") + 1], "Keep my name")
+        self.assertEqual(args[-1], str(self.root))
+        self.ui.assert_called_once()
+        self.links.assert_called_once()
+        result = response.json()
+        self.assertEqual(result["group_id"], group_id)
+        self.assertEqual(groups.view([{"run_id": result["run_id"]}])["members"][result["run_id"]], group_id)
+        self.assertEqual(groups.view([self.src])["members"]["source"], group_id)
+
+    def test_snapshot_restore_skips_missing_conversation(self):
+        self.transcript.unlink()
+        entry = {**self.src, "agent": "claude", "source_run_id": "source"}
+        with patch.object(dashboard, "_load_active_snapshot", return_value={"sessions": [entry]}), \
+                patch.object(dashboard, "_discover_runs", return_value=[]):
+            response = self.client.post("/api/active-snapshot/restore", json={},
+                                        headers={"Authorization": "Bearer fixture-token"})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["restored_count"], 0)
+        self.assertIn("No saved Claude", response.json()["skipped"][0]["reason"])
+        self.spawn.assert_not_called()
+
+    def test_recheck_does_not_replace_existing_conversation(self):
+        self.src.update(agent="claude", alive=False)
+        response = self.client.post("/api/resume", json={"run_id": "source", "start_new_if_missing": True},
+                                    headers={"Authorization": "Bearer fixture-token"})
+        self.assertEqual(response.status_code, 409)
+        self.spawn.assert_not_called()
+
+    def test_resume_check_is_authenticated_read_only_and_cross_project(self):
+        self.src["agent"] = "claude"
+        url = "/api/sessions/source/resume-check"
+        self.assertEqual(self.client.get(url).status_code, 401)
+        auth = {"Authorization": "Bearer fixture-token"}
+        self.assertEqual(self.client.get(url, headers=auth).json()["status"], "ready")
+        self.transcript.write_text("")
+        self.assertEqual(self.client.get(url, headers=auth).json()["status"], "unknown")
+        self.transcript.unlink()
+        self.assertEqual(self.client.get(url, headers=auth).json()["status"], "missing")
+        with patch.object(Path, "iterdir", side_effect=PermissionError):
+            self.assertEqual(self.client.get(url, headers=auth).json()["status"], "unknown")
+        self.stop.assert_not_called()
+        self.spawn.assert_not_called()
 
     def test_restart_and_resume_use_saved_launch_directory(self):
         target = self.root / "new project"

@@ -140,6 +140,10 @@ intervene.
   confirmation. Saving alone preserves the current process and draft; in a
   Terminal or SSH shell, use `cd` to change the current shell directory.
   Paths are validated on the host running the session.
+- Claude recovery checks that the saved conversation exists before relaunching.
+  If only a reserved ID remains, **Recover / Resume** asks before starting a new
+  conversation in the same pane, retaining its name, group, directory and old records.
+  Restart never stops a running agent when its conversation cannot be verified.
 - Drag tasks between slots without restarting the underlying session. Opening
   another session expands a full grid when possible; at the 16-pane limit it
   asks you to free a slot instead of replacing an existing pane. Name searches

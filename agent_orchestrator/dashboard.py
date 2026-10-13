@@ -4214,6 +4214,48 @@ _CLAUDE_EFFORT_MODE_RE = re.compile(
 )
 
 
+def _native_resume_check(run: dict) -> dict:
+    """Action-time check: a reserved Claude UUID alone is not a conversation.
+
+    Search exact filenames across projects (including a changed launch cwd).
+    Unreadable storage is unknown, never permission to start a new conversation.
+    """
+    if _norm_agent(run.get("agent", "")) != "claude":
+        return {"status": "ready"}
+    resume_id = str(run.get("resume_id") or "").strip()
+    if not resume_id or not re.fullmatch(r"[A-Za-z0-9_-]+", resume_id):
+        return {"status": "unknown", "reason": "Invalid or missing Claude conversation ID"}
+    root = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude").expanduser() / "projects"
+    try:
+        projects = list(root.iterdir())
+    except FileNotFoundError:
+        projects = []
+    except OSError:
+        return {"status": "unknown", "reason": "Cannot read Claude conversation storage"}
+    uncertain = False
+    for project in projects:
+        try:
+            if not project.is_dir():
+                continue
+            with (project / f"{resume_id}.jsonl").open("rb") as transcript:
+                if transcript.read(1):
+                    return {"status": "ready"}
+                uncertain = True
+        except FileNotFoundError:
+            continue
+        except OSError:
+            uncertain = True
+    if uncertain:
+        return {"status": "unknown", "reason": "Claude conversation storage is empty or unreadable; check it before recovering"}
+    return {"status": "missing", "reason": "No saved Claude conversation was found for this ID. Use Recover to explicitly start a new conversation; the old session records will be kept."}
+
+
+def _require_native_resume(run: dict) -> None:
+    check = _native_resume_check(run)
+    if check["status"] != "ready":
+        raise HTTPException(409, check["reason"])
+
+
 def _claude_transcript_path(resume_id: str, cwd: str = "") -> Path | None:
     if not resume_id:
         return None
@@ -12231,6 +12273,10 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                 },
                 "linked_folders": _normalize_linked_folders(entry.get("linked_folders")),
             }
+            check = _native_resume_check(src)
+            if check["status"] != "ready":
+                skipped.append({"source_run_id": source_run_id, "reason": check["reason"]})
+                continue
             src = _run_with_native_model_effort(src)
             label = str(
                 entry.get("label")
@@ -12308,6 +12354,21 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             "slots": restored_slots,
         }
 
+    @app.get("/api/sessions/{run_id}/resume-check")
+    def get_resume_check(run_id: str):
+        src = _lookup_run(outputs_dir, run_id)
+        if not src:
+            raise HTTPException(404, "source run not found")
+        return _native_resume_check(src)
+
+    def copy_recovery_group(src: dict, result: dict) -> None:
+        try:
+            group_id = pane_groups.view([src])["members"].get(src["run_id"])
+            if group_id:
+                assign_created_group(result, group_id, src.get("node_id") or "local", "claude")
+        except (OSError, ValueError, TypeError):
+            result["group_warning"] = "Conversation started, but its group could not be copied; use Manage groups."
+
     @app.post("/api/resume")
     async def post_resume(request: Request):
         """Start a new background/iTerm session using a saved native resume id."""
@@ -12329,6 +12390,12 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             result = await _remote_json(
                 node, "/api/resume", method="POST", body=body
             )
+            if result.get("started_new_conversation"):
+                source_id = qualify_run_id(node_id, body["run_id"])
+                src = next((row for row in remote_nodes.sessions()
+                            if row["run_id"] == source_id),
+                           {"run_id": source_id, "node_id": node_id})
+                copy_recovery_group(src, result)
             remote_nodes.request_refresh()
             return result
         return _resume_run(body)
@@ -12343,11 +12410,18 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             raise HTTPException(404, "source run not found")
         if src.get("alive"):
             raise HTTPException(409, "source session is still running")
+        fresh_start = body.get("start_new_if_missing") is True
+        check = _native_resume_check(src)
+        if fresh_start:
+            if check["status"] != "missing":
+                raise HTTPException(409, "Conversation availability changed; check recovery again")
+        elif check["status"] != "ready":
+            raise HTTPException(409, check["reason"])
         terminal = _norm_agent(src.get("agent", "")) == "terminal"
         if not terminal:
             src = _run_with_native_model_effort(src)
-        resume_id = "" if terminal else (src.get("resume_id") or "").strip()
-        if not terminal and not resume_id:
+        resume_id = "" if terminal or fresh_start else (src.get("resume_id") or "").strip()
+        if not terminal and not fresh_start and not resume_id:
             raise HTTPException(409, "source session has no resume id")
 
         mode = (body.get("mode") or "background").strip()
@@ -12380,7 +12454,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         if not label:
             base = src.get("display_name") or src.get("task") or "resumed"
             label = str(src.get("label") or base)[:80] if terminal else re.sub(r"(?:\s+\(resume\))+$", "", str(base)).strip()[:80]
-        inherited_resume = None if terminal else _build_inherited_resume_meta(src, agent, resume_id)
+        inherited_resume = None if terminal or fresh_start else _build_inherited_resume_meta(src, agent, resume_id)
         result = _spawn_session(agent, model, label, cwd, mode,
                                 resume_id=resume_id,
                                 resume_meta=inherited_resume,
@@ -12392,11 +12466,14 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             resume_id=resume_id, label=label)
         ui_copy = _copy_snapshot_ui_metadata_to_spawned_run(result, src)
         lineage_warning = session_lifecycle.record_resume(src, result)
+        if fresh_start:
+            copy_recovery_group(src, result)
         return {
             **result,
             "lineage_warning": lineage_warning,
             "resumed_from": run_id,
             "reopened_terminal": terminal,
+            "started_new_conversation": fresh_start,
             "resume_id": resume_id,
             "linked_folders_copied": linked_copy.get("copied", 0),
             "linked_folders_run_dir": linked_copy.get("run_dir", ""),
@@ -12612,6 +12689,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             resume_agent = _norm_agent((src.get("resume") or {}).get("agent") or agent)
             if resume_agent != agent:
                 raise HTTPException(409, "resume agent mismatch; agent was not stopped")
+            _require_native_resume(src)
             src = _run_with_native_model_effort(src)
             if not str(src.get("cwd") or "").strip():
                 raise HTTPException(409, "no saved working directory; agent was not stopped")

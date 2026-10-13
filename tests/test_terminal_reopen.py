@@ -1,5 +1,6 @@
 """Reopening an ended shell preserves its configuration, not dead processes."""
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -68,6 +69,10 @@ class TerminalReopenTests(unittest.TestCase):
     def test_agent_resume_keeps_name_and_native_resume_id(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
+            native_config = root / 'claude-config'
+            transcript = native_config / 'projects' / 'original' / 'native-fixture-id.jsonl'
+            transcript.parent.mkdir(parents=True)
+            transcript.write_text('{"type":"user","message":{"content":"fixture"}}\n')
             source = dict(agent='claude', alive=False, run_id='old::agent',
                           display_name='Example (resume) (resume)', cwd=temp,
                           resume_id='native-fixture-id')
@@ -83,6 +88,7 @@ class TerminalReopenTests(unittest.TestCase):
             with patch.object(dashboard.TtydManager, '_sweep_orphans', return_value=0):
                 app = dashboard.create_app(root, ttyd_enabled=False, remote_nodes_enabled=False)
             with TestClient(app) as client, \
+                    patch.dict(os.environ, {'CLAUDE_CONFIG_DIR': str(native_config)}), \
                     patch.object(dashboard, '_lookup_run', return_value=source), \
                     patch.object(dashboard, '_schedule_native_resume_capture'), \
                     patch.object(dashboard, '_run_with_native_model_effort', side_effect=lambda row: row), \

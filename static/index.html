@@ -9773,6 +9773,20 @@
     }
     if (endButton) endButton.disabled = true;
     try {
+      let startNewIfMissing = false;
+      if (s.agent === "claude") {
+        const check = await api(`/api/sessions/${encodeURIComponent(runId)}/resume-check`);
+        if (check.status === "missing") {
+          const zh = document.documentElement.lang.startsWith("zh");
+          const message = zh
+            ? `找不到「${name}」的 Claude 对话记录。这个 ID 可能只被预分配，还没有保存对话。\n\n是否新开对话？将保留名称、分组、目录和原会话记录，但不会恢复旧对话内容。`
+            : `No saved Claude conversation was found for "${name}". Its ID may have been reserved before any conversation was saved.\n\nStart a new conversation? The name, group, directory and old session records will be kept, but previous conversation content will not be restored.`;
+          if (!confirm(message)) return;
+          startNewIfMissing = true;
+        } else if (check.status !== "ready") {
+          throw new Error(check.reason || "Could not verify the saved conversation");
+        }
+      }
       if (s.alive) {
         const stopped = await api(
           `/api/sessions/${encodeURIComponent(runId)}/stop`,
@@ -9794,7 +9808,7 @@
         : "local";
       const resumed = await api("/api/resume", {
         method: "POST",
-        body: { run_id: runId, node_id: nodeId, mode: "background" },
+        body: { run_id: runId, node_id: nodeId, mode: "background", ...(startNewIfMissing ? {start_new_if_missing: true} : {}) },
       });
       const newRunId = String(resumed?.run_id || "");
       if (!newRunId) throw new Error("resume succeeded without a new run id");
@@ -9809,7 +9823,9 @@
       saveSlots();
       renderList();
       renderGrid();
-      $("conn-status").textContent = sessionIsTerminal(s) ? ui.message("Terminal reopened") : `Resumed ${name}; waiting for the new pane…`;
+      $("conn-status").textContent = sessionIsTerminal(s) ? ui.message("Terminal reopened")
+        : resumed.started_new_conversation ? `Started a new conversation for ${name}; waiting for the new pane…`
+        : `Resumed ${name}; waiting for the new pane…`;
       setTimeout(() => void refreshList(), s.remote ? 500 : 200);
     } catch (e) {
       alert(ui.message("recover session failed: ") + e.message);

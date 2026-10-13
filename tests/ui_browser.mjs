@@ -16,6 +16,7 @@ import { checkFork } from './fork_browser.mjs';
 import { checkPaneMenu } from './pane_menu_browser.mjs';
 import { checkSidebarMenu } from './sidebar_menu_browser.mjs';
 import { checkArrangeNames } from './arrange_names_browser.mjs';
+import { checkMissingConversation } from './missing_conversation_browser.mjs';
 import { checkWorkingDirectory } from './working_directory_browser.mjs';
 import { checkRename } from './rename_browser.mjs';
 import { checkArchives } from './archives_browser.mjs';
@@ -80,6 +81,7 @@ let pendingRestart;
 let pendingSwitch;
 const switchRequests = [];
 let sshDisconnects = 0;
+let missingConversationStatus='missing';
 let pendingResume;
 let resumeBody;
 const groupFixture = {groups: [], members: {}};
@@ -101,6 +103,12 @@ let truncatePreview = false;
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   requests.push({ method: req.method, path: url.pathname });
+  if (url.pathname === '/api/sessions/missing-native/stop') {
+    res.setHeader('Content-Type','application/json');res.end(JSON.stringify({ok:true}));return;
+  }
+  if (url.pathname.endsWith('/resume-check')) {
+    res.setHeader('Content-Type','application/json');res.end(JSON.stringify({status:missingConversationStatus,reason:'Fixture storage unavailable'}));return;
+  }
   if (req.method==='POST' && url.pathname.endsWith('/label')) {
     res.setHeader('Content-Type','application/json');
     let raw='';req.on('data',chunk=>raw+=chunk);req.on('end',()=>{
@@ -477,7 +485,16 @@ try {
   const sidebarMenuCheck=()=>checkSidebarMenu({evaluate,waitFor,cdp,viewport,screenshot,configure:()=>{
     sessions.push(...[0,1,2].map(i=>({run_id:'side-'+i,kind:'run',agent:'claude',resume_id:'side-native-'+i,alive:true,display_name:'Sidebar '+i,cwd:'/fixture'})));
   }});
-  if (process.env.UI_SIDEBAR_MENU_ONLY === '1') {
+  const missingConversationCheck=()=>checkMissingConversation({evaluate,waitFor,cdp,viewport,pause,requests,
+    mode:value=>{missingConversationStatus=value;},
+    configure:()=>{pendingResume=undefined;resumeBody=undefined;sessions.push({run_id:'missing-native',kind:'run',agent:'claude',alive:true,agent_exited:true,resume_id:'reserved-id',display_name:'Missing conversation'});},
+    pending:()=>pendingResume ? resumeBody : null,
+    finish:()=>{sessions.push({run_id:'new-native',kind:'run',agent:'claude',alive:true,resume_id:'fresh-id',display_name:'Missing conversation'});pendingResume.end(JSON.stringify({ok:true,run_id:'new-native',started_new_conversation:true}));pendingResume=undefined;}
+  });
+  if (process.env.UI_MISSING_CONVERSATION_ONLY === '1') {
+    await missingConversationCheck();
+    assert.deepEqual(errors, [], 'No uncaught recovery errors');
+  } else if (process.env.UI_SIDEBAR_MENU_ONLY === '1') {
     await sidebarMenuCheck();
     assert.deepEqual(errors, [], 'No uncaught sidebar menu errors');
   } else if (process.env.UI_ARRANGE_NAMES_ONLY === '1') {
@@ -1723,6 +1740,7 @@ try {
   await cwdCheck();
   await arrangeNamesCheck();
   await sidebarMenuCheck();
+  await missingConversationCheck();
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));
   }

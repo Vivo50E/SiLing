@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+export async function checkMissingConversation({evaluate,waitFor,cdp,viewport,configure,requests,pending,finish,mode,pause}) {
+  await waitFor(`!!document.querySelector('#session-list .session-item')`);
+  configure();
+  await viewport(1280,900);
+  await evaluate(`localStorage.clear();localStorage.setItem('orch_layout','cols-2');localStorage.setItem('orch_slots',JSON.stringify(['missing-native']));localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'en'}))`);
+  await cdp('Page.reload');
+  const button='[data-run-id="missing-native"] .btn-recover-session';
+  await waitFor(`!!document.querySelector('${button}')`);
+  await evaluate(`window.originalConfirm=window.confirm;window.originalAlert=window.alert;window.recoveryConfirms=[];window.recoveryAlerts=[];window.confirm=text=>{recoveryConfirms.push(text);return false};window.alert=text=>recoveryAlerts.push(text)`);
+  const count=()=>requests.filter(r=>r.method==='POST'&&(/\/(stop|kill)$/.test(r.path)||r.path==='/api/resume')).length;
+  const before=count();
+  await evaluate(`document.querySelector('${button}').click()`);
+  await waitFor(`recoveryConfirms.length===1 && !document.querySelector('${button}').disabled`);
+  assert.equal(count(),before,'Cancel does not stop or launch anything');
+  assert.match(await evaluate(`recoveryConfirms[0]`),/new conversation/);
+  assert.equal(await evaluate(`JSON.parse(localStorage.getItem('orch_slots'))[0]`),'missing-native');
+  mode('unknown');
+  await evaluate(`document.querySelector('${button}').click()`);
+  await waitFor(`recoveryAlerts.length===1 && !document.querySelector('${button}').disabled`);
+  assert.equal(count(),before,'Unreadable storage never permits a new conversation');
+  mode('missing');
+  await evaluate(`window.confirm=text=>{recoveryConfirms.push(text);return true};document.querySelector('${button}').click()`);
+  for(let i=0;i<100&&!pending();i++)await pause(50);
+  assert.equal(pending()?.start_new_if_missing,true,'Explicit consent accompanies resume');
+  await evaluate(`document.querySelector('${button}').dispatchEvent(new Event('click'))`);
+  assert.equal(count(),before+2,'Duplicate recovery is prevented');
+  finish();
+  await waitFor(`JSON.parse(localStorage.getItem('orch_slots'))[0]==='new-native'`);
+  await evaluate(`window.confirm=originalConfirm;window.alert=originalAlert`);
+  console.log('PASS: missing Claude conversation confirmation, cancel without mutation, unreadable storage guard, duplicate prevention and same-slot fresh start');
+}
