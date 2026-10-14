@@ -15,6 +15,7 @@ import { checkPlainPolling } from './plain_polling_browser.mjs';
 import { checkFork } from './fork_browser.mjs';
 import { checkPaneMenu } from './pane_menu_browser.mjs';
 import { checkSidebarMenu } from './sidebar_menu_browser.mjs';
+import { checkGroupOutlines } from './group_outlines_browser.mjs';
 import { checkArrangeNames } from './arrange_names_browser.mjs';
 import { checkMissingConversation } from './missing_conversation_browser.mjs';
 import { checkReviews } from './reviews_browser.mjs';
@@ -504,7 +505,14 @@ try {
     systemBrowserAvailable=false;failBrowserOpen=false;reviewMode='ok';
     sessions.push({run_id:'reviews-agent',kind:'run',agent:'claude',alive:true,display_name:'Dashboard review'}, {run_id:'reviews-shell',kind:'run',agent:'terminal',alive:true,display_name:'Shell review'});
   }});
-  if (process.env.UI_REVIEWS_ONLY === '1') {
+  const outlinesCheck=()=>checkGroupOutlines({evaluate,waitFor,cdp,viewport,screenshot,groups:groupFixture,configure:rows=>{
+    sessions.push(...rows);groupFixture.groups=[{id:'outline-a',name:'Group A',color:'teal'},{id:'outline-b',name:'Group B',color:'purple'}];
+    groupFixture.members=Object.fromEntries(rows.filter(r=>r.group).map(r=>[r.run_id,r.group]));
+  }});
+  if (process.env.UI_GROUP_OUTLINES_ONLY === '1') {
+    await outlinesCheck();
+    assert.deepEqual(errors, [], 'No uncaught group outline errors');
+  } else if (process.env.UI_REVIEWS_ONLY === '1') {
     await reviewsCheck();
     assert.deepEqual(errors, [], 'No uncaught review errors');
   } else if (process.env.UI_MISSING_CONVERSATION_ONLY === '1') {
@@ -1759,6 +1767,7 @@ try {
   await sidebarMenuCheck();
   await missingConversationCheck();
   await reviewsCheck();
+  await outlinesCheck();
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));
   }

@@ -131,6 +131,11 @@ intervene.
   Unchanged log snapshots keep their existing text and selection instead of
   repeatedly laying out large histories; scrolling up pauses updates until
   you return to the bottom.
+- Enable **Settings → Appearance → Colored group outlines in All** to outline
+  neighboring panes in their group color. Only All shows the frames; pane sizes,
+  positions, terminal connections and activity borders stay unchanged. Disconnected
+  clusters remain separate; **Arrange by group** brings them together. The switch
+  defaults off and is saved in this browser.
 - The pull-request icon beside **Files** opens related GitHub PRs / GitLab MRs.
   It combines linked URLs, recent pane output and the current Git branch, with
   titles and states when the provider returns them. Branch lookup uses the

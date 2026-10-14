@@ -8,15 +8,28 @@
     const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
     const t = (en, zh) => language() === "zh" ? zh : en;
     let groups = [], members = {}, available = false, pending = false, filter = "all", storageError = "";
-    let editing = "", draftColor = colors.blue, autoLayout = false;
+    let editing = "", draftColor = colors.blue, autoLayout = false, showOutlines = false;
     let groupDrag = null, dragFrame = null, suppressGroupClick = false, orderMessage = "";
     try { autoLayout = localStorage.getItem("siling_group_auto_layout") === "true"; } catch (_) {}
     try { filter = localStorage.getItem("siling_group_filter") || "all"; } catch (_) {}
+    try { showOutlines = localStorage.getItem("siling_group_outlines") === "true"; } catch (_) {}
+    const outlines = window.SilingGroupOutlines({grid:$("grid"),
+      enabled:()=>showOutlines && available && filter === "all",
+      groupFor:id=>{const group=groupFor(id);return group ? {...group,color:colorValue(group.color)} : null;}});
     const bar = $("pane-group-bar");
     bar.innerHTML = '<div id="pane-group-tabs" role="group"></div><button id="btn-arrange-groups" type="button"></button><button id="btn-pane-groups"></button><span id="pane-group-status" role="status"></span>';
     const setting = document.createElement("div");
     setting.innerHTML = '<label class="settings-row"><span id="group-auto-layout-label"></span><input id="group-auto-layout" type="checkbox" aria-describedby="group-auto-layout-help"></label><p id="group-auto-layout-help" class="ui-secondary"></p>';
     $("settings-section-appearance").appendChild(setting);
+    const outlineSetting = document.createElement("div");
+    outlineSetting.innerHTML = '<label class="settings-row"><span id="group-outlines-label"></span><input id="group-outlines" type="checkbox" aria-describedby="group-outlines-help"></label><p id="group-outlines-help" class="ui-secondary"></p>';
+    $("settings-section-appearance").appendChild(outlineSetting);
+    $("group-outlines").checked = showOutlines;
+    $("group-outlines").addEventListener("change", event=>{
+      showOutlines=event.target.checked;
+      try {localStorage.setItem("siling_group_outlines",String(showOutlines));} catch (_) {}
+      outlines.schedule();
+    });
     $("group-auto-layout").checked = autoLayout;
     $("group-auto-layout").addEventListener("change", event => {
       beforeFilter();
@@ -94,6 +107,8 @@
       $("btn-arrange-groups").textContent = t("Arrange by group", "按分组整理");
       $("btn-arrange-groups").disabled = !available;
       $("btn-arrange-groups").title = t("Group open panes in tab order, then sort by name; ungrouped panes last", "按分组标签顺序排列，同组内按名称排序，未分组放最后");
+      $("group-outlines-label").textContent = t("Colored group outlines in All", "在 All 视图显示分组彩色外框");
+      $("group-outlines-help").textContent = t("Outline adjacent panes in each group's color without moving them. Use Arrange by group to bring separated panes together. Saved in this browser.", "相邻同组面板共用分组色外框，不改变位置；可用“按分组整理”集中分散面板。仅保存在当前浏览器。");
       $("group-auto-layout-label").textContent = t("Fit layout when entering a group", "进入分组时自动调整布局");
       $("group-auto-layout-help").textContent = t("Size the desktop grid to open panes in the selected group. All restores your original layout. Saved in this browser.", "按所选分组已打开的面板数量调整桌面网格；回到全部恢复原布局。仅保存在当前浏览器。");
       $("btn-pane-groups").textContent = t("Manage groups", "管理分组");
@@ -356,6 +371,7 @@
     }
 
     function applyVisibility() {
+      outlines.schedule();
       const cards = [...$("grid").querySelectorAll(".pane-card:not(.cached-pane)")];
       for (const card of cards) {
         const id = card.dataset.runId;
@@ -398,6 +414,7 @@
         if (!matches({run_id:runId})) selectFilter("all");
       },
       receive(data) {
+        outlines.schedule();
         available = !!data && Array.isArray(data.groups) && !!data.members && !data.error;
         if (available) {
           groups = data.groups; members = data.members;
