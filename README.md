@@ -174,7 +174,18 @@ the shortcut before ttyd loses the Shift modifier, without changing global
 tmux settings. Plain Terminal and unknown/custom agents retain native keys.
 The bottom input box also supports Shift+Enter or Option/Alt+Enter for newlines.
 
-Pane **More → Secret operations** registers an API key with a name and an immutable
+Pane **More → Secret configuration and operations → Secret operations** defaults
+to **Slack — check authentication**, with the name `slack_check` prefilled: enter
+only the key to register. This preset calls Slack's `auth.test` only; it cannot
+send messages or read workspace data. Its `ok` checks both HTTP status and Slack's
+boolean authentication result without returning raw responses to the agent.
+The default lifetime is 15 minutes; **Advanced settings** offers one hour.
+Choose **Custom API** to enter a name, key and HTTPS URL. Method (default GET),
+authentication (default Bearer), fixed POST body and lifetime are under Advanced
+settings. Switching services clears the key and old request settings to avoid
+sending credentials to a different destination. Share only the operation name.
+
+A custom operation registers an API key with a name and an immutable
 HTTPS operation (GET or POST, Bearer or X-API-Key, optional fixed POST body).
 Tell the agent only the name, then use `siling secret call deploy`; `siling secret list`
 lists references in the current `ORCH_RUN_ID` scope. No CLI accepts a key, arbitrary
@@ -184,9 +195,10 @@ Expired keys are cleared by an idle expiry worker. Existing in-flight calls may
 finish before revoke returns; calls are never automatically retried.
 
 The broker alone adds the authentication header, verifies the remote TLS certificate
-and does not use environment proxies or follow redirects. It returns only HTTP
-status, never response bodies, headers, or raw exceptions—even if an API echoes
-the key. This is suitable for fixed operations such as a deployment webhook or
+and does not use environment proxies or follow redirects. Custom operations return
+HTTP status only; the Slack preset additionally extracts a boolean authentication
+result. Neither returns raw response bodies, headers or exceptions, even if an API
+echoes the key. This is suitable for fixed operations such as a deployment webhook or
 authentication check; arbitrary API data retrieval and local-command injection are
 not supported. The CLI uses loopback access or an SSH tunnel to the Dashboard.
 Remote Nodes must run a version supporting this API and use HTTPS or a loopback tunnel.

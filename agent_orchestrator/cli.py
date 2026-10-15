@@ -1065,7 +1065,9 @@ def cmd_secret(args):
         if (not isinstance(payload,dict) or type(payload.get('http_status')) is not int
                 or not 100 <= payload['http_status'] <= 599):
             raise SystemExit('Invalid secret operation result')
-        payload = {'http_status':payload['http_status'],'ok':200 <= payload['http_status'] < 300,
+        service_ok = payload.get('service_ok', True)
+        payload = {'http_status':payload['http_status'],
+                   'ok':200 <= payload['http_status'] < 300 and service_ok is True,
                    'response_body_withheld':True}
     elif not isinstance(payload,dict) or not isinstance(payload.get('operations'),list):
         raise SystemExit('Invalid secret operation list')

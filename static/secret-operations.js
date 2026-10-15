@@ -1,6 +1,9 @@
 /* Manage volatile credentials without placing values in agent messages. */
 (() => {
   'use strict';
+  const presets = Object.freeze({
+    slack: Object.freeze({name:'slack_check', url:'https://slack.com/api/auth.test', method:'POST', auth:'bearer', body:''}),
+  });
   async function open({api, ui, runId, card}) {
     if (!window.isSecureContext) {
       alert(ui.message('Secret operations require HTTPS or localhost.'));
@@ -14,16 +17,25 @@
       <div class="modal-head"><h2 data-ui-message="Secret%20operations">Secret operations</h2><button type="button" data-close data-ui-label="Close">×</button></div>
       <form class="modal-body" autocomplete="off">
         <p data-target></p>
-        <p class="ui-secondary" data-ui-message="Credentials%20stay%20in%20SiLing%20memory.%20Agents%20call%20a%20name%3B%20they%20cannot%20read%20the%20key%20or%20change%20its%20fixed%20HTTPS%20operation.%20Response%20bodies%20and%20headers%20are%20withheld.">Credentials stay in SiLing memory. Agents call a name; they cannot read the key or change its fixed HTTPS operation. Response bodies and headers are withheld.</p>
+        <p class="ui-secondary" data-ui-message="Choose a service and enter its key. Share only the operation name with your agent.">Choose a service and enter its key. Share only the operation name with your agent.</p>
+        <label><span data-ui-message="Service">Service</span><select data-service><option value="slack" data-ui-message="Slack — check authentication">Slack — check authentication</option><option value="custom" data-ui-message="Custom API">Custom API</option></select></label>
+        <p class="ui-secondary" data-preset-note data-ui-message="Checks Slack authentication only; cannot send messages or read workspace data.">Checks Slack authentication only; cannot send messages or read workspace data.</p>
         <label><span data-ui-message="Name">Name</span><input data-name required pattern="[A-Za-z][A-Za-z0-9_\\-]{0,63}" maxlength="64" autocomplete="off"></label>
-        <label><span data-ui-message="HTTPS%20endpoint%20(no%20query%20parameters)">HTTPS endpoint (no query parameters)</span><input data-url type="url" required placeholder="https://api.example.com/action" autocomplete="off"></label>
-        <label><span data-ui-message="Fixed%20method">Fixed method</span><select data-method><option>GET</option><option>POST</option></select></label>
-        <label><span data-ui-message="Authentication">Authentication</span><select data-auth><option value="bearer">Authorization: Bearer</option><option value="api-key">X-API-Key</option></select></label>
+        <label data-url-field hidden><span data-ui-message="HTTPS%20endpoint%20(no%20query%20parameters)">HTTPS endpoint (no query parameters)</span><input data-url type="url" placeholder="https://api.example.com/action" autocomplete="off" disabled></label>
         <label><span data-ui-message="API%20key">API key</span><input data-value type="password" required autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="4096"></label>
-        <label><span data-ui-message="Fixed%20POST%20body%20(optional%20JSON)">Fixed POST body (optional JSON)</span><textarea data-body rows="2" maxlength="4096" disabled autocomplete="off" spellcheck="false"></textarea></label>
-        <label><span data-ui-message="Lifetime">Lifetime</span><select data-ttl><option value="900" data-ui-message="15%20minutes">15 minutes</option><option value="3600" data-ui-message="1%20hour">1 hour</option></select></label>
-        <p class="ui-secondary" data-ui-message="Keys%20expire%20and%20are%20erased%20when%20the%20Dashboard%20stops.%20They%20are%20never%20exported%20to%20agent%20environment%20variables%20or%20saved%20in%20files.">Keys expire and are erased when the Dashboard stops. They are never exported to agent environment variables or saved in files.</p>
-        <p class="ui-secondary" data-ui-message="This%20protects%20the%20broker%20API%20boundary%2C%20not%20against%20other%20programs%20with%20your%20OS%20account%20or%20administrator%20access.">This protects the broker API boundary, not against other programs with your OS account or administrator access.</p>
+        <details data-advanced><summary data-ui-message="Advanced settings">Advanced settings</summary>
+          <div data-custom-settings hidden>
+            <label><span data-ui-message="Fixed%20method">Fixed method</span><select data-method disabled><option>GET</option><option>POST</option></select></label>
+            <label><span data-ui-message="Authentication">Authentication</span><select data-auth disabled><option value="bearer">Authorization: Bearer</option><option value="api-key">X-API-Key</option></select></label>
+            <label><span data-ui-message="Fixed%20POST%20body%20(optional%20JSON)">Fixed POST body (optional JSON)</span><textarea data-body rows="2" maxlength="4096" disabled autocomplete="off" spellcheck="false"></textarea></label>
+          </div>
+          <label><span data-ui-message="Lifetime">Lifetime</span><select data-ttl><option value="900" data-ui-message="15%20minutes">15 minutes</option><option value="3600" data-ui-message="1%20hour">1 hour</option></select></label>
+        </details>
+        <details><summary data-ui-message="How keys are protected">How keys are protected</summary>
+          <p class="ui-secondary" data-ui-message="Credentials%20stay%20in%20SiLing%20memory.%20Agents%20call%20a%20name%3B%20they%20cannot%20read%20the%20key%20or%20change%20its%20fixed%20HTTPS%20operation.%20Response%20bodies%20and%20headers%20are%20withheld.">Credentials stay in SiLing memory. Agents call a name; they cannot read the key or change its fixed HTTPS operation. Response bodies and headers are withheld.</p>
+          <p class="ui-secondary" data-ui-message="Keys%20expire%20and%20are%20erased%20when%20the%20Dashboard%20stops.%20They%20are%20never%20exported%20to%20agent%20environment%20variables%20or%20saved%20in%20files.">Keys expire and are erased when the Dashboard stops. They are never exported to agent environment variables or saved in files.</p>
+          <p class="ui-secondary" data-ui-message="This%20protects%20the%20broker%20API%20boundary%2C%20not%20against%20other%20programs%20with%20your%20OS%20account%20or%20administrator%20access.">This protects the broker API boundary, not against other programs with your OS account or administrator access.</p>
+        </details>
         <p data-status role="status" aria-live="polite"></p>
         <button type="submit" class="primary" data-submit data-ui-message="Register%20operation">Register operation</button>
         <div data-operations></div>
@@ -71,13 +83,29 @@
       clear(); document.removeEventListener('visibilitychange', hide); window.removeEventListener('pagehide', clear);
       dialog.remove(); if (card.isConnected) card.querySelector('.btn-pane-more').focus({preventScroll:true});
     }, {once:true});
+    const selectService = () => {
+      clear(); el('status').textContent = '';
+      const preset = presets[el('service').value];
+      if (!el('name').value || el('name').value === presets.slack.name) el('name').value = preset?.name || '';
+      el('url-field').hidden = !!preset; el('url').disabled = !!preset; el('url').required = !preset;
+      el('url').value = preset?.url || '';
+      el('preset-note').hidden = !preset; el('custom-settings').hidden = !!preset;
+      el('method').disabled = !!preset; el('auth').disabled = !!preset;
+      el('method').value = preset?.method || 'GET'; el('auth').value = preset?.auth || 'bearer';
+      el('body').value = ''; el('body').disabled = !!preset || el('method').value !== 'POST';
+      el('ttl').value = '900'; el('advanced').open = false;
+    };
+    el('service').onchange = selectService;
+    selectService();
     el('method').onchange = () => {el('body').disabled = el('method').value !== 'POST'; if (el('body').disabled) el('body').value = '';};
     el('submit').onclick = () => {if (!el('value').value) el('status').textContent = '';};
     dialog.querySelector('form').onsubmit = async event => {
       event.preventDefault(); if (el('submit').disabled) return;
       if (!card.isConnected || card.dataset.runId !== runId) {clear(); dialog.close(); return;}
-      const spec = {name:el('name').value,url:el('url').value,method:el('method').value,auth:el('auth').value,
-        body:el('body').value,value:el('value').value,ttl:Number(el('ttl').value)};
+      const preset = presets[el('service').value];
+      const spec = {name:el('name').value,url:preset?.url || el('url').value,
+        method:preset?.method || el('method').value,auth:preset?.auth || el('auth').value,
+        body:preset ? preset.body : el('body').value,value:el('value').value,ttl:Number(el('ttl').value)};
       clear(); el('submit').disabled = true;
       try {
         await api(endpoint,{method:'POST',body:spec,promptForToken:false,cache:'no-store'});
@@ -86,7 +114,7 @@
       } catch (_) {if (dialog.isConnected) error();}
       finally {spec.value = ''; el('submit').disabled = false;}
     };
-    dialog.showModal(); el('name').focus(); await load();
+    dialog.showModal(); el('service').focus({preventScroll:true}); dialog.scrollTop = 0; await load();
   }
   window.SilingSecretOperations = {open};
 })();

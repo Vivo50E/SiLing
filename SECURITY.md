@@ -38,7 +38,10 @@ as a privileged developer tool.
 
 The volatile broker keeps API keys out of agent environment variables, tmux input,
 command arguments and response text. Operations bind credentials to fixed HTTPS
-requests and expose status only. Raw response bodies/headers, redirects, arbitrary
+requests and expose status only. The fixed Slack `auth.test` POST adapter reads at
+most 16,385 response bytes, rejects bodies above 16 KiB, and extracts only a strict
+boolean `ok`; HTTP 200 with Slack `ok: false` is a failure. Generic operations never
+read response bodies. Raw response bodies/headers, redirects, arbitrary
 commands, credential retrieval and request overrides are deliberately excluded.
 Names are scoped by session identity, but Dashboard admin authentication can manage
 all sessions; it is not an untrusted-agent credential. Same-account processes and

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import http.client
+import json
 import re
 import ssl
 import threading
@@ -163,10 +164,25 @@ class SecretBroker:
             connection.request(operation.method, target.path or '/', body=operation.body or None,
                                headers={header:credential,'Content-Type':'application/json','Accept':'application/json'})
             response = connection.getresponse()
-            # Never read or forward the body or headers, even on error. A
+            # Generic operations never read the body or headers. A
             # remote API can echo credentials in either, including redirects.
-            return {'name':operation.name,'http_status':response.status,
-                    'ok':200 <= response.status < 300,'response_body_withheld':True}
+            result = {'name':operation.name,'http_status':response.status,
+                      'ok':200 <= response.status < 300,'response_body_withheld':True}
+            if operation.url == 'https://slack.com/api/auth.test' and operation.method == 'POST':
+                # Slack reports authentication errors inside HTTP 200. Only a
+                # bounded boolean escapes this adapter; never forward provider
+                # text, identity data, errors or echoed credentials.
+                result['service_ok'] = False
+                if result['ok']:
+                    raw = response.read(16385)
+                    if len(raw) <= 16384:
+                        try:
+                            payload = json.loads(raw)
+                            result['service_ok'] = isinstance(payload, dict) and payload.get('ok') is True
+                        except (ValueError, UnicodeError):
+                            pass
+                result['ok'] = result['ok'] and result['service_ok']
+            return result
         except Exception:
             raise ValueError('Operation failed or delivery is uncertain; check the service before retrying') from None
         finally:

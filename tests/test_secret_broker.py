@@ -65,6 +65,48 @@ class SecretBrokerTests(unittest.TestCase):
             self.assertIsNone(error.exception.__cause__)
             factory.return_value.request.assert_called_once()  # no replay
 
+    def test_slack_authentication_uses_bounded_boolean_without_response_text(self):
+        self.broker.register('pane-a', {**self.spec, 'url':'https://slack.com/api/auth.test', 'body':''})
+        cases = [(200, b'{"ok":true}', True), (200, b'{"ok":false}', False),
+                 (200, b'{"ok":"true"}', False), (200, b'{"ok":1}', False),
+                 (200, b'[]', False), (200, b'not-json', False),
+                 (200, b'x' * 16385, False), (401, b'{"ok":true}', False)]
+        for status, body, expected in cases:
+            with self.subTest(status=status, body=body[:30]), patch('http.client.HTTPSConnection') as factory:
+                response = factory.return_value.getresponse.return_value
+                response.status = status
+                response.read.return_value = body
+                result = self.broker.call('pane-a', 'deploy')
+                self.assertIs(result['ok'], expected)
+                self.assertIs(result['service_ok'], expected)
+                if status == 200:
+                    response.read.assert_called_once_with(16385)
+                else:
+                    response.read.assert_not_called()
+                response.getheaders.assert_not_called()
+                self.assertNotIn(self.key, json.dumps(result))
+        with patch('http.client.HTTPSConnection') as factory:
+            response = factory.return_value.getresponse.return_value
+            response.status = 200
+            response.read.return_value = json.dumps({'ok':True,'error':self.key,'user':self.key}).encode()
+            self.assertEqual(set(self.broker.call('pane-a','deploy')),
+                             {'name','http_status','ok','response_body_withheld','service_ok'})
+
+    def test_cli_preserves_slack_failure_without_printing_provider_text(self):
+        args = argparse.Namespace(run_id='pane-a', secret_action='call', name='deploy')
+        for service_ok in (False, True, 'true', self.key):
+            with self.subTest(service_ok=service_ok), \
+                    patch.object(cli,'_dashboard_api_base',return_value='https://127.0.0.1:7860'), \
+                    patch.object(cli,'dashboard_token',return_value='fixture-auth'), \
+                    patch.object(cli,'build_opener') as build, \
+                    patch('sys.stdout',new_callable=io.StringIO) as output:
+                build.return_value.open.return_value.__enter__.return_value.read.return_value = json.dumps(
+                    {'http_status':200, 'service_ok':service_ok, 'error':self.key}).encode()
+                cli.cmd_secret(args)
+                self.assertEqual(json.loads(output.getvalue()),
+                                 {'http_status':200,'ok':service_ok is True,'response_body_withheld':True})
+                self.assertNotIn(self.key,output.getvalue())
+
     def test_invalid_destinations_controls_and_embedded_keys_never_register(self):
         invalid = [{'url':'http://api.example.test/'}, {'url':'https://user:password@api.example.test/'},
                    {'url':'https://api.example.test/?key=fixture'}, {'url':'https://api.example.test/#fragment'},

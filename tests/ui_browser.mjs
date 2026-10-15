@@ -1318,6 +1318,7 @@ try {
   const openBroker=async()=>{
     await evaluate(`document.querySelector('${privateCard} .btn-pane-more').click();document.querySelector('${privateCard} .btn-secret-operations').click()`);
     await waitFor(`!!document.querySelector('.secret-operations-dialog[open] [data-operations]')?.textContent`);
+    assert.ok(await evaluate(`(()=>{const d=document.querySelector('.secret-operations-dialog');return d.querySelector('h2').getBoundingClientRect().top>=d.getBoundingClientRect().top;})()`),'Opening the dialog keeps its title and service choice in view');
   };
   const closeBroker=async()=>{await evaluate(`document.querySelector('.secret-operations-dialog [data-close]').click()`);await waitFor(`!document.querySelector('.secret-operations-dialog')`);};
   for(const language of ['zh','en']) {
@@ -1331,12 +1332,28 @@ try {
   assert.equal(brokerRegistrations.length,0,'Cancel does not save or send a key');
   await openBroker();
   const storageBeforeBroker=await evaluate(`JSON.stringify(localStorage)`);
+  assert.equal(await evaluate(`document.querySelector('.secret-operations-dialog [data-name]').value`),'slack_check');
+  assert.equal(await evaluate(`document.querySelector('.secret-operations-dialog [data-advanced]').open`),false);
+  assert.equal(await evaluate(`document.querySelector('.secret-operations-dialog [data-url-field]').hidden`),true);
+  await evaluate(`{const d=document.querySelector('.secret-operations-dialog');d.querySelector('[data-value]').value='fixture-preset-change';const c=d.querySelector('[data-service]');c.value='custom';c.dispatchEvent(new Event('change'));}`);
+  assert.equal(await evaluate(`document.querySelector('.secret-operations-dialog [data-value]').value`),'','Changing service clears the key');
+  assert.equal(await evaluate(`document.querySelector('.secret-operations-dialog [data-url]').required`),true);
+  assert.equal(await evaluate(`document.querySelector('.secret-operations-dialog [data-method]').value`),'GET');
+  await evaluate(`{const c=document.querySelector('.secret-operations-dialog [data-service]');c.value='slack';c.dispatchEvent(new Event('change'));document.querySelector('.secret-operations-dialog [data-value]').value='fixture-slack-private-123456';document.querySelector('.secret-operations-dialog [data-submit]').click();}`);
+  await waitFor(`document.querySelector('.secret-operation-row')?.textContent.includes('slack_check')`);
+  assert.deepEqual(brokerRegistrations[0],{scope:'fixture-2',name:'slack_check',url:'https://slack.com/api/auth.test',method:'POST',auth:'bearer',body:'',value:'fixture-slack-private-123456',ttl:900},'Preset needs only the key, sends fixed settings and defaults to 15 minutes');
+  assert.equal(await evaluate(`document.querySelector('.secret-operations-dialog [data-value]').value`),'');
+  await evaluate(`document.querySelector('.secret-operation-row button:last-child').click()`);
+  await waitFor(`!document.querySelector('.secret-operation-row')`);
+  await evaluate(`{const d=document.querySelector('.secret-operations-dialog');const c=d.querySelector('[data-service]');c.value='custom';c.dispatchEvent(new Event('change'));d.querySelector('[data-advanced]').open=true;}`);
+
   await evaluate(`document.querySelector('.secret-operations-dialog [data-value]').value='fixture-broker-hidden';Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));delete document.hidden`);
   assert.equal(await evaluate(`document.querySelector('.secret-operations-dialog [data-value]').value`),'');
   await evaluate(`{const d=document.querySelector('.secret-operations-dialog');d.querySelector('[data-name]').value='deploy';d.querySelector('[data-url]').value='https://api.example.test/deploy';d.querySelector('[data-value]').value='fixture-broker-private-123456';d.querySelector('[data-method]').value='POST';d.querySelector('[data-method]').dispatchEvent(new Event('change'));d.querySelector('[data-body]').value='{"action":"deploy"}';d.querySelector('[data-submit]').click();d.querySelector('[data-submit]').click();}`);
   await waitFor(`document.querySelector('.secret-operation-row')?.textContent.includes('deploy')`);
-  assert.equal(brokerRegistrations.length,1,'Double save creates one operation');
-  assert.equal(brokerRegistrations[0].scope,'fixture-2');
+  assert.equal(brokerRegistrations.length,2,'Double save creates one custom operation after the preset');
+  assert.equal(brokerRegistrations[1].scope,'fixture-2');
+  assert.equal(brokerRegistrations[1].body,'{"action":"deploy"}');
   assert.equal(await evaluate(`document.querySelector('.secret-operations-dialog [data-value]').value`),'');
   assert.ok(await evaluate(`!document.querySelector('.secret-operations-dialog').textContent.includes('fixture-broker-private-123456')`));
   assert.equal(await evaluate(`JSON.stringify(localStorage)`),storageBeforeBroker,'Credential management never writes browser storage');
@@ -1358,7 +1375,7 @@ try {
   assert.ok(await evaluate(`(()=>{const r=document.querySelector('.secret-operations-dialog').getBoundingClientRect();return r.x>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight;})()`),'Secret operation dialog fits a narrow viewport');
   await screenshot('secret-operations-mobile');await closeBroker();
   await cdp('Emulation.clearDeviceMetricsOverride');
-  console.log('PASS: bilingual broker management, cleared credentials, no storage/agent messages, reference-only clipboard, revoke, literal errors and mobile layout');
+  console.log('PASS: Slack preset, custom API advanced settings, destination clearing, bilingual broker management, cleared credentials, no storage/agent messages, reference-only clipboard, revoke, literal errors and mobile layout');
   const promptsBeforeLink=sentPrompts.length;
   for(const language of ['zh','en']) {
     await evaluate(`{const c=document.querySelector('[data-appearance="language"]');c.value=${JSON.stringify(language)};c.dispatchEvent(new Event('change'));document.querySelector('[data-run-id="fixture-2"] .btn-link-folder').click();}`);
