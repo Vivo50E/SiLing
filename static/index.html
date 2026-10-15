@@ -2770,6 +2770,7 @@
 <script src="/static/ui-foundation.js?v=13"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=5" />
 <script src="/static/pane-group-outlines.js?v=1"></script>
+<script src="/static/resume-all.js?v=1"></script>
 <script src="/static/pane-groups.js?v=8"></script>
 <script src="/static/new-session-options.js?v=1"></script>
 <script src="/static/session-help.js?v=1"></script>
@@ -3357,6 +3358,7 @@
       <div class="modal-head"><h2 id="workspace-menu-title" data-i18n="more">More</h2><button data-dialog-close aria-label="Close" data-ui-label=Close>×</button></div>
       <div class="modal-body">
       <div class="panel-actions-left ui-menu-group" aria-label="Saved active-session actions" data-ui-label=Saved%20active-session%20actions>
+        <button id="btn-resume-all">Resume all sessions</button>
         <button id="btn-save-active" title="Save all currently active sessions for later restore" data-ui-title=Save%20all%20currently%20active%20sessions%20for%20later%20restore><span data-ui-message=Save%20active%20sessions>Save active sessions</span></button>
         <button id="btn-restore-active" title="Restore the last saved active-session set" data-ui-title=Restore%20the%20last%20saved%20active-session%20set><span data-ui-message=Restore%20saved%20sessions>Restore saved sessions</span></button>
       </div>
@@ -9762,10 +9764,25 @@
     }
   }
 
-  async function recoverExitedSession(runId, button, endButton) {
-    const s = sessions.find(x => x.run_id === runId);
+  window.SilingResumeAll({ui, trigger:$("btn-resume-all"),
+    load: async signal => {
+      const data = await api("/api/sessions", {signal});
+      if (data.snapshot?.ready === false || data.snapshot?.error || !data.session_archives || data.session_archives.error)
+        throw new Error("Session or archive information is unavailable; refresh before retrying");
+      return conversationSessions(data.sessions || []).filter(s =>
+        sessionCanResumeEnded(s) && !sessionIsTerminal(s)
+        && !(s.remote && s.node_online === false)
+        && !data.session_archives.entries?.[s.run_id]?.archived);
+    },
+    resume:(session, signal)=>recoverExitedSession(session.run_id, null, null, {bulk:true,session,signal}),
+    refresh:()=>void refreshList(),
+  });
+
+  async function recoverExitedSession(runId, button, endButton, options = {}) {
+    const s = options.session || sessions.find(x => x.run_id === runId);
     if (!s || (s.alive ? s.agent_exited !== true : !sessionCanResumeEnded(s))
-        || recoveringSessions.has(runId) || (s.remote && s.node_online === false)) return;
+        || recoveringSessions.has(runId) || (s.remote && s.node_online === false)
+        || (options.bulk && (s.alive || sessionIsTerminal(s)))) return {ok:false, reason:"Session is running, unavailable or already being recovered"};
     recoveringSessions.add(runId);
     const name = s.display_name || s.task || s.run_name || "session";
     const ctrl = paneCtrls.get(runId);
@@ -9782,8 +9799,9 @@
     try {
       let startNewIfMissing = false;
       if (s.agent === "claude") {
-        const check = await api(`/api/sessions/${encodeURIComponent(runId)}/resume-check`);
+        const check = await api(`/api/sessions/${encodeURIComponent(runId)}/resume-check`, {signal:options.signal});
         if (check.status === "missing") {
+          if (options.bulk) throw new Error(check.reason || "Saved conversation not found; use individual recovery to review options");
           const zh = document.documentElement.lang.startsWith("zh");
           const message = zh
             ? `找不到「${name}」的 Claude 对话记录。这个 ID 可能只被预分配，还没有保存对话。\n\n是否新开对话？将保留名称、分组、目录和原会话记录，但不会恢复旧对话内容。`
@@ -9816,6 +9834,7 @@
       const resumed = await api("/api/resume", {
         method: "POST",
         body: { run_id: runId, node_id: nodeId, mode: "background", ...(startNewIfMissing ? {start_new_if_missing: true} : {}) },
+        signal: options.signal,
       });
       const newRunId = String(resumed?.run_id || "");
       if (!newRunId) throw new Error("resume succeeded without a new run id");
@@ -9834,9 +9853,11 @@
         : resumed.started_new_conversation ? `Started a new conversation for ${name}; waiting for the new pane…`
         : `Resumed ${name}; waiting for the new pane…`;
       setTimeout(() => void refreshList(), s.remote ? 500 : 200);
+      return {ok:true, run_id:newRunId};
     } catch (e) {
-      alert(ui.message("recover session failed: ") + e.message);
+      if (!options.bulk) alert(ui.message("recover session failed: ") + e.message);
       setTimeout(() => void refreshList(), 250);
+      return {ok:false, reason:e.message};
     } finally {
       recoveringSessions.delete(runId);
       if (button && button.isConnected) {

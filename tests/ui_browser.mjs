@@ -15,6 +15,7 @@ import { checkPlainPolling } from './plain_polling_browser.mjs';
 import { checkFork } from './fork_browser.mjs';
 import { checkPaneMenu } from './pane_menu_browser.mjs';
 import { checkSidebarMenu } from './sidebar_menu_browser.mjs';
+import { checkResumeAll } from './resume_all_browser.mjs';
 import { checkGroupOutlines } from './group_outlines_browser.mjs';
 import { checkArrangeNames } from './arrange_names_browser.mjs';
 import { checkMissingConversation } from './missing_conversation_browser.mjs';
@@ -103,6 +104,7 @@ const artifactPreviewRequests = [];
 const previewSource = '# Readable Markdown\n\nAn isolated preview fixture.';
 const completeSource = previewSource + '\n' + 'Full source line\n'.repeat(18000) + 'END OF FILE';
 let truncatePreview = false;
+let bulkMode=false,bulkHold=null;const bulkBodies=[];
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   requests.push({ method: req.method, path: url.pathname });
@@ -115,6 +117,9 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/api/sessions/missing-native/stop') {
     res.setHeader('Content-Type','application/json');res.end(JSON.stringify({ok:true}));return;
+  }
+  if (bulkMode && url.pathname.endsWith('/resume-check')) {
+    res.setHeader('Content-Type','application/json');res.end(JSON.stringify({status:url.pathname.includes('bulk-missing')?'missing':'ready',reason:'Fixture conversation missing'}));return;
   }
   if (url.pathname.endsWith('/resume-check')) {
     res.setHeader('Content-Type','application/json');res.end(JSON.stringify({status:missingConversationStatus,reason:'Fixture storage unavailable'}));return;
@@ -394,6 +399,17 @@ const server = http.createServer((req, res) => {
         sentPrompts.push({path:url.pathname,...JSON.parse(body)});res.end(JSON.stringify({ok:true}));
       });return;
     }
+    if (bulkMode && url.pathname === '/api/resume') {
+      let raw='';req.on('data',c=>raw+=c);req.on('end',()=>{
+        const body=JSON.parse(raw);bulkBodies.push(body);
+        const reply=()=>{
+          if(body.run_id==='bulk-fail'){res.writeHead(503);res.end(JSON.stringify({detail:'Fixture resume failure'}));return;}
+          const old=sessions.find(s=>s.run_id===body.run_id),id=body.run_id+'-resumed';
+          sessions.push({...old,run_id:id,alive:true});res.end(JSON.stringify({ok:true,run_id:id}));
+        };
+        if(body.run_id==='bulk-first'){bulkHold=reply;return;}reply();
+      });return;
+    }
     if (url.pathname === '/api/resume') {
       let body='';req.on('data',c=>body+=c);req.on('end',()=>{resumeBody=JSON.parse(body);pendingResume=res;});return;
     }
@@ -509,7 +525,15 @@ try {
     sessions.push(...rows);groupFixture.groups=[{id:'outline-a',name:'Group A',color:'teal'},{id:'outline-b',name:'Group B',color:'purple'}];
     groupFixture.members=Object.fromEntries(rows.filter(r=>r.group).map(r=>[r.run_id,r.group]));
   }});
-  if (process.env.UI_GROUP_OUTLINES_ONLY === '1') {
+  const bulkCheck=()=>checkResumeAll({evaluate,waitFor,cdp,viewport,screenshot,pause,bodies:bulkBodies,
+    configure:rows=>{bulkMode=true;archiveMode='ok';sessions.splice(0,sessions.length,...rows);archiveFixture.entries={'bulk-archived':{archived:true}};},
+    ready:()=>!!bulkHold,release:()=>{bulkHold();bulkHold=null;},
+    activate:id=>{sessions.find(s=>s.run_id===id).alive=true;}
+  });
+  if (process.env.UI_RESUME_ALL_ONLY === '1') {
+    await bulkCheck();
+    assert.deepEqual(errors, [], 'No uncaught bulk recovery errors');
+  } else if (process.env.UI_GROUP_OUTLINES_ONLY === '1') {
     await outlinesCheck();
     assert.deepEqual(errors, [], 'No uncaught group outline errors');
   } else if (process.env.UI_REVIEWS_ONLY === '1') {
@@ -1785,6 +1809,7 @@ try {
   await missingConversationCheck();
   await reviewsCheck();
   await outlinesCheck();
+  await bulkCheck();
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));
   }

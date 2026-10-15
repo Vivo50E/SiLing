@@ -131,6 +131,11 @@ intervene.
   Unchanged log snapshots keep their existing text and selection instead of
   repeatedly laying out large histories; scrolling up pauses updates until
   you return to the bottom.
+- **More → Resume all sessions** previews stopped, resumable Agents across all groups.
+  Confirm to recover them one at a time, preserving existing pane slots; unplaced
+  sessions run in the background. Running, archived, offline and Terminal/SSH
+  sessions are excluded. Missing conversations are reported without starting new
+  ones. You can stop the remaining queue; failures are not retried automatically.
 - Enable **Settings → Appearance → Colored group outlines in All** to outline
   neighboring panes in their group color. Only All shows the frames; pane sizes,
   positions, terminal connections and activity borders stay unchanged. Disconnected
