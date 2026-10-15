@@ -16,7 +16,7 @@
 #group-session-list small { display: flex; align-items: center; gap: 6px; color: var(--text-dim); margin-top: 3px; }
 #pane-groups-dialog input, #pane-groups-dialog select { min-width: 0; max-width: 100%; }
 .pane-group-control small { white-space: normal; overflow-wrap: anywhere; }
-.group-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; flex: 0 0 12px; background: var(--group-color); border: 1px solid var(--border); box-shadow: 0 0 0 1px rgb(128 128 128 / .2); }
+.group-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; flex: 0 0 12px; background: var(--group-color); background-image: var(--group-gradient); border: 1px solid var(--border); box-shadow: 0 0 0 1px rgb(128 128 128 / .2); }
 #pane-groups-dialog { width: min(780px, calc(100vw - 24px)); max-width: calc(100vw - 24px); }
 #pane-groups-dialog .modal-body { display: grid; gap: 18px; padding: 18px; }
 #pane-groups-dialog h3 { margin: 0; font-size: 13px; }
@@ -89,3 +89,12 @@
 /* Separate, non-interactive paint outside pane geometry and activity borders. */
 #pane-group-outlines { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:24; overflow:hidden; }
 #pane-group-outlines * { pointer-events:none; }
+
+/* Paint both group colors without changing tab or pane geometry. */
+#pane-group-tabs button, #pane-group-tabs button[aria-pressed="true"] { border-bottom-color: transparent; background-image: var(--group-gradient); background-size: 100% 3px; background-repeat: no-repeat; background-position: bottom; background-origin: border-box; }
+.pane-group-badge { border-image: linear-gradient(to bottom, var(--group-color), var(--group-color-2, var(--group-color))) 1; }
+#pane-group-form .group-duotone-toggle { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+#pane-group-form #group-duotone { width: auto; min-height: 0; flex: 0 0 auto; }
+#group-color2 { cursor: pointer; padding: 4px; height: 42px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-elev); }
+#group-hex2 { font-family: ui-monospace, monospace; }
+#group-hex2:invalid { border-color: #e87171; }

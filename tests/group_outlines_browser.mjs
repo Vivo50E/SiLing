@@ -31,6 +31,12 @@ export async function checkGroupOutlines({evaluate,waitFor,cdp,viewport,screensh
   groups.groups[0].color='#edb84d';
   await evaluate(`document.querySelector('#btn-refresh').click()`);
   await waitFor(`document.querySelector('#pane-group-outlines [data-group-id="outline-a"]')?.getAttribute('stroke')==='#edb84d'`);
+  groups.groups[0].color2='#12abef';
+  await evaluate(`document.querySelector('#btn-refresh').click()`);
+  await waitFor(`document.querySelector('#pane-group-outlines [data-group-id="outline-a"]')?.getAttribute('stroke')?.startsWith('url(')`);
+  assert.deepEqual(await evaluate(`[...document.querySelectorAll('#pane-group-outlines linearGradient stop')].map(n=>n.getAttribute('stop-color'))`),['#edb84d','#12abef']);
+  assert.equal(await evaluate(`[...document.querySelectorAll('#grid .pane iframe')].every((f,i)=>f===outlineFrames[i])`),true,'Changing to two colors preserves terminals');
+  await screenshot('group-outlines-duotone');
   await evaluate(`document.querySelector('#btn-arrange-groups').click()`);
   await waitFor(`JSON.parse(localStorage.orch_slots)[3]==='outline-8'`);
   await screenshot('group-outlines-arranged');

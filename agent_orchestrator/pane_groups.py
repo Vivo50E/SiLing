@@ -57,7 +57,8 @@ def _validate(data: dict) -> dict:
         if (not isinstance(group, dict) or group.get("id") != group_id
                 or not isinstance(group.get("name"), str)
                 or group.get("color") not in COLORS
-                or ("custom_color" in group and not _is_hex_color(group["custom_color"]))):
+                or ("custom_color" in group and not _is_hex_color(group["custom_color"]))
+                or ("color2" in group and not _is_hex_color(group["color2"]))):
             raise ValueError("Invalid project-group storage")
     if any(not isinstance(v, str) for v in data["members"].values()):
         raise ValueError("Invalid project-group membership storage")
@@ -115,6 +116,9 @@ class PaneGroups:
                 raise ValueError("Group name must contain 1–64 characters without control characters")
             if color not in COLORS and not _is_hex_color(color):
                 raise ValueError("Unsupported group color")
+            color2 = body.get("color2")
+            if color2 is not None and color2 not in COLORS and not _is_hex_color(color2):
+                raise ValueError("Unsupported second group color")
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with edit_json(self.path, create=True) as raw:
             data = _validate(raw)
@@ -130,7 +134,11 @@ class PaneGroups:
                     if len(groups) >= 100:
                         raise ValueError("At most 100 project groups are supported")
                     group_id = uuid.uuid4().hex
+                # Old clients omit color2; preserve it on unrelated edits.
+                second = body.get("color2", groups.get(group_id, {}).get("color2"))
                 groups[group_id] = {"id": group_id, "name": name.strip(), **_stored_color(color)}
+                if second is not None:
+                    groups[group_id]["color2"] = COLOR_HEX[second] if second in COLORS else second.lower()
             elif action == "reorder":
                 before_id = body.get("before_id", "")
                 if not isinstance(before_id, str):

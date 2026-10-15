@@ -382,8 +382,8 @@ const server = http.createServer((req, res) => {
       req.on('end', () => {
         if (failGroupSave) { res.writeHead(503); res.end(JSON.stringify({detail:'Fixture save failed'})); return; }
         const edit = JSON.parse(body);
-        if (edit.action === 'create') groupFixture.groups.push({id:'project-fixture', name:edit.name, color:edit.color});
-        if (edit.action === 'update') Object.assign(groupFixture.groups.find(g => g.id === edit.group_id), {name:edit.name, color:edit.color});
+        if (edit.action === 'create') groupFixture.groups.push({id:'project-fixture', name:edit.name, color:edit.color, color2:edit.color2});
+        if (edit.action === 'update') Object.assign(groupFixture.groups.find(g => g.id === edit.group_id), {name:edit.name, color:edit.color, color2:edit.color2});
         if (edit.action === 'reorder') {const moved=groupFixture.groups.find(g=>g.id===edit.group_id);groupFixture.groups=groupFixture.groups.filter(g=>g.id!==edit.group_id);const index=edit.before_id?groupFixture.groups.findIndex(g=>g.id===edit.before_id):groupFixture.groups.length;groupFixture.groups.splice(index,0,moved);}
         if (edit.action === 'assign') for (const id of edit.run_ids) groupFixture.members[id] = edit.group_id;
         if (edit.action === 'delete') {
@@ -659,10 +659,19 @@ try {
     await evaluate(`document.querySelector('#group-hex').value='#12AbEf';document.querySelector('#group-hex').dispatchEvent(new Event('input'))`);
     assert.equal(await evaluate(`getComputedStyle(document.querySelector('#group-preview .group-dot')).backgroundColor`),'rgb(18, 171, 239)');
     assert.equal(await evaluate(`document.querySelector('#group-preview span').textContent`),'Project <A>','Preview escapes names');
+    assert.equal(await evaluate(`document.querySelector('#group-duotone').checked`),false,'Existing single-color default');
+    await evaluate(`document.querySelector('#group-duotone').click();document.querySelector('#group-hex2').value='#badbad!';document.querySelector('#group-hex2').dispatchEvent(new Event('input'));document.querySelector('#group-save').click()`);
+    assert.equal(groupFixture.groups.length,0,'Invalid second color never writes');
+    await evaluate(`document.querySelector('#group-color2').value='#ef645a';document.querySelector('#group-color2').dispatchEvent(new Event('input'))`);
+    assert.equal(await evaluate(`document.querySelector('#group-hex2').value`),'#ef645a');
+    assert.ok(await evaluate(`getComputedStyle(document.querySelector('#group-preview .group-dot')).backgroundImage.includes('239') && getComputedStyle(document.querySelector('#group-preview .group-dot')).backgroundImage.includes('100, 90')`),'Preview contains both colors');
+
     await screenshot('project-groups-color-preview');
     await evaluate(`document.querySelector('#group-save').click()`);
     await waitFor(`document.querySelector('[data-group-filter="project-fixture"]') !== null`);
     assert.equal(groupFixture.groups[0].color,'#12abef');
+    assert.equal(groupFixture.groups[0].color2,'#ef645a');
+    assert.ok(await evaluate(`getComputedStyle(document.querySelector('[data-group-filter="project-fixture"]')).backgroundImage.includes('100, 90')`),'Tab strip uses the second color');
     assert.equal(await evaluate(`getComputedStyle(document.querySelector('[data-edit-group="project-fixture"] .group-dot')).backgroundColor`),'rgb(18, 171, 239)');
     await evaluate(`document.querySelector('.group-assignment summary').focus()`);
     await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,text:'\r'});
@@ -675,6 +684,8 @@ try {
     await evaluate(`document.querySelector('#group-session-list input[value="fixture-0"]').click();document.querySelector('#group-session-list input[value="fixture-1"]').click();document.querySelector('#group-target').value='project-fixture';document.querySelector('#group-target').dispatchEvent(new Event('change'));document.querySelector('#group-assign').click()`);
     await waitFor(`document.querySelector('[data-run-id="fixture-0"] .pane-group-badge').textContent==='Project <A>'`);
     await evaluate(`document.querySelector('#pane-groups-dialog').close();document.querySelector('[data-group-filter="project-fixture"]').click()`);
+    assert.ok(await evaluate(`getComputedStyle(document.querySelector('[data-group-filter="project-fixture"]')).backgroundImage.includes('100, 90')`),'Selected tab retains both colors');
+    assert.ok(await evaluate(`getComputedStyle(document.querySelector('[data-run-id="fixture-0"] .pane-group-badge')).borderImageSource.includes('100, 90')`),'Pane badge uses the second color');
     assert.equal(await evaluate(`document.querySelectorAll('#grid .pane-card.group-hidden').length`), 2);
     assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-2"]').inert`), true);
     assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-0"] .pane-input textarea').value`), 'group draft');
@@ -708,6 +719,8 @@ try {
 
     await evaluate(`document.querySelector('[data-run-id="fixture-2"] .pane-menu').close();document.querySelector('#btn-pane-groups').click();document.querySelector('[data-edit-group="project-fixture"]').click();document.querySelector('#group-name').value='Renamed'`);
     assert.equal(await evaluate(`document.querySelector('#group-hex').value`),'#12abef','Saved custom color reopens accurately');
+    assert.equal(await evaluate(`document.querySelector('#group-hex2').value`),'#ef645a','Saved second color reopens accurately');
+    assert.equal(await evaluate(`document.querySelector('#group-duotone').checked`),true);
     failGroupSave = true;
     await evaluate(`document.querySelector('#group-save').click()`);
     await waitFor(`document.querySelector('#group-result').textContent.includes('not confirmed')`);
@@ -715,8 +728,10 @@ try {
     assert.equal(await evaluate(`document.querySelector('#group-name').value`),'Renamed','Failed save preserves the draft');
     assert.equal(await evaluate(`document.querySelector('#group-hex').value`),'#12abef');
     failGroupSave = false;
-    await evaluate(`document.querySelector('#group-save').click()`);
+    await evaluate(`document.querySelector('#group-duotone').click();document.querySelector('#group-save').click()`);
     await waitFor(`document.querySelector('[data-run-id="fixture-0"] .pane-group-badge').textContent==='Renamed'`);
+    assert.equal(groupFixture.groups[0].color2,null,'Turning off two colors saves a single color');
+    assert.equal(await evaluate(`document.querySelector('#group-second-color').hidden`),true);
     await evaluate(`document.querySelector('.group-assignment').open=false`);
     await screenshot('project-groups-desktop');
     await evaluate(`document.documentElement.dataset.appTheme='light'`);
@@ -728,6 +743,7 @@ try {
     }
     await evaluate(`document.documentElement.dataset.appTheme='dark'`);
     await viewport(390, 844);
+    await evaluate(`document.querySelector('#group-duotone').click()`);
     assert.ok(await evaluate(`document.documentElement.scrollWidth <= innerWidth && document.querySelector('#pane-groups-dialog').scrollWidth<=document.querySelector('#pane-groups-dialog').clientWidth`), 'Groups dialog fits mobile width');
     await screenshot('project-groups-mobile');
     await viewport(1280, 800);

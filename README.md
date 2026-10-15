@@ -291,11 +291,15 @@ group; group names and colored markers are separate from priority flags.
 The group manager shows a color-coded group list beside the editor (stacked on
 phones). Choose from 12 visible swatches, use the system color picker, or enter
 any six-digit HEX color such as `#12abef`. The name and color preview update
-immediately; **Save changes** applies them. Expand **Assign sessions** for bulk
+immediately; **Save changes** applies them. Enable **Two colors** to choose a second
+color with its picker or HEX field. Dots, group tabs, pane badges and All-view
+outlines share the two-color gradient. Turn it off to return to one color;
+existing single-color groups need no migration. Expand **Assign sessions** for bulk
 selection, including Select all/Clear and a selected-session count.
 Existing named colors remain supported. Custom colors retain a nearest legacy
 color in storage, so older servers can read the groups; editing a group with an
-older server resets its custom color. Refresh older Dashboard tabs after updating.
+older server resets its custom color and may remove its second color. Refresh
+older Dashboard tabs after updating.
 
 Drag named group tabs left or right to reorder them; the order is saved on the
 Dashboard and shared across devices. **All** and **Ungrouped** stay first.

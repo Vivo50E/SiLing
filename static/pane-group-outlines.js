@@ -71,8 +71,18 @@
         const clipId=`group-outline-${index++}`;
         const clip=node('clipPath',{id:clipId,clipPathUnits:'userSpaceOnUse'},defs);
         for(const c of cells)node('rect',{x:c.left,y:c.top,width:c.right-c.left,height:c.bottom-c.top},clip);
+        let stroke = group.color;
+        if (group.color2 && group.color2 !== group.color) {
+          const paintId = `${clipId}-paint`;
+          const paint = node('linearGradient',{id:paintId,gradientUnits:'userSpaceOnUse',
+            x1:Math.min(...cells.map(c=>c.left)),y1:Math.min(...cells.map(c=>c.top)),
+            x2:Math.max(...cells.map(c=>c.right)),y2:Math.max(...cells.map(c=>c.bottom))},defs);
+          node('stop',{offset:'0%','stop-color':group.color},paint);
+          node('stop',{offset:'100%','stop-color':group.color2},paint);
+          stroke = `url(#${paintId})`;
+        }
         // Clip the stroke inward so adjacent groups both retain their own color.
-        node('path',{'data-group-id':group.id,d:lines.join(''),stroke:group.color,'stroke-width':5,fill:'none','clip-path':`url(#${clipId})`},layer);
+        node('path',{'data-group-id':group.id,d:lines.join(''),stroke,'stroke-width':5,fill:'none','clip-path':`url(#${clipId})`},layer);
       }
     }
     schedule();return {schedule};

@@ -73,6 +73,41 @@ class PaneGroupTests(unittest.TestCase):
         self.assertEqual(self.row["panel_state"], "p0")
         self.assertTrue(self.row["alive"])
 
+    def test_two_colors_persist_preserve_membership_and_support_old_client_edits(self):
+        gid = self.create()
+        self.assign(gid)
+        members = self.store.read()["members"].copy()
+        self.store.change({"action":"update", "group_id":gid, "name":"Two colors",
+                           "color":"#12AbEf", "color2":"#Ef645A"})
+        reopened = PaneGroups(self.root)
+        group = reopened.view([self.row])["groups"][0]
+        self.assertEqual((group["color"], group["color2"]), ("#12abef", "#ef645a"))
+        self.assertEqual(reopened.read()["members"], members)
+        self.assertIn(reopened.read()["groups"][gid]["color"], COLORS)
+        self.store.change({"action":"update", "group_id":gid, "name":"Old client rename", "color":"teal"})
+        self.assertEqual(reopened.view([])["groups"][0]["color2"], "#ef645a")
+        self.store.change({"action":"reorder", "group_id":gid})
+        self.assertEqual(reopened.view([])["groups"][0]["color2"], "#ef645a")
+        self.store.change({"action":"update", "group_id":gid, "name":"Single", "color":"teal", "color2":None})
+        self.assertNotIn("color2", reopened.view([])["groups"][0])
+        self.store.change({"action":"create", "name":"Named pair", "color":"blue", "color2":"pink"})
+        self.assertEqual(reopened.view([])["groups"][1]["color2"], "#d47ead")
+
+    def test_second_color_rejects_invalid_input_and_corrupt_storage_without_overwriting(self):
+        gid = self.create()
+        before = self.store.path.read_bytes()
+        for color in [False, [], {}, "", "#fff", "#123456;display:none", "url(evil)", "#123456\n"]:
+            with self.subTest(color=color), self.assertRaises(ValueError):
+                self.store.change({"action":"update", "group_id":gid, "name":"Test", "color":"blue", "color2":color})
+            self.assertEqual(self.store.path.read_bytes(), before)
+        data = self.store.read()
+        data["groups"][gid]["color2"] = "url(evil)"
+        self.store.path.write_text(json.dumps(data))
+        corrupt = self.store.path.read_bytes()
+        with self.assertRaises(ValueError):
+            self.store.change({"action":"update", "group_id":gid, "name":"Test", "color":"blue"})
+        self.assertEqual(self.store.path.read_bytes(), corrupt)
+
     def test_custom_color_round_trip_keeps_legacy_fallback_and_membership(self):
         gid = self.create()
         self.assign(gid)

@@ -3,19 +3,24 @@
   const colors = {blue: "#589bf1", teal: "#39b5a4", purple: "#ad87e5", orange: "#dc9744", pink: "#d47ead", gray: "#8b96a4"};
   const palette = [...Object.values(colors), "#ef6464", "#edb84d", "#81bd57", "#39bde0", "#6575df", "#c86bdd"];
   const colorValue = value => /^#[0-9a-f]{6}$/i.test(value || "") ? value.toLowerCase() : colors[value] || colors.blue;
+  const colorStyle = group => {
+    const first = group ? colorValue(group.color) : "transparent";
+    const second = group?.color2 ? colorValue(group.color2) : first;
+    return `--group-color:${first};--group-color-2:${second};--group-gradient:linear-gradient(135deg,${first},${second})`;
+  };
   window.SiLingPaneGroups = ({api, ui, sessions, language, changed, refresh, beforeFilter, arrange}) => {
     const $ = id => document.getElementById(id);
     const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
     const t = (en, zh) => language() === "zh" ? zh : en;
     let groups = [], members = {}, available = false, pending = false, filter = "all", storageError = "";
-    let editing = "", draftColor = colors.blue, autoLayout = false, showOutlines = false;
+    let editing = "", draftColor = colors.blue, draftColor2 = colors.teal, autoLayout = false, showOutlines = false;
     let groupDrag = null, dragFrame = null, suppressGroupClick = false, orderMessage = "";
     try { autoLayout = localStorage.getItem("siling_group_auto_layout") === "true"; } catch (_) {}
     try { filter = localStorage.getItem("siling_group_filter") || "all"; } catch (_) {}
     try { showOutlines = localStorage.getItem("siling_group_outlines") === "true"; } catch (_) {}
     const outlines = window.SilingGroupOutlines({grid:$("grid"),
       enabled:()=>showOutlines && available && filter === "all",
-      groupFor:id=>{const group=groupFor(id);return group ? {...group,color:colorValue(group.color)} : null;}});
+      groupFor:id=>{const group=groupFor(id);return group ? {...group,color:colorValue(group.color),color2:group.color2 ? colorValue(group.color2) : null} : null;}});
     const bar = $("pane-group-bar");
     bar.innerHTML = '<div id="pane-group-tabs" role="group"></div><button id="btn-arrange-groups" type="button"></button><button id="btn-pane-groups"></button><span id="pane-group-status" role="status"></span>';
     const setting = document.createElement("div");
@@ -64,6 +69,11 @@
               <div class="group-custom-color">
                 <label><span id="group-picker-label"></span><input id="group-color" type="color" value="#589bf1"></label>
                 <label><span id="group-hex-label">HEX</span><input id="group-hex" type="text" value="#589bf1" pattern="#[0-9a-fA-F]{6}" maxlength="7" required spellcheck="false" autocomplete="off" aria-describedby="group-color-help"></label>
+              </div>
+              <label class="group-duotone-toggle"><input id="group-duotone" type="checkbox"><span id="group-duotone-label"></span></label>
+              <div id="group-second-color" class="group-custom-color" hidden>
+                <label><span id="group-second-label"></span><input id="group-color2" type="color" value="#39b5a4"></label>
+                <label><span>HEX</span><input id="group-hex2" type="text" value="#39b5a4" pattern="#[0-9a-fA-F]{6}" maxlength="7" required disabled spellcheck="false" autocomplete="off"></label>
               </div><p id="group-color-help" class="ui-secondary"></p>
             </fieldset>
             <div class="group-editor-actions"><button id="group-save" type="submit"></button><button id="group-delete" type="button" class="danger"></button></div>
@@ -97,7 +107,7 @@
       // Updating counts must not remove a keyboard user's focused tab on every poll.
       const markup = entries.map(g => {
         const count = live.filter(s => g.id === "all" || (members[s.run_id] || "") === (g.id === "ungrouped" ? "" : g.id)).length;
-        return `<button data-group-filter="${esc(g.id)}" aria-pressed="${filter === g.id}" ${!available || pending ? "disabled" : ""} ${groups.some(group => group.id === g.id) ? 'data-group-reorder aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"' : ""} title="${esc(g.name + (groups.some(group => group.id === g.id) ? t(" — Drag to reorder; Alt+Left/Right to move", " — 拖动排序；Alt+左右方向键移动") : ""))}" style="--group-color:${g.color ? colorValue(g.color) : "transparent"}">${g.color ? '<i class="group-dot" aria-hidden="true"></i>' : ""}${esc(g.name)} <span>${count}</span></button>`;
+        return `<button data-group-filter="${esc(g.id)}" aria-pressed="${filter === g.id}" ${!available || pending ? "disabled" : ""} ${groups.some(group => group.id === g.id) ? 'data-group-reorder aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"' : ""} title="${esc(g.name + (groups.some(group => group.id === g.id) ? t(" — Drag to reorder; Alt+Left/Right to move", " — 拖动排序；Alt+左右方向键移动") : ""))}" style="${colorStyle(g.color ? g : null)}">${g.color ? '<i class="group-dot" aria-hidden="true"></i>' : ""}${esc(g.name)} <span>${count}</span></button>`;
       }).join("");
       if ($("pane-group-tabs").innerHTML !== markup) {
         const focused = document.activeElement?.dataset.groupFilter;
@@ -208,6 +218,7 @@
         "pane-groups-title": t("Project groups", "项目分组"),
         "pane-groups-help": t("Names, colors, order and membership sync between your devices connected to this Dashboard. Your layout stays on this device. Agents keep running.", "名称、颜色、顺序和归属会同步到连接此 Dashboard 的电脑与手机；当前布局留在本设备，Agent 始终继续运行。"),
         "group-edit-label": t("Your groups", "我的分组"), "group-name-label": t("Group name", "分组名称"),
+        "group-duotone-label": t("Two colors", "双色"), "group-second-label": t("Second color", "第二种颜色"),
         "group-new": t("+ New group", "+ 新建分组"), "group-picker-label": t("Custom color", "自定义颜色"),
         "group-color-help": t("Pick a swatch, choose any color, or enter #RRGGBB. Preview updates immediately; Save applies it.", "可点选色块、自由取色或输入 #RRGGBB。预览即时更新，保存后才会应用。"),
         "group-select-all": t("Select all", "全选"), "group-select-none": t("Clear", "清空选择"),
@@ -223,16 +234,19 @@
       $("group-target").innerHTML = options(t("Ungrouped", "未分组"), editing);
       updateTargetColor();
       $("group-session-list").innerHTML = sessions().filter(s => s.alive).map(s =>
-        `<label><input type="checkbox" value="${esc(s.run_id)}"><span>${esc(s.display_name || s.task || s.run_id)} <small><i class="group-dot" aria-hidden="true" style="--group-color:${groupFor(s.run_id) ? colorValue(groupFor(s.run_id).color) : "transparent"}"></i>${esc(groupFor(s.run_id)?.name || t("Ungrouped", "未分组"))}</small></span></label>`
+        `<label><input type="checkbox" value="${esc(s.run_id)}"><span>${esc(s.display_name || s.task || s.run_id)} <small><i class="group-dot" aria-hidden="true" style="${colorStyle(groupFor(s.run_id))}"></i>${esc(groupFor(s.run_id)?.name || t("Ungrouped", "未分组"))}</small></span></label>`
       ).join("") || esc(t("No live sessions", "暂无运行中的会话"));
       updateSelectedCount();
     }
     function renderLibrary() {
-      $("group-library-list").innerHTML = groups.map(g => `<button type="button" data-edit-group="${esc(g.id)}" aria-pressed="${editing === g.id}" style="--group-color:${colorValue(g.color)}"><i class="group-dot" aria-hidden="true"></i><span>${esc(g.name)}</span><small>${sessions().filter(s => s.alive && members[s.run_id] === g.id).length}</small></button>`).join("") || `<p class="ui-secondary">${esc(t("Create a group to organize related panes.", "新建分组，把相关面板放在一起。"))}</p>`;
+      $("group-library-list").innerHTML = groups.map(g => `<button type="button" data-edit-group="${esc(g.id)}" aria-pressed="${editing === g.id}" style="${colorStyle(g)}"><i class="group-dot" aria-hidden="true"></i><span>${esc(g.name)}</span><small>${sessions().filter(s => s.alive && members[s.run_id] === g.id).length}</small></button>`).join("") || `<p class="ui-secondary">${esc(t("Create a group to organize related panes.", "新建分组，把相关面板放在一起。"))}</p>`;
       $("group-new").setAttribute("aria-pressed", String(!editing));
     }
     function updatePreview() {
-      $("group-preview").style.setProperty("--group-color", draftColor);
+      $("group-preview").style.cssText = colorStyle({color:draftColor, color2:$("group-duotone").checked ? draftColor2 : null});
+      $("group-color2").value = draftColor2;
+      $("group-second-color").hidden = !$("group-duotone").checked;
+      $("group-hex2").disabled = !$("group-duotone").checked;
       $("group-preview").querySelector("span").textContent = $("group-name").value.trim() || t("Group preview", "分组预览");
       $("group-color").value = draftColor;
       $("group-palette").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.color === draftColor)));
@@ -245,7 +259,7 @@
     }
     function updateTargetColor() {
       const group = groups.find(g => g.id === $("group-target").value);
-      $("group-target-dot").style.setProperty("--group-color", group ? colorValue(group.color) : "transparent");
+      $("group-target-dot").style.cssText = colorStyle(group);
     }
     function updateSelectedCount() {
       const count = $("group-session-list").querySelectorAll("input:checked").length;
@@ -255,6 +269,9 @@
     function editSelection() {
       const group = groups.find(g => g.id === editing);
       $("group-name").value = group?.name || "";
+      $("group-duotone").checked = !!group?.color2;
+      draftColor2 = colorValue(group?.color2 || "teal");
+      $("group-hex2").value = draftColor2; $("group-hex2").setCustomValidity("");
       chooseColor(group?.color || "blue");
       $("group-editor-title").textContent = group ? t("Edit group", "编辑分组") : t("New group", "新建分组");
       $("group-save").textContent = group ? t("Save changes", "保存修改") : t("Create group", "创建分组");
@@ -271,6 +288,18 @@
     });
     $("group-new").addEventListener("click", () => {
       editing = ""; renderLibrary(); editSelection(); $("group-name").focus();
+    });
+    $("group-duotone").addEventListener("change", () => {
+      $("group-hex2").value = draftColor2; $("group-hex2").setCustomValidity(""); updatePreview();
+    });
+    $("group-color2").addEventListener("input", event => {
+      draftColor2 = colorValue(event.target.value); $("group-hex2").value = draftColor2;
+      $("group-hex2").setCustomValidity(""); updatePreview();
+    });
+    $("group-hex2").addEventListener("input", event => {
+      const valid = /^#[0-9a-f]{6}$/i.test(event.target.value);
+      event.target.setCustomValidity(valid ? "" : t("Enter a color as #RRGGBB", "请输入 #RRGGBB 格式的颜色"));
+      if (valid) { draftColor2 = event.target.value.toLowerCase(); updatePreview(); }
     });
     $("group-name").addEventListener("input", updatePreview);
     $("group-color").addEventListener("input", event => chooseColor(event.target.value));
@@ -318,6 +347,7 @@
           if (row) decorate(card, row);
         });
         dialog.querySelectorAll("button, input, select").forEach(e => { e.disabled = false; });
+        $("group-hex2").disabled = !$("group-duotone").checked;
         $("group-delete").disabled = !editing;
         updateSelectedCount();
       }
@@ -325,7 +355,7 @@
     $("pane-group-form").addEventListener("submit", e => {
       e.preventDefault();
       if (!$("pane-group-form").reportValidity()) return;
-      save({action:editing ? "update" : "create", group_id:editing, name:$("group-name").value, color:draftColor}, $("group-result"));
+      save({action:editing ? "update" : "create", group_id:editing, name:$("group-name").value, color:draftColor, color2:$("group-duotone").checked ? draftColor2 : null}, $("group-result"));
     });
     $("group-delete").addEventListener("click", () => {
       if (confirm(t("Delete this group? Sessions will become ungrouped and keep running.", "删除此分组？会话将变为未分组并继续运行。"))) {
@@ -348,7 +378,7 @@
       badge.textContent = group?.name || "";
       badge.title = group?.name || "";
       badge.hidden = !group;
-      badge.style.setProperty("--group-color", group ? colorValue(group.color) : "transparent");
+      badge.style.cssText = colorStyle(group);
       let label = card.querySelector(".pane-group-control");
       if (!label) {
         label = document.createElement("label"); label.className = "pane-group-control";
