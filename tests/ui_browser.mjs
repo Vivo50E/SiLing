@@ -165,6 +165,18 @@ const server = http.createServer((req, res) => {
       res.end(JSON.stringify({ok:true,delivery:'accepted'}));
     });return;
   }
+  if (url.pathname.startsWith('/api/session-archives/') && req.method === 'DELETE') {
+    res.setHeader('Content-Type', 'application/json');
+    let raw='';req.on('data',chunk=>raw+=chunk);req.on('end',()=>{
+      const data=JSON.parse(raw),id=decodeURIComponent(url.pathname.slice('/api/session-archives/'.length));
+      if(archiveMode==='delete-error'){res.writeHead(409);return res.end(JSON.stringify({detail:'Run folder is shared with another session; nothing was deleted'}));}
+      const previous=archiveFixture.entries[id];
+      if(!data.confirm || !previous?.archived || previous.revision!==data.expected_revision || sessions.find(s=>s.run_id===id)?.alive){res.writeHead(409);return res.end('{}');}
+      archiveFixture.entries[id]={...previous,deleted:true,revision:previous.revision+1};archiveFixture.revision++;
+      if(archiveMode==='delete-lost'){res.writeHead(503);return res.end('{}');}
+      res.end(JSON.stringify({ok:true,run_id:id,session_archives:archiveFixture}));
+    });return;
+  }
   if (url.pathname === '/api/session-archives') {
     res.setHeader('Content-Type', 'application/json');
     let raw=''; req.on('data', chunk=>raw+=chunk); req.on('end', ()=>{

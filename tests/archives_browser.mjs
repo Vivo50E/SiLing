@@ -13,6 +13,7 @@ export async function checkArchives({evaluate, waitFor, viewport, screenshot, pa
     document.querySelector('[data-run-id="fixture-0"] .pane-input textarea').value='first draft';
     document.querySelector('[data-run-id="fixture-1"] .pane-input textarea').value='second draft'`);
   const requestStart=requests.length;
+  console.log('Checking archive confirmation and failure handling');
   const initialState=JSON.stringify(sessions);
   const archive = id => evaluate(`document.querySelector('[data-run-id="${id}"] .btn-pane-more').click();document.querySelector('[data-run-id="${id}"] .btn-archive-session').click()`);
   const openArchives = async () => {
@@ -143,5 +144,44 @@ export async function checkArchives({evaluate, waitFor, viewport, screenshot, pa
   assert.deepEqual(requests.slice(requestStart).filter(r=>r.method==='POST'
     && !['/api/session-archives','/api/self-update/fetch'].includes(r.path)),[],
     'Archive workflow never sends, stops, creates or restarts agents');
+  // Permanent deletion is separate, explicitly confirmed and unavailable for
+  // live sessions. A tombstone excludes stale inventories and recovery layouts.
+  console.log('Checking permanent archive deletion');
+  view.entries['fixture-2']={...view.entries['fixture-2'],archived:true,revision:view.entries['fixture-2'].revision+1};view.revision++;
+  await evaluate(`document.querySelector('#btn-refresh').click()`);
+  await waitFor(`!document.querySelector('.session-item[data-id="fixture-2"]')`);
+  await openArchives();
+  assert.equal(await evaluate(`document.querySelector('#session-archives [data-id="fixture-0"][data-action="delete"]').disabled`),true,'Running archived sessions cannot be deleted');
+  const deleteCount=()=>requests.filter(r=>r.method==='DELETE'&&r.path.startsWith('/api/session-archives/')).length;
+  const beforeDelete=deleteCount();
+  await evaluate(`window.confirm=()=>false`);await action('fixture-2','delete');await pause(100);
+  assert.equal(deleteCount(),beforeDelete,'Cancel never deletes');
+  mode('delete-error');await evaluate(`window.confirm=()=>true;window.archiveAlerts=[];window.alert=text=>archiveAlerts.push(text)`);
+  await action('fixture-2','delete');
+  await waitFor(`archiveAlerts.length===1`);
+  assert.ok(await evaluate(`!!document.querySelector('#session-archives .archive-item[data-id="fixture-2"]')`),'Rejected deletion preserves entry');
+  assert.match(await evaluate(`archiveAlerts[0]`),/共用/,'Server deletion errors are translated');
+  mode('ok');await action('fixture-2','delete');
+  await waitFor(`!document.querySelector('#session-archives .archive-item[data-id="fixture-2"]')`);
+  assert.equal(view.entries['fixture-2'].deleted,true);
+  assert.equal(await evaluate(`sessionStorage.getItem('orch_archived_draft:fixture-2')`),null);
+  await closeArchives();
+  const deletionReload=requests.length;
+  await evaluate(`localStorage.setItem('orch_slots',JSON.stringify(['fixture-2','fixture-1']))`);
+  await cdp('Page.reload');
+  await waitFor(`!!document.querySelector('#grid [data-run-id="fixture-1"] iframe')`);
+  assert.equal(requests.slice(deletionReload).some(r=>r.path==='/api/sessions/fixture-2/tty'),false,'Deleted execution cannot return through an old layout');
+  view.entries['missing-archive']={archived:true,revision:1,archived_at:Date.now()/1000};view.revision++;
+  await evaluate(`window.confirm=()=>true;window.alert=()=>{};document.querySelector('#btn-refresh').click()`);
+  await waitFor(`document.querySelector('#btn-session-archives').dataset.count==='2'`);
+  await viewport(390,844);await openArchives();
+  assert.equal(await evaluate(`document.querySelector('#session-archives [data-id="missing-archive"][data-action="delete"]').textContent`),'永久删除');
+  await screenshot('archives-permanent-delete-mobile-zh');
+  mode('delete-lost');await action('missing-archive','delete');
+  await waitFor(`!document.querySelector('#session-archives .archive-item[data-id="missing-archive"]')`);
+  assert.equal(deleteCount(),beforeDelete+3,'Lost deletion response is reconciled without repeating the write');
+  assert.equal(await evaluate(`document.querySelector('#btn-session-archives').dataset.count`),'1','Deleted tombstones are not counted as archived');
+  mode('ok');await closeArchives();await viewport(1280,900);
   console.log('PASS: archive cancellation/failure/lost response, authoritative shared state, preserved frames/drafts, old layout exclusion, bounded output/Files, explicit unarchive and Chinese mobile');
+  console.log('PASS: permanent deletion confirmation, live-session refusal, translated errors, stale layout exclusion, missing entries and lost response reconciliation');
 }

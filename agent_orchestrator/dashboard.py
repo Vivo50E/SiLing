@@ -9821,6 +9821,57 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             raise HTTPException(503, "Archive storage unavailable; refresh before retrying") from exc
         return {"ok": True, "session_archives": view}
 
+    @app.delete("/api/session-archives/{run_id}")
+    def permanently_delete_archived_session(run_id: str, body: dict):
+        if (body.get("confirm") is not True
+                or type(body.get("expected_revision")) is not int
+                or body["expected_revision"] < 0):
+            raise HTTPException(400, "Explicit confirmation and archive revision required")
+        if parse_qualified_run_id(run_id) or run_id.startswith("tmux::"):
+            raise HTTPException(409, "Only persisted local sessions can be permanently deleted")
+
+        def remove():
+            rows = _discover_runs(outputs_dir)
+            row = next((r for r in rows if r.get("run_id") == run_id), None)
+            # A missing record can still be removed from Archive. Keeping its
+            # tombstone prevents old active snapshots from recreating it.
+            if row is None:
+                return
+            if row.get("kind") not in {"run", "task"} or row.get("remote"):
+                raise HTTPException(409, "Only persisted local sessions can be permanently deleted")
+            if row.get("alive") or (row.get("tmux_session") and tmux_alive(str(row["tmux_session"]))):
+                raise HTTPException(409, "Stop the session before permanently deleting it")
+            raw = str(row.get("run_dir") or "").strip()
+            if not raw:
+                raise HTTPException(400, "Session has no run folder")
+            folder = Path(raw)
+            root = outputs_dir.resolve()
+            resolved = folder.resolve()
+            # Discovery records live directly under outputs/. Never follow a
+            # run-folder symlink or remove a parent/linked workspace directory.
+            if folder.is_symlink() or resolved.parent != root or resolved == root:
+                raise HTTPException(400, "Refusing to delete an unsafe run folder")
+            for other in rows:
+                if other.get("run_id") == run_id or not other.get("run_dir"):
+                    continue
+                other_folder = Path(other["run_dir"]).resolve()
+                if (_path_is_within(other_folder, resolved)
+                        or _path_is_within(resolved, other_folder)):
+                    raise HTTPException(409, "Run folder is shared with another session; nothing was deleted")
+            if folder.exists():
+                if not folder.is_dir():
+                    raise HTTPException(400, "Run folder is not a directory")
+                shutil.rmtree(folder)
+
+        try:
+            view = session_archives.delete(run_id, body["expected_revision"], remove)
+        except ArchiveConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except (OSError, ValueError, TypeError) as exc:
+            raise HTTPException(503, "Deletion not confirmed; refresh before retrying") from exc
+        session_snapshots.request_refresh()
+        return {"ok": True, "run_id": run_id, "session_archives": view}
+
     @app.get("/api/sessions")
     def list_sessions():
         snapshot = session_snapshots.snapshot()

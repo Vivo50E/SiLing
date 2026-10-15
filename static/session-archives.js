@@ -1,4 +1,4 @@
-/* Filing metadata never controls an agent or moves its files. */
+/* Archiving preserves executions; permanent deletion is an explicit separate action. */
 (() => {
   "use strict";
   window.SilingSessionArchives = {create};
@@ -31,7 +31,7 @@
     const supported = row => row && !row.remote && ["task", "run"].includes(row.kind);
     const rowFor = id => sessions().find(row => row.run_id === id);
     function render() {
-      const ids = Object.keys(view.entries).filter(isArchived);
+      const ids = Object.keys(view.entries).filter(id => isArchived(id) && !view.entries[id].deleted);
       const running = ids.filter(id => {const row = rowFor(id); return row?.alive && !row.agent_exited;}).length;
       trigger.textContent = t("Archived {count} · running {running}", {count:ids.length, running});
       trigger.title = error ? t(error) : t("Archive keeps agents running and preserves existing history and Files.");
@@ -55,12 +55,17 @@
         node("p", item).textContent = [projectName, row?.agent, row ? status(row) : t("Session metadata unavailable"),
           new Date(view.entries[id].archived_at * 1000).toLocaleString(document.documentElement.lang)].filter(Boolean).join(" · ");
         const actions = node("div", item, "archive-actions");
-        for (const [action, label] of [["read", "View output"], ["files", "Files"], ["restore", "Unarchive"]]) {
+        for (const [action, label] of [["read", "View output"], ["files", "Files"], ["restore", "Unarchive"], ["delete", "Permanently delete"]]) {
           const button = node("button", actions); button.textContent = t(label);
           button.dataset.id = id; button.dataset.action = action;
-          button.disabled = busy || !row || (action === "restore" && !available);
+          button.disabled = busy || (action === "delete" ? !available || !!row?.alive : !row || (action === "restore" && !available));
+          if (action === "delete") {
+            button.className = "danger";
+            button.title = t(row?.alive ? "Stop the session before permanently deleting it" : "Delete this session's SiLing record and saved logs. This cannot be undone.");
+          }
           button.onclick = () => {
-            if (action === "restore") void change(id, false);
+            if (action === "delete") void permanentlyDelete(id);
+            else if (action === "restore") void change(id, false);
             else if (action === "files") {dialog.close(); files(id);}
             else void read(id);
           };
@@ -101,6 +106,27 @@
         // Reconcile the authoritative state even after a lost response, never
         // optimistically hide a pane or blindly repeat the write.
         void refresh();
+      }
+    }
+    async function permanentlyDelete(id) {
+      if (busy || !available || !isArchived(id) || rowFor(id)?.alive) return;
+      const name = rowFor(id) ? title(rowFor(id)) : id;
+      if (!window.confirm(t("Permanently delete {name}?\n\nThis permanently removes its SiLing run folder, saved logs and archived entry. It cannot be undone. Project source files, linked Files and native agent conversations are not deleted. Running sessions and shared run folders cannot be deleted.", {name}))) return;
+      busy = true; render();
+      const abort = new AbortController(); const timeout = setTimeout(() => abort.abort(), 15000);
+      try {
+        const result = await api(`/api/session-archives/${encodeURIComponent(id)}`, {method:"DELETE", signal:abort.signal,
+          body:{confirm:true, expected_revision:view.entries[id].revision}});
+        if (!result?.ok || !result.session_archives?.entries?.[id]?.deleted) throw Error("Deletion not confirmed; refresh before retrying");
+        drafts.delete(id);
+        try {sessionStorage.removeItem("orch_archived_draft:" + id);} catch (_) {}
+        if (selected === id) {controller?.abort(); selected = ""; preview.hidden = true; output.textContent = "";}
+        if (receive(result.session_archives)) changed();
+      } catch (e) {
+        error = "Deletion not confirmed; refresh before retrying";
+        window.alert(t(error) + "\n" + t(e.message.replace(/^\d{3} [^:]*: /, "")));
+      } finally {
+        clearTimeout(timeout); busy = false; render(); void refresh();
       }
     }
     async function read(id) {

@@ -631,6 +631,13 @@ does not open a pane or restart execution. Saved layouts exclude archived record
 This increment supports persisted local sessions, not remote nodes, orphan tmux
 sessions or legacy log entries. See the [archive plan](specs/001-uiux-improvements/archive-plan.md).
 
+In **Archived**, **Permanently delete** removes a stopped session's SiLing run
+folder and saved logs after confirmation. This cannot be undone. Running sessions
+must be stopped first; shared run folders are refused to protect other sessions.
+Project source files, linked Files and native agent conversations are preserved.
+A small deletion marker prevents old saved layouts or recovery snapshots from
+restoring the deleted execution. Missing records can also be cleared from Archive.
+
 ### Inspect host resources
 
 The toolbar beside **Mission** shows compact CPU, memory usage (total minus
