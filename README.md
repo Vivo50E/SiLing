@@ -131,6 +131,11 @@ intervene.
   Unchanged log snapshots keep their existing text and selection instead of
   repeatedly laying out large histories; scrolling up pauses updates until
   you return to the bottom.
+- Restart / Resume for Claude and Codex uses a newer model recorded in the primary
+  conversation instead of the original launch model. Older turns and subagent/tool
+  records cannot overwrite a later Dashboard model setting. Without a newer model
+  record, the saved setting remains in use.
+
 - **More → Resume all sessions** previews stopped, resumable Agents across all groups.
   Confirm to recover them one at a time, preserving existing pane slots; unplaced
   sessions run in the background. Running, archived, offline and Terminal/SSH

@@ -187,6 +187,36 @@ class AgentRestartTests(unittest.TestCase):
                 self.assertEqual(self.ui.call_args.args[1]["terminal_theme"], "light")
         self.discover.assert_not_called()
 
+    def test_restart_uses_newer_native_model_for_claude_and_codex(self):
+        for agent in ("claude", "codex"):
+            with self.subTest(agent=agent):
+                self.alive = True
+                self.src.update(agent=agent, started_at="2026-10-15T10:00:00Z",
+                                resume={"agent": agent, "source_path": str(self.transcript)})
+                record = {"timestamp": "2026-10-15T11:00:00Z",
+                          "type": "assistant" if agent == "claude" else "turn_context",
+                          "message" if agent == "claude" else "payload": {"model": "new-choice"}}
+                self.transcript.write_text(json.dumps(record) + "\n")
+                response = self.restart()
+                self.assertEqual(response.status_code, 200, response.text)
+                args = self.spawn.call_args.args[0]
+                self.assertEqual(args[args.index("--model") + 1], "new-choice")
+                self.assertEqual(args[args.index("--resume-id") + 1], "conversation-123")
+
+    def test_resume_uses_new_model_but_respects_later_dashboard_selection(self):
+        self.src.update(agent="claude", alive=False, started_at="2026-10-15T10:00:00Z",
+                        resume={"agent": "claude", "source_path": str(self.transcript)})
+        self.transcript.write_text(json.dumps({"timestamp": "2026-10-15T11:00:00Z",
+            "type": "assistant", "message": {"model": "new-choice"}}) + "\n")
+        for selected_at, expected in (("", "new-choice"), ("2026-10-15T12:00:00Z", "fixture-model")):
+            with self.subTest(selected_at=selected_at):
+                self.src["runtime_config_updated_at"] = selected_at
+                response = self.client.post("/api/resume", json={"run_id": "source"},
+                    headers={"Authorization": "Bearer fixture-token"})
+                self.assertEqual(response.status_code, 200, response.text)
+                args = self.spawn.call_args.args[0]
+                self.assertEqual(args[args.index("--model") + 1], expected)
+
     def test_cursor_resume_does_not_override_native_model_with_stale_record(self):
         self.src.update(agent="cursor", alive=False, model="claude-opus-4-7-high")
         result = self.client.post("/api/resume", json={"run_id": "source"},

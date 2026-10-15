@@ -3317,6 +3317,7 @@ def _saved_resume_meta(data: dict[str, Any]) -> dict[str, str]:
 
 
 def _add_resume_fields(row: dict[str, Any], data: dict[str, Any]) -> None:
+    row["runtime_config_updated_at"] = data.get("runtime_config_updated_at", "")
     row["forked_from_resume_id"] = data.get("forked_from_resume_id", "")
     row["forked_from_run_id"] = data.get("forked_from_run_id", "")
     row["logical_session_id"] = data.get("logical_session_id", "")
@@ -4422,6 +4423,62 @@ def _run_with_native_model_effort(r: dict[str, Any]) -> dict[str, Any]:
     if needs_effort_mode and native.get("effort_mode"):
         out["effort_mode"] = native["effort_mode"]
         out["effort_mode_source"] = native.get("effort_mode_source", "")
+    return out
+
+
+def _run_with_recovery_model(r: dict[str, Any]) -> dict[str, Any]:
+    """Prefer a newer primary-conversation model over the launch-time value.
+
+    Used only when launching recovery, not during periodic inventory. Timestamped
+    primary records exclude tool payloads, subagents and older conversation turns.
+    A later Dashboard model change remains authoritative until a newer native turn.
+    """
+    out = _run_with_native_model_effort(r)
+    resume = r.get("resume") if isinstance(r.get("resume"), dict) else {}
+    agent = _norm_agent(resume.get("agent") or r.get("agent") or "")
+    identity = str(r.get("resume_id") or "")
+    if agent not in {"claude", "codex"} or not identity:
+        return out
+    source = str(resume.get("source_path") or r.get("resume_source_path") or "")
+    path = _resume_source_transcript_path(source)
+    if path is None:
+        path = (_claude_transcript_path(identity, str(r.get("cwd") or ""))
+                if agent == "claude" else
+                _codex_transcript_path(identity, str(r.get("started_at") or "")))
+    if path is None:
+        return out
+    boundary = max(_parse_iso_epoch(r.get("started_at")) or 0,
+                   _parse_iso_epoch(r.get("runtime_config_updated_at")) or 0)
+    latest, model = boundary, ""
+    try:
+        with path.open(encoding="utf-8", errors="replace") as stream:
+            for line in stream:
+                try:
+                    record = json.loads(line)
+                except (ValueError, TypeError):
+                    continue
+                if not isinstance(record, dict) or record.get("isSidechain"):
+                    continue
+                timestamp = record.get("timestamp")
+                stamp = (_parse_iso_epoch(timestamp) or 0) if isinstance(timestamp, str) else 0
+                if stamp <= latest:
+                    continue
+                if agent == "claude":
+                    if record.get("type") != "assistant" or record.get("sessionId", identity) != identity:
+                        continue
+                    payload = record.get("message")
+                else:
+                    if record.get("type") != "turn_context":
+                        continue
+                    payload = record.get("payload")
+                candidate = payload.get("model") if isinstance(payload, dict) else None
+                if isinstance(candidate, str) and _is_real_cli_model(candidate):
+                    model, latest = candidate.strip(), stamp
+    except OSError:
+        return out
+    if model:
+        out["model"] = model
+        out["model_source"] = str(path)
     return out
 
 
@@ -12443,7 +12500,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             raise HTTPException(409, check["reason"])
         terminal = _norm_agent(src.get("agent", "")) == "terminal"
         if not terminal:
-            src = _run_with_native_model_effort(src)
+            src = _run_with_recovery_model(src)
         resume_id = "" if terminal or fresh_start else (src.get("resume_id") or "").strip()
         if not terminal and not fresh_start and not resume_id:
             raise HTTPException(409, "source session has no resume id")
@@ -12714,7 +12771,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             if resume_agent != agent:
                 raise HTTPException(409, "resume agent mismatch; agent was not stopped")
             _require_native_resume(src)
-            src = _run_with_native_model_effort(src)
+            src = _run_with_recovery_model(src)
             if not str(src.get("cwd") or "").strip():
                 raise HTTPException(409, "no saved working directory; agent was not stopped")
             cwd = _resolve_session_cwd(src.get("launch_cwd") or src.get("cwd") or "")
