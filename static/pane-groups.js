@@ -379,11 +379,15 @@
       badge.title = group?.name || "";
       badge.hidden = !group;
       badge.style.cssText = colorStyle(group);
-      let label = card.querySelector(".pane-group-control");
+      decorateMenu(card.querySelector(".pane-menu-common"), row);
+    }
+
+    function decorateMenu(container, row) {
+      let label = container.querySelector(".pane-group-control");
       if (!label) {
         label = document.createElement("label"); label.className = "pane-group-control";
         label.innerHTML = '<span></span><select class="pane-group-select"></select><small role="status"></small>';
-        card.querySelector(".pane-menu .ui-menu-group").prepend(label);
+        container.prepend(label);
         label.querySelector("select").addEventListener("change", async e => {
           const value = e.target.value;
           e.target.disabled = true;
@@ -437,7 +441,7 @@
     }
     renderBar();
     return {
-      matches, decorate, applyVisibility, refreshLabels: renderBar,
+      matches, decorate, decorateMenu, applyVisibility, refreshLabels: renderBar,
       creationChoices: () => ({groups: available ? groups : [], filter}),
       nameFor: id => groupFor(id)?.name || "",
       reveal(runId) {

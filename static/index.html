@@ -2771,7 +2771,7 @@
 <link rel="stylesheet" href="/static/pane-groups.css?v=6" />
 <script src="/static/pane-group-outlines.js?v=2"></script>
 <script src="/static/resume-all.js?v=1"></script>
-<script src="/static/pane-groups.js?v=9"></script>
+<script src="/static/pane-groups.js?v=10"></script>
 <script src="/static/new-session-options.js?v=1"></script>
 <script src="/static/session-help.js?v=1"></script>
 <script src="/static/terminal-files.js?v=3"></script>
@@ -7182,6 +7182,7 @@
     const close = document.createElement("button"); close.textContent = "×"; close.setAttribute("aria-label", ui.message("Close")); close.onclick = () => sidebarPaneMenu.close();
     head.append(title, close);sidebarPaneMenu.append(head);
     const body = document.createElement("div"); body.className = "modal-body ui-menu-group";sidebarPaneMenu.append(body);
+    paneGroups.decorateMenu(body, row);
     function action(label, run, enabled = true) {
       const button = document.createElement("button");button.textContent = ui.message(label);button.dataset.action = label;button.disabled = !enabled;
       button.onclick = () => {

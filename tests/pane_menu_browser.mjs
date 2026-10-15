@@ -5,6 +5,7 @@ export async function checkPaneMenu({evaluate,waitFor,cdp,viewport,screenshot}) 
   assert.equal(await evaluate(`document.querySelectorAll('.pane-menu[open] details').length`),4);
   assert.equal(await evaluate(`document.querySelectorAll('.pane-menu[open] details[open]').length`),0,'Advanced groups start folded');
   assert.ok(await evaluate(`document.querySelector('.pane-menu[open] .btn-rename-session').checkVisibility()`),'Rename stays visible');
+  assert.ok(await evaluate(`document.querySelector('.pane-menu[open] .pane-menu-common .pane-group-select').checkVisibility()`),'Project group stays visible in normal panes');
   assert.equal(await evaluate(`document.querySelector('.pane-menu[open] .btn-terminate').checkVisibility()`),false,'Termination is folded away');
   await screenshot('pane-menu-grouped');
   await evaluate(`document.querySelector('.pane-menu[open] summary').focus()`);
@@ -30,5 +31,10 @@ export async function checkPaneMenu({evaluate,waitFor,cdp,viewport,screenshot}) 
   await waitFor(`!document.querySelector('.pane-menu[open]')`);
   await evaluate(`{const language=document.querySelector('[data-appearance="language"]');language.value='en';language.dispatchEvent(new Event('change'));}`);
   await viewport(1280,800);
+  await evaluate(`document.querySelector('[data-run-id="fixture-0"]').style.height='220px'`);
+  await waitFor(`document.querySelector('[data-run-id="fixture-0"]').classList.contains('compact-pane')`);
+  await evaluate(`document.querySelector('[data-run-id="fixture-0"] .btn-pane-more').click()`);
+  assert.ok(await evaluate(`document.querySelector('.pane-menu[open] .pane-menu-common .pane-group-select').checkVisibility()`),'Project group stays visible in compact panes');
+  await evaluate(`document.querySelector('.pane-menu[open]').close();document.querySelector('[data-run-id="fixture-0"]').style.removeProperty('height')`);
   console.log('PASS: grouped pane menu, default disclosure, keyboard navigation, terminal identity and narrow desktop Chinese layout');
 }

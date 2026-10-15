@@ -21,6 +21,7 @@ export async function checkSidebarMenu({evaluate,waitFor,cdp,viewport,screenshot
   assert.equal(await evaluate(`[...document.querySelectorAll('#grid .pane iframe')].every((f,i)=>f===sideFrames[i])`),true);
   assert.equal(await evaluate(`document.querySelector('[data-run-id="side-0"] .pane-input textarea').value`),'sidebar draft');
   await more('side-2');await waitFor(`document.querySelector('#sidebar-pane-menu').open`);
+  assert.ok(await evaluate(`document.querySelector('#sidebar-pane-menu .pane-group-select').checkVisibility()`),'Unplaced sessions show Project group');
   assert.equal(await evaluate(`localStorage.orch_slots===sideSlots`),true,'Unplaced menu never pins or evicts a session');
   await evaluate(`document.querySelector('#sidebar-pane-menu [data-action="Change working directory"]').click()`);
   await waitFor(`document.querySelector('#working-directory-dialog').open`);
@@ -35,6 +36,7 @@ export async function checkSidebarMenu({evaluate,waitFor,cdp,viewport,screenshot
   await evaluate(`document.querySelector('.pane-menu[open]').close()`);
   await viewport(390,844);
   await more('side-0');await waitFor(`document.querySelector('#sidebar-pane-menu').open`);
+  assert.ok(await evaluate(`document.querySelector('#sidebar-pane-menu .pane-group-select').checkVisibility()`),'Mobile sessions show Project group');
   await screenshot('sidebar-more-mobile');
   assert.ok(await evaluate(`(()=>{const r=document.querySelector('#sidebar-pane-menu').getBoundingClientRect();return r.width>0&&r.left>=0&&r.right<=innerWidth})()`));
   await evaluate(`document.querySelector('#sidebar-pane-menu').close()`);
