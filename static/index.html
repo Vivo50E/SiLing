@@ -811,6 +811,8 @@
   .pane-head .dot,
   .pane-head button,
   .pane-head select { flex-shrink: 0; }
+  .pane-head .dot { display: none; }
+  html[data-hide-pane-numbers] .pane-head .slot-badge { display: none; }
   .pane-head .btn-mission-view { display: none; }
   .pane-card.zoomed-pane .pane-head .btn-mission-view {
     display: inline-flex;
@@ -2769,7 +2771,7 @@
   #working-directory-dialog .cwd-restart:not([hidden]) { display:flex; align-items:center; gap:8px; }
 </style>
 <link rel="stylesheet" href="/static/ui-foundation.css?v=8" />
-<script src="/static/ui-messages.js?v=25"></script>
+<script src="/static/ui-messages.js?v=26"></script>
 <script src="/static/ui-foundation.js?v=14"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=7" />
 <script src="/static/pane-group-outlines.js?v=2"></script>
@@ -3025,6 +3027,10 @@
           <label class="settings-row"><span data-i18n="fontSize">Interface text size</span><select data-appearance="fontSize"><option value="14">14 px</option><option value="15">15 px</option><option value="16">16 px</option></select></label>
           <label class="settings-row"><span data-i18n="motion">Motion</span><select data-appearance="motion"><option value="system" data-i18n="system">System</option><option value="reduce" data-i18n="reduce">Reduce motion</option></select></label>
           <label class="settings-row"><span data-i18n="language">Language</span><select data-appearance="language"><option value="system" data-i18n="system">System</option><option value="en">English</option><option value="zh">中文</option></select></label>
+          <label class="settings-row" for="settings-show-pane-numbers">
+            <span><span class="settings-row-title" data-ui-message="Show%20pane%20numbers">Show pane numbers</span><span class="settings-row-help" data-ui-message="Show%20slot%20numbers%20in%20pane%20headers.%20You%20can%20still%20drag%20the%20title%20to%20rearrange%20panes.">Show slot numbers in pane headers. You can still drag the title to rearrange panes.</span></span>
+            <input id="settings-show-pane-numbers" type="checkbox" />
+          </label>
           <p class="ui-secondary" data-i18n="appearanceHelp">App appearance is separate from each terminal's palette and font.</p>
           <button id="settings-reset-appearance" data-i18n="reset">Reset appearance</button>
         </section>
@@ -3557,6 +3563,16 @@
   // ---------- Dashboard settings ----------
   const settingsModal = $("settings-modal");
   const internalLinksSetting = $("settings-open-links-internally");
+  const paneNumbersSetting = $("settings-show-pane-numbers");
+  let showPaneNumbers = true;
+  try { showPaneNumbers = localStorage.getItem("siling_show_pane_numbers") !== "false"; } catch (_) {}
+  paneNumbersSetting.checked = showPaneNumbers;
+  document.documentElement.toggleAttribute("data-hide-pane-numbers", !showPaneNumbers);
+  paneNumbersSetting.addEventListener("change", () => {
+    showPaneNumbers = paneNumbersSetting.checked;
+    persistBrowserSetting("siling_show_pane_numbers", String(showPaneNumbers));
+    document.documentElement.toggleAttribute("data-hide-pane-numbers", !showPaneNumbers);
+  });
   const panePrioritySetting = $("settings-show-pane-priority");
   let showPanePriority = false;
   try { showPanePriority = localStorage.getItem("siling_show_pane_priority") === "true"; } catch (_) {}
@@ -3807,6 +3823,8 @@
   });
   $("settings-reset-appearance").addEventListener("click", () => {
     saveAppearance(ui.defaults);
+    paneNumbersSetting.checked = true;
+    paneNumbersSetting.dispatchEvent(new Event("change"));
     applyPanelOpacity(100, true);
   });
   ["btn-sync-status", "btn-self-update"].forEach(id => {

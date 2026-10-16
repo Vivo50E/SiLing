@@ -390,6 +390,8 @@
     "Soft Dark": "柔和深色",
     "Soft Light": "柔和浅色",
     "Soft Green": "柔和绿色",
+    "Show pane numbers": "显示 pane 编号",
+    "Show slot numbers in pane headers. You can still drag the title to rearrange panes.": "在 pane 标题栏显示位置编号。隐藏后仍可拖动标题调整排列。",
     "Always show pane priority": "始终显示面板优先级",
     "Keep the priority selector visible in small panes instead of the More menu. Saved in this browser.": "在小面板中直接显示优先级选择框，不收进更多菜单。仅保存在当前浏览器。",
     "Panel opacity": "面板不透明度",

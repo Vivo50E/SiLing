@@ -146,6 +146,8 @@ intervene.
   positions, terminal connections and activity borders stay unchanged. Disconnected
   clusters remain separate; **Arrange by group** brings them together. The switch
   defaults off and is saved in this browser.
+- Pane headers no longer show the status dot. In **Settings → Appearance → Show pane numbers**, turn off the switch to hide header slot numbers. Numbers are shown by default; the preference is saved in this browser and applies immediately, including expanded panes. Drag the title to rearrange panes even with numbers hidden.
+
 - PR/MR and Jira icons show deduplicated counts (including zero). Initial counts use saved links and recent output, fetched once with at most two requests at a time; opening or refreshing a list updates its count, and PR branch lookup runs only in the list. `…` means loading and `?` means initial discovery failed. Counts are snapshots, not live Jira or repository totals; there is no periodic count polling.
 
 - **Settings → Browsing & files → Enable Jira tickets** enables per-group Jira

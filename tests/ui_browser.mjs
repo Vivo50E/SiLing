@@ -14,6 +14,7 @@ import { checkResources } from './resources_browser.mjs';
 import { checkPanePlacement } from './pane_placement_browser.mjs';
 import { checkPlainPolling } from './plain_polling_browser.mjs';
 import { checkFork } from './fork_browser.mjs';
+import { checkPaneHeader } from './pane_header_browser.mjs';
 import { checkPaneMenu } from './pane_menu_browser.mjs';
 import { checkSidebarMenu } from './sidebar_menu_browser.mjs';
 import { checkJira } from './jira_browser.mjs';
@@ -574,7 +575,10 @@ try {
     groupFixture.groups=[{id:'jira-group',name:'Jira group',color:'teal'},{id:'other-group',name:'Other',color:'blue'}];
     groupFixture.members={'jira-on':'jira-group','jira-off':'other-group'};
   }});
-  if (process.env.UI_JIRA_ONLY === '1') {
+  if (process.env.UI_PANE_HEADER_ONLY === '1') {
+    await checkPaneHeader({evaluate,waitFor,cdp,viewport,screenshot});
+    assert.deepEqual(errors, [], 'No uncaught pane header errors');
+  } else if (process.env.UI_JIRA_ONLY === '1') {
     await jiraCheck();assert.deepEqual(errors, [], 'No uncaught Jira errors');
   } else if (process.env.UI_RESUME_ALL_ONLY === '1') {
     await bulkCheck();
@@ -1874,6 +1878,7 @@ try {
   await outlinesCheck();
   await bulkCheck();
   await jiraCheck();
+  await checkPaneHeader({evaluate,waitFor,cdp,viewport,screenshot});
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));
   }
