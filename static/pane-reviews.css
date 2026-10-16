@@ -12,3 +12,6 @@
 .pane-reviews input { flex:1; width:0; min-width:0; }
 .pane-reviews [data-error] { color:var(--danger,#d55); }
 .pane-reviews [data-help] { font-size:12px; color:var(--text-dim); }
+
+.pane-card .btn-reviews, .pane-card .btn-jira { width: auto; min-width: 30px; gap: 4px; padding-inline: 6px; }
+.pane-link-count { font-size: 11px; font-variant-numeric: tabular-nums; }

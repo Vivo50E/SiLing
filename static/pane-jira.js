@@ -23,6 +23,7 @@
     let busy=false,closed=false;
     const setBusy=value=>{busy=value;el('refresh').disabled=value;el('add').disabled=value;};
     const render=data=>{
+      window.SilingPaneLinkCounts.loaded(runId, 'jira', data.items);
       el('list').replaceChildren();
       el('branch').textContent='';
       el('status').textContent=data.warning ? t(data.warning) : data.items.length ? '' : t('No related Jira tickets found. Add a link below.');

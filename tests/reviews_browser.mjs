@@ -5,10 +5,12 @@ export async function checkReviews({evaluate,waitFor,cdp,viewport,screenshot,con
   await evaluate(`localStorage.clear();localStorage.setItem('orch_layout','cols-2');localStorage.setItem('orch_slots',JSON.stringify(['reviews-agent','reviews-shell']));localStorage.setItem('siling_web_link_target','external');localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'en'}))`);
   await cdp('Page.reload');await waitFor(`document.querySelectorAll('#grid .pane iframe').length===2`);
   const button='[data-run-id="reviews-agent"] .btn-reviews';
-  assert.equal(await evaluate(`document.querySelector('${button}').textContent`),'','Icon has no visible text');
+  await waitFor(`document.querySelector('${button} .pane-link-count')?.textContent==='2'`);
   assert.equal(await evaluate(`!!document.querySelector('${button} svg')`),true);
   assert.equal(await evaluate(`document.querySelector('${button}').getAttribute('aria-label')`),'Related PRs / MRs');
-  assert.equal(requests.some(r=>r.path.endsWith('/reviews')),false,'No discovery until requested');
+  const initialCount=requests.filter(r=>r.path.endsWith('/reviews')).length;
+  await pause(1100);
+  assert.equal(requests.filter(r=>r.path.endsWith('/reviews')).length,initialCount,'Counts do not poll');
   await evaluate(`window.reviewFrame=document.querySelector('[data-run-id="reviews-agent"] iframe');document.querySelector('[data-run-id="reviews-agent"] .pane-input textarea').value='keep draft';window.reviewOldOpen=window.open;window.reviewOpened=[];window.open=(...args)=>reviewOpened.push(args)`);
   await evaluate(`document.querySelector('${button}').click()`);
   await waitFor(`document.querySelectorAll('#pane-reviews li').length===2`);
@@ -26,6 +28,7 @@ export async function checkReviews({evaluate,waitFor,cdp,viewport,screenshot,con
   await waitFor(`document.querySelector('#pane-reviews [data-status]').textContent.includes('Retry')`);
   mode('empty');await evaluate(`document.querySelector('#pane-reviews [data-refresh]').click()`);
   await waitFor(`document.querySelector('#pane-reviews [data-status]').textContent.includes('No related')`);
+  assert.equal(await evaluate(`document.querySelector('${button} .pane-link-count').textContent`),'0');
   mode('ok');await evaluate(`document.querySelector('#pane-reviews [data-refresh]').click()`);
   await waitFor(`document.querySelectorAll('#pane-reviews li').length===2`);
   await evaluate(`document.querySelector('#pane-reviews a').click()`);

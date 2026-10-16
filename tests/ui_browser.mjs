@@ -1,5 +1,6 @@
 // Opt-in full-page browser checks. No dependencies or running Dashboard needed.
 // UI_BROWSER=/path/to/chromium node tests/ui_browser.mjs [screenshot-directory]
+import './pane_link_counts.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -1570,7 +1571,8 @@ try {
   await screenshot('ended-session-resume');
   ended.resume_id='';await evaluate(`document.querySelector('#btn-refresh').click()`);await pause(150);
   assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-2"] .btn-resume-ended').hidden`),true,'Missing metadata does not advertise recovery');
-  ended.resume_id='fixture-native-resume';await evaluate(`document.querySelector('#btn-refresh').click()`);await pause(150);
+  ended.resume_id='fixture-native-resume';await evaluate(`document.querySelector('#btn-refresh').click()`);
+  await waitFor(`document.querySelector('.pane-card[data-run-id="fixture-2"] .btn-resume-ended')?.hidden===false`);
   const stoppedBefore=requests.filter(r=>/\/(stop|kill)$/.test(r.path)).length;
   await evaluate(`document.querySelector('[data-run-id="fixture-2"] .btn-resume-ended').click()`);
   for(let i=0;i<50&&!pendingResume;i++)await pause(50);

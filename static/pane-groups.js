@@ -390,6 +390,7 @@
       const group = groupFor(row.run_id);
       const jiraButton=card.querySelector(".btn-jira");
       if(jiraButton){jiraButton.hidden=!(jiraEnabled && available && group?.jira_enabled);jiraButton.disabled=!!(row.remote && row.node_online===false);jiraButton.title=jiraButton.ariaLabel=t("Related Jira tickets", "相关 Jira tickets");}
+      window.SilingPaneLinkCounts?.update(card, row);
       const jiraDialog=document.querySelector("#pane-jira");
       if(jiraButton?.hidden && jiraDialog?.dataset.runId===row.run_id)jiraDialog.close();
       let badge = card.querySelector(".pane-group-badge");

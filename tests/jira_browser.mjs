@@ -21,6 +21,7 @@ export async function checkJira({evaluate,waitFor,cdp,viewport,screenshot,reques
   await evaluate(`document.querySelector('#group-jira-enabled').checked=true;document.querySelector('#group-save').click()`);
   await waitFor(`!document.querySelector('${on}').hidden`);
   assert.equal(await evaluate(`document.querySelector('${off}').hidden`),true,'Other group remains disabled');
+  await waitFor(`document.querySelector('${on} .pane-link-count')?.textContent==='1'`);
   await evaluate(`document.querySelector('#pane-groups-dialog').close();document.querySelector('${on}').click()`);
   await waitFor(`document.querySelectorAll('#pane-jira li').length===1`);
   assert.equal(await evaluate(`!!document.querySelector('#pane-jira img')`),false);
@@ -34,6 +35,7 @@ export async function checkJira({evaluate,waitFor,cdp,viewport,screenshot,reques
   await waitFor(`document.querySelector('#pane-jira [data-status]').textContent.includes('Retry')`);
   mode('empty');await evaluate(`document.querySelector('#pane-jira [data-refresh]').click()`);
   await waitFor(`document.querySelector('#pane-jira [data-status]').textContent.includes('No related')`);
+  assert.equal(await evaluate(`document.querySelector('${on} .pane-link-count').textContent`),'0');
   mode('ok');await evaluate(`document.querySelector('#pane-jira [data-refresh]').click()`);
   await waitFor(`document.querySelectorAll('#pane-jira li').length===1`);
   await evaluate(`window.jiraOpen=window.open;window.jiraOpened=[];window.open=(...args)=>jiraOpened.push(args);document.querySelector('#pane-jira a').click()`);

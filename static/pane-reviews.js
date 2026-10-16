@@ -20,6 +20,7 @@
     let busy=false,closed=false;
     const setBusy=value=>{busy=value;el('refresh').disabled=value;el('add').disabled=value;};
     const render=data=>{
+      window.SilingPaneLinkCounts.loaded(runId, 'reviews', data.items);
       el('list').replaceChildren();
       el('branch').textContent=data.branch || '';
       el('status').textContent=data.warning ? ui.message(data.warning) : data.items.length ? '' : ui.message('No related PR/MR found. Add a link below.');
