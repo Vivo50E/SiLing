@@ -146,6 +146,13 @@ intervene.
   positions, terminal connections and activity borders stay unchanged. Disconnected
   clusters remain separate; **Arrange by group** brings them together. The switch
   defaults off and is saved in this browser.
+- **Settings → Browsing & files → Enable Jira tickets** enables per-group Jira
+  switches in **Manage groups**. Enable a group and save to show its panes’ ticket
+  icon beside Files/PRs. It lists saved Jira `/browse/PROJECT-123` links and links
+  in recent output, with manual link entry. Discovery runs only on open/refresh;
+  it does not query Jira or fetch status/assignee data. The master switch is local
+  to this browser; group preferences sync with this Dashboard and survive disabling
+  the master switch. Links follow your configured web-opening preference.
 - The pull-request icon beside **Files** opens related GitHub PRs / GitLab MRs.
   It combines linked URLs, recent pane output and the current Git branch, with
   titles and states when the provider returns them. Branch lookup uses the

@@ -13,11 +13,23 @@
     const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
     const t = (en, zh) => language() === "zh" ? zh : en;
     let groups = [], members = {}, available = false, pending = false, filter = "all", storageError = "";
-    let editing = "", draftColor = colors.blue, draftColor2 = colors.teal, autoLayout = false, showOutlines = false;
+    let editing = "", draftColor = colors.blue, draftColor2 = colors.teal, autoLayout = false, showOutlines = false, jiraEnabled = false;
     let groupDrag = null, dragFrame = null, suppressGroupClick = false, orderMessage = "";
     try { autoLayout = localStorage.getItem("siling_group_auto_layout") === "true"; } catch (_) {}
     try { filter = localStorage.getItem("siling_group_filter") || "all"; } catch (_) {}
     try { showOutlines = localStorage.getItem("siling_group_outlines") === "true"; } catch (_) {}
+    try {jiraEnabled = localStorage.getItem("siling_jira_enabled") === "true";} catch (_) {}
+    const jiraSetting=document.createElement("div");
+    jiraSetting.innerHTML='<label class="settings-row"><span id="jira-setting-label"></span><input id="jira-enabled" type="checkbox" aria-describedby="jira-setting-help"></label><p id="jira-setting-help" class="ui-secondary"></p>';
+    $("settings-section-browsing").append(jiraSetting);
+    $("jira-enabled").checked=jiraEnabled;
+    $("jira-enabled").onchange=()=>{
+      jiraEnabled=$("jira-enabled").checked;
+      try {localStorage.setItem("siling_jira_enabled",String(jiraEnabled));}catch(_){}
+      renderBar();
+      document.querySelectorAll("#grid .pane-card[data-run-id]").forEach(card=>{const row=sessions().find(s=>s.run_id===card.dataset.runId);if(row)decorate(card,row);});
+      if(!jiraEnabled)document.querySelector('#pane-jira')?.close();
+    };
     const outlines = window.SilingGroupOutlines({grid:$("grid"),
       enabled:()=>showOutlines && available && filter === "all",
       groupFor:id=>{const group=groupFor(id);return group ? {...group,color:colorValue(group.color),color2:group.color2 ? colorValue(group.color2) : null} : null;}});
@@ -76,6 +88,7 @@
                 <label><span>HEX</span><input id="group-hex2" type="text" value="#39b5a4" pattern="#[0-9a-fA-F]{6}" maxlength="7" required disabled spellcheck="false" autocomplete="off"></label>
               </div><p id="group-color-help" class="ui-secondary"></p>
             </fieldset>
+            <label id="group-jira-row" hidden><span id="group-jira-label"></span><input id="group-jira-enabled" type="checkbox"></label>
             <div class="group-editor-actions"><button id="group-save" type="submit"></button><button id="group-delete" type="button" class="danger"></button></div>
           </form>
         </div>
@@ -100,6 +113,10 @@
       changed();
     }
     function renderBar() {
+      $("jira-setting-label").textContent=t("Enable Jira tickets", "启用 Jira tickets");
+      $("jira-setting-help").textContent=t("Then enable Jira for individual groups in Manage groups. This master switch is saved in this browser.", "开启后，在管理分组中为需要的分组启用 Jira。总开关仅保存在当前浏览器。");
+      $("group-jira-row").hidden=!jiraEnabled;
+      $("group-jira-label").textContent=t("Show Jira tickets in this group", "在此分组显示 Jira tickets");
       if (groupDrag) return;
       const live = sessions().filter(s => s.alive);
       $("pane-group-tabs").setAttribute("aria-label", t("Filter by project group", "按项目分组筛选"));
@@ -272,6 +289,7 @@
       $("group-duotone").checked = !!group?.color2;
       draftColor2 = colorValue(group?.color2 || "teal");
       $("group-hex2").value = draftColor2; $("group-hex2").setCustomValidity("");
+      $("group-jira-enabled").checked=group?.jira_enabled === true;
       chooseColor(group?.color || "blue");
       $("group-editor-title").textContent = group ? t("Edit group", "编辑分组") : t("New group", "新建分组");
       $("group-save").textContent = group ? t("Save changes", "保存修改") : t("Create group", "创建分组");
@@ -355,7 +373,7 @@
     $("pane-group-form").addEventListener("submit", e => {
       e.preventDefault();
       if (!$("pane-group-form").reportValidity()) return;
-      save({action:editing ? "update" : "create", group_id:editing, name:$("group-name").value, color:draftColor, color2:$("group-duotone").checked ? draftColor2 : null}, $("group-result"));
+      save({action:editing ? "update" : "create", group_id:editing, name:$("group-name").value, color:draftColor, color2:$("group-duotone").checked ? draftColor2 : null, ...(jiraEnabled ? {jira_enabled:$("group-jira-enabled").checked} : {})}, $("group-result"));
     });
     $("group-delete").addEventListener("click", () => {
       if (confirm(t("Delete this group? Sessions will become ungrouped and keep running.", "删除此分组？会话将变为未分组并继续运行。"))) {
@@ -370,6 +388,10 @@
 
     function decorate(card, row) {
       const group = groupFor(row.run_id);
+      const jiraButton=card.querySelector(".btn-jira");
+      if(jiraButton){jiraButton.hidden=!(jiraEnabled && available && group?.jira_enabled);jiraButton.disabled=!!(row.remote && row.node_online===false);jiraButton.title=jiraButton.ariaLabel=t("Related Jira tickets", "相关 Jira tickets");}
+      const jiraDialog=document.querySelector("#pane-jira");
+      if(jiraButton?.hidden && jiraDialog?.dataset.runId===row.run_id)jiraDialog.close();
       let badge = card.querySelector(".pane-group-badge");
       if (!badge) {
         badge = document.createElement("span"); badge.className = "pane-group-badge";
@@ -443,6 +465,7 @@
     return {
       matches, decorate, decorateMenu, applyVisibility, refreshLabels: renderBar,
       creationChoices: () => ({groups: available ? groups : [], filter}),
+      jiraFor: id => jiraEnabled && available && groupFor(id)?.jira_enabled === true,
       nameFor: id => groupFor(id)?.name || "",
       reveal(runId) {
         if (!matches({run_id:runId})) selectFilter("all");

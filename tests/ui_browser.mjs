@@ -15,6 +15,7 @@ import { checkPlainPolling } from './plain_polling_browser.mjs';
 import { checkFork } from './fork_browser.mjs';
 import { checkPaneMenu } from './pane_menu_browser.mjs';
 import { checkSidebarMenu } from './sidebar_menu_browser.mjs';
+import { checkJira } from './jira_browser.mjs';
 import { checkResumeAll } from './resume_all_browser.mjs';
 import { checkGroupOutlines } from './group_outlines_browser.mjs';
 import { checkArrangeNames } from './arrange_names_browser.mjs';
@@ -104,10 +105,16 @@ const artifactPreviewRequests = [];
 const previewSource = '# Readable Markdown\n\nAn isolated preview fixture.';
 const completeSource = previewSource + '\n' + 'Full source line\n'.repeat(18000) + 'END OF FILE';
 let truncatePreview = false;
+let jiraMode='ok';
 let bulkMode=false,bulkHold=null;const bulkBodies=[];
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   requests.push({ method: req.method, path: url.pathname });
+  if (url.pathname.endsWith('/jira')) {
+    res.setHeader('Content-Type','application/json');
+    if(jiraMode==='error'){res.writeHead(503);res.end(JSON.stringify({detail:'Fixture unavailable'}));return;}
+    res.end(JSON.stringify({items:jiraMode==='empty'?[]:[{url:'https://jira.example/browse/DEMO-12',key:'DEMO-12',title:'Ticket <img src=x>',source:'linked'}]}));return;
+  }
   if (url.pathname.endsWith('/reviews')) {
     res.setHeader('Content-Type','application/json');
     if(reviewMode==='error'){res.writeHead(503);res.end(JSON.stringify({detail:'Fixture unavailable'}));return;}
@@ -394,8 +401,8 @@ const server = http.createServer((req, res) => {
       req.on('end', () => {
         if (failGroupSave) { res.writeHead(503); res.end(JSON.stringify({detail:'Fixture save failed'})); return; }
         const edit = JSON.parse(body);
-        if (edit.action === 'create') groupFixture.groups.push({id:'project-fixture', name:edit.name, color:edit.color, color2:edit.color2});
-        if (edit.action === 'update') Object.assign(groupFixture.groups.find(g => g.id === edit.group_id), {name:edit.name, color:edit.color, color2:edit.color2});
+        if (edit.action === 'create') groupFixture.groups.push({id:'project-fixture', name:edit.name, color:edit.color, color2:edit.color2, ...(typeof edit.jira_enabled==='boolean'?{jira_enabled:edit.jira_enabled}:{})});
+        if (edit.action === 'update') Object.assign(groupFixture.groups.find(g => g.id === edit.group_id), {name:edit.name, color:edit.color, color2:edit.color2, ...(typeof edit.jira_enabled==='boolean'?{jira_enabled:edit.jira_enabled}:{})});
         if (edit.action === 'reorder') {const moved=groupFixture.groups.find(g=>g.id===edit.group_id);groupFixture.groups=groupFixture.groups.filter(g=>g.id!==edit.group_id);const index=edit.before_id?groupFixture.groups.findIndex(g=>g.id===edit.before_id):groupFixture.groups.length;groupFixture.groups.splice(index,0,moved);}
         if (edit.action === 'assign') for (const id of edit.run_ids) groupFixture.members[id] = edit.group_id;
         if (edit.action === 'delete') {
@@ -509,7 +516,12 @@ try {
   await cdp('Page.addScriptToEvaluateOnNewDocument', { source: `if(!localStorage.getItem('orch_layout')){localStorage.setItem('orch_layout','cols-2x2');localStorage.setItem('orch_slots',JSON.stringify(['fixture-0','fixture-1','fixture-2','fixture-3']));localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'en',theme:'dark'}));}` });
   await cdp('Page.navigate', { url: `http://127.0.0.1:${server.address().port}/` });
   const renameCheck=()=>checkRename({evaluate,waitFor,viewport,screenshot,cdp,mode:value=>{renameMode=value;},submissions:renameSubmissions,release:()=>{renameReply();renameReply=null;},pending:()=>!!renameReply});
-  const forkCheck=()=>checkFork({evaluate,waitFor,cdp,viewport,screenshot,mode:value=>{forkMode=value;},submissions:forkSubmissions,release:()=>forkReply()});
+  const forkCheck=()=>{
+    // The archive suite can permanently delete fixture-2. Fork owns a separate
+    // filler so its full-grid precondition never depends on deleted history.
+    if(!sessions.some(s=>s.run_id==='fork-filler'))sessions.push({run_id:'fork-filler',kind:'run',agent:'terminal',alive:true,display_name:'Fork filler'});
+    return checkFork({evaluate,waitFor,cdp,viewport,screenshot,mode:value=>{forkMode=value;},submissions:forkSubmissions,release:()=>forkReply()});
+  };
   const plainCheck=()=>checkPlainPolling({evaluate,waitFor,cdp,viewport,pause,
     configure:text=>{plainText=text;plainFailure=false;if(!sessions.some(s=>s.run_id==='fixture-plain-perf'))sessions.push({run_id:'fixture-plain-perf',kind:'task',agent:'terminal',display_name:'Large ended log',alive:false});},
     text:value=>{plainText=value;},failure:value=>{plainFailure=value;},reads:()=>plainReads});
@@ -542,7 +554,15 @@ try {
     ready:()=>!!bulkHold,release:()=>{bulkHold();bulkHold=null;},
     activate:id=>{sessions.find(s=>s.run_id===id).alive=true;}
   });
-  if (process.env.UI_RESUME_ALL_ONLY === '1') {
+  const jiraCheck=()=>checkJira({evaluate,waitFor,cdp,viewport,screenshot,requests,pause,mode:value=>{jiraMode=value;},configure:()=>{
+    systemBrowserAvailable=false;failBrowserOpen=false;archiveMode='ok';bulkMode=false;
+    sessions.splice(0,sessions.length,...['jira-on','jira-off'].map(run_id=>({run_id,kind:'run',agent:'terminal',alive:true,display_name:run_id})));
+    groupFixture.groups=[{id:'jira-group',name:'Jira group',color:'teal'},{id:'other-group',name:'Other',color:'blue'}];
+    groupFixture.members={'jira-on':'jira-group','jira-off':'other-group'};
+  }});
+  if (process.env.UI_JIRA_ONLY === '1') {
+    await jiraCheck();assert.deepEqual(errors, [], 'No uncaught Jira errors');
+  } else if (process.env.UI_RESUME_ALL_ONLY === '1') {
     await bulkCheck();
     assert.deepEqual(errors, [], 'No uncaught bulk recovery errors');
   } else if (process.env.UI_GROUP_OUTLINES_ONLY === '1') {
@@ -1838,6 +1858,7 @@ try {
   await reviewsCheck();
   await outlinesCheck();
   await bulkCheck();
+  await jiraCheck();
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log(JSON.stringify({ result: 'PASS', frameLoads, screenshots: artifacts }));
   }

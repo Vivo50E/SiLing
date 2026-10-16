@@ -98,3 +98,6 @@
 #group-color2 { cursor: pointer; padding: 4px; height: 42px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-elev); }
 #group-hex2 { font-family: ui-monospace, monospace; }
 #group-hex2:invalid { border-color: #e87171; }
+.btn-jira[hidden] { display:none !important; }
+#group-jira-row { display:flex; align-items:center; gap:10px; }
+#group-jira-enabled { width:auto; }

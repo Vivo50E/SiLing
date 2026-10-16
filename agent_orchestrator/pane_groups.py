@@ -57,6 +57,7 @@ def _validate(data: dict) -> dict:
         if (not isinstance(group, dict) or group.get("id") != group_id
                 or not isinstance(group.get("name"), str)
                 or group.get("color") not in COLORS
+                or ("jira_enabled" in group and not isinstance(group["jira_enabled"], bool))
                 or ("custom_color" in group and not _is_hex_color(group["custom_color"]))
                 or ("color2" in group and not _is_hex_color(group["color2"]))):
             raise ValueError("Invalid project-group storage")
@@ -119,6 +120,8 @@ class PaneGroups:
             color2 = body.get("color2")
             if color2 is not None and color2 not in COLORS and not _is_hex_color(color2):
                 raise ValueError("Unsupported second group color")
+        if "jira_enabled" in body and not isinstance(body["jira_enabled"], bool):
+            raise ValueError("jira_enabled must be a boolean")
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with edit_json(self.path, create=True) as raw:
             data = _validate(raw)
@@ -136,7 +139,8 @@ class PaneGroups:
                     group_id = uuid.uuid4().hex
                 # Old clients omit color2; preserve it on unrelated edits.
                 second = body.get("color2", groups.get(group_id, {}).get("color2"))
-                groups[group_id] = {"id": group_id, "name": name.strip(), **_stored_color(color)}
+                groups[group_id] = {"id": group_id, "name": name.strip(), **_stored_color(color),
+                                    "jira_enabled": body.get("jira_enabled", groups.get(group_id, {}).get("jira_enabled", False))}
                 if second is not None:
                     groups[group_id]["color2"] = COLOR_HEX[second] if second in COLORS else second.lower()
             elif action == "reorder":

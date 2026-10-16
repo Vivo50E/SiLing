@@ -6,6 +6,7 @@ export async function checkResumeAll({evaluate,waitFor,cdp,viewport,screenshot,p
   configure(rows);await viewport(1280,900);
   await evaluate(`localStorage.clear();localStorage.setItem('orch_layout','cols-2');localStorage.setItem('orch_slots',JSON.stringify(['bulk-first','bulk-active']));localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'en'}))`);
   await cdp('Page.reload');await waitFor(`document.querySelector('[data-run-id="bulk-first"] textarea')!==null`);
+  await waitFor(`!!document.querySelector('[data-run-id="bulk-active"] iframe')?.contentDocument?.querySelector('textarea')`);
   await evaluate(`window.bulkFrame=document.querySelector('[data-run-id="bulk-active"] iframe');document.querySelector('[data-run-id="bulk-first"] textarea').value='keep recovery draft';document.querySelector('#btn-resume-all').click()`);
   await waitFor(`!document.querySelector('.resume-all-start').disabled`);
   assert.equal(await evaluate(`document.querySelectorAll('.resume-all-list li').length`),6,'Only stopped non-archived online Agent conversations, deduplicated against running ones');

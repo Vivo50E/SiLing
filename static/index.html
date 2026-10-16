@@ -2767,16 +2767,17 @@
 </style>
 <link rel="stylesheet" href="/static/ui-foundation.css?v=8" />
 <script src="/static/ui-messages.js?v=24"></script>
-<script src="/static/ui-foundation.js?v=13"></script>
-<link rel="stylesheet" href="/static/pane-groups.css?v=6" />
+<script src="/static/ui-foundation.js?v=14"></script>
+<link rel="stylesheet" href="/static/pane-groups.css?v=7" />
 <script src="/static/pane-group-outlines.js?v=2"></script>
 <script src="/static/resume-all.js?v=1"></script>
-<script src="/static/pane-groups.js?v=10"></script>
+<script src="/static/pane-groups.js?v=11"></script>
 <script src="/static/new-session-options.js?v=1"></script>
 <script src="/static/session-help.js?v=1"></script>
 <script src="/static/terminal-files.js?v=3"></script>
 <link rel="stylesheet" href="/static/pane-reviews.css?v=1">
 <script src="/static/pane-reviews.js?v=1"></script>
+<script src="/static/pane-jira.js?v=1"></script>
 <script src="/static/secret-operations.js?v=2"></script>
 <script src="/static/secret-config.js?v=1"></script>
 <script src="/static/terminal-keys.js?v=1"></script>
@@ -8230,6 +8231,7 @@
             ${panelStateOptionsHtml(s.panel_state)}
           </select>
           <button class="btn-related-sessions" hidden><span data-ui-message="Related%20sessions">Related sessions</span></button>
+          <button class="btn-jira ui-icon-button" hidden title="Related Jira tickets" aria-label="Related Jira tickets">${ui.icon("ticket")}</button>
           <button class="btn-reviews ui-icon-button" data-ui-icon="review" title="Related PRs / MRs" aria-label="Related PRs / MRs" data-ui-title="Related%20PRs%20%2F%20MRs" data-ui-label="Related%20PRs%20%2F%20MRs">${ui.icon("review")}</button>
           <button class="btn-folders" title="Linked task files and folders" data-ui-title=Linked%20task%20files%20and%20folders aria-label="Linked task files and folders" data-ui-label=Linked%20task%20files%20and%20folders><span data-ui-message=files>files</span></button>
           <button class="btn-zoom" title="Open a larger pane view" data-ui-title=Open%20a%20larger%20pane%20view aria-label="Zoom pane" data-ui-label=Zoom%20pane>${ui.icon("zoom")}</button>
@@ -8661,6 +8663,9 @@
       }
     });
     btnFolders.addEventListener("click", () => openFolderViewer(runId));
+    card.querySelector(".btn-jira").addEventListener("click", event => {
+      if(paneGroups.jiraFor(runId))window.SilingPaneJira.open({runId,title:sessionTitle(s),trigger:event.currentTarget,api,ui,openUrl:openPreferredWebUrl,changed:()=>void refreshList()});
+    });
     card.querySelector(".btn-reviews").addEventListener("click", event => window.SilingPaneReviews.open({runId,title:sessionTitle(s),trigger:event.currentTarget,api,ui,openUrl:openPreferredWebUrl,changed:()=>void refreshList()}));
     card.querySelector(".btn-resume-ended").addEventListener("click", event => recoverExitedSession(runId, event.currentTarget));
     btnRestartSession.addEventListener("click", () => restartAgentSession(runId));

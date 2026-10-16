@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 export async function checkFork({evaluate,waitFor,cdp,viewport,screenshot,mode,submissions,release}) {
   await viewport(1280,800);
-  await evaluate(`localStorage.setItem('orch_layout','cols-2x2');localStorage.setItem('orch_slots',JSON.stringify(['fixture-1','fixture-2','fixture-3','fixture-4']));`);
+  await evaluate(`localStorage.setItem('orch_layout','cols-2x2');localStorage.setItem('orch_slots',JSON.stringify(['fixture-1','fork-filler','fixture-3','fixture-4']));`);
   await cdp('Page.reload');
   await waitFor(`!!document.querySelector('[data-run-id="fixture-1"] iframe')?.contentDocument?.querySelector('textarea')`);
   await evaluate(`window.forkOriginalFrame=document.querySelector('[data-run-id="fixture-1"] iframe');document.querySelector('[data-run-id="fixture-1"] .pane-input textarea').value='keep this draft';document.querySelector('[data-run-id="fixture-1"] .btn-pane-more').click();document.querySelector('[data-run-id="fixture-1"] .btn-fork-pane').click()`);
