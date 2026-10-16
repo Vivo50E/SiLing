@@ -887,15 +887,19 @@ try {
         return {tag:el.tagName,contrast:(Math.max(a,b)+.05)/(Math.min(a,b)+.05)};
       });
     })()`);
-    for (const [theme,scheme] of [['dark','dark'],['light','light'],['system','dark'],['system','light']]) {
+    for (const [theme,scheme] of [['dark','dark'],['dark','light'],['light','dark'],['light','light'],['system','dark'],['system','light']]) {
       await cdp('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:scheme}]});
       await evaluate(`{const c=document.querySelector('[data-appearance="theme"]');c.value=${JSON.stringify(theme)};c.dispatchEvent(new Event('change'));}`);
       await screenshot(`markdown-${theme}-${scheme}`);
+      assert.equal(await evaluate(`document.querySelector('meta[name="theme-color"]').content`), (theme === 'dark' || (theme === 'system' && scheme === 'dark')) ? '#0d1117' : '#f5f7fa', 'PWA title bar follows app and system theme');
       const contrast = await previewContrast();
       assert.ok(contrast.length>=10,'Measure all representative Markdown elements');
       assert.ok(contrast.every(item=>item.contrast>=4.5),`Markdown contrast in ${theme}/${scheme}: ${JSON.stringify(contrast)}`);
       console.log(`Markdown ${theme}/${scheme}: minimum contrast ${Math.min(...contrast.map(item=>item.contrast)).toFixed(2)}:1`);
     }
+    await cdp('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:'dark'}]});
+    for (let i=0;i<40 && await evaluate(`document.querySelector('meta[name="theme-color"]').content !== '#0d1117'`);i++) await pause(50);
+    assert.equal(await evaluate(`document.querySelector('meta[name="theme-color"]').content`), '#0d1117', 'System color changes update PWA chrome without a settings change');
     await evaluate(`window.marked.parse=()=>{throw Error('offline renderer fixture')};document.querySelector('#folder-modal-refresh').click()`);
     for(let i=0;i<80;i++) {
       if(await evaluate(`!!document.querySelector('.markdown-body .file-plain')`)) break;
@@ -934,7 +938,7 @@ try {
   assert.ok(await evaluate(`(()=>{const e=document.querySelector('.topbar-global');return e.scrollWidth<=e.clientWidth})()`), 'Toolbar must fit at 1280px');
   assert.equal(await evaluate(`document.querySelectorAll('#btn-toggle-tty').length`), 1);
   assert.equal(await evaluate(`document.querySelectorAll('.pane-drag-region .agent-badge').length`), 4);
-  assert.ok(await evaluate(`document.querySelector('.brand-mark').naturalWidth > 0`), 'Bundled brand SVG loads');
+  assert.ok(await evaluate(`document.querySelector('.brand-mark').naturalWidth > 0`), 'Bundled AI app icon loads');
   assert.equal(await evaluate(`document.querySelectorAll('.pane-drag-region .agent-glyph svg').length`), 4);
   assert.equal(await evaluate(`document.querySelectorAll('.si-agent .agent-glyph svg').length`), 5);
   await evaluate(`document.querySelector('#btn-new-primary').focus()`);

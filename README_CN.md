@@ -566,6 +566,10 @@ CI 每天 10:17 UTC 检查 `main`，仅在有新提交时发布已测试的 Appl
 会话保持运行。首次需安装包含更新组件的客户端；发布密钥配置和首次启动限制见桌面指南。
 Dashboard 更新仍独立进行。
 
+原生标题栏跟随 **Settings → Appearance → App theme**，也支持跟随系统。
+AI 设计的新图标用于 Dashboard、PWA 和桌面应用；原生标题栏与 Dock 图标的变化需要更新桌面客户端。
+已安装的 PWA 可能需要重新安装才能刷新缓存的图标。
+
 ### Dashboard 安装
 
 需要 macOS 或 Linux、`tmux`、Python 3.10+，以及至少一个支持的 agent CLI

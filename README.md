@@ -730,6 +730,11 @@ it while Agent sessions keep running. Install the first update-enabled build
 once. See the desktop guide for release-key setup and first-launch limitations.
 Dashboard updates remain separate.
 
+The native title bar follows **Settings → Appearance → App theme**, including
+System mode. The AI-designed icon is shared by the Dashboard, PWA and desktop
+bundle; native title-bar and Dock icon changes require an updated desktop client.
+Existing PWA installations may need to be reinstalled to refresh their cached icon.
+
 ### Dashboard setup
 
 Requirements: macOS or Linux, `tmux`, Python 3.10+, and at least one supported

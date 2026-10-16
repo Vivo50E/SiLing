@@ -55,7 +55,7 @@ async function run() {
       let data = { ok: true };
       if (url.pathname === '/api/health') data = { ttyd: true };
       if (url.pathname === '/api/config') data = { projects_browser_url: '', remote_nodes: [] };
-      if (url.pathname === '/api/sessions') data = { sessions: [fixture], snapshot: { ready: true }, pane_groups: { groups: [], members: {} } };
+      if (url.pathname === '/api/sessions') data = { sessions: [fixture], snapshot: { ready: true }, pane_groups: { groups: [], members: {} }, session_archives: { version: 1, revision: 0, entries: {} } };
       if (url.pathname.endsWith('/tty')) data = { ok: true, url: '/fixture-tty' };
       res.setHeader('Content-Type', 'application/json');
       return res.end(JSON.stringify(data));
@@ -91,7 +91,25 @@ async function run() {
     if (event.level === 'error') console.error('Fixture renderer:', event.message);
   });
   await window.loadURL(dashboard.href);
+  console.log('Fixture Dashboard loaded');
   await wait(() => evaluate(`!!document.querySelector('.pane iframe')?.contentDocument?.querySelector('textarea')`), 'terminal ready');
+  console.log('Fixture terminal ready');
+  const themeFrames = ttyLoads;
+  for (const theme of ['dark', 'light', 'system', 'dark']) {
+    await evaluate(`{const c=document.querySelector('[data-appearance="theme"]');c.value=${JSON.stringify(theme)};c.dispatchEvent(new Event('change'));}`);
+    await wait(() => electron.nativeTheme.themeSource === theme, 'native title bar theme ' + theme);
+    console.log('Native appearance:', theme);
+    const dark = electron.nativeTheme.shouldUseDarkColors;
+    assert.equal(await evaluate(`document.querySelector('meta[name="theme-color"]').content`), dark ? '#0d1117' : '#f5f7fa');
+    assert.equal(window.getBackgroundColor().slice(0, 7).toLowerCase(), dark ? '#0d1117' : '#f5f7fa');
+  }
+  assert.equal(ttyLoads, themeFrames, 'Theme changes preserve terminal frames');
+  await assert.rejects(host.request({ sender: window.webContents, senderFrame: window.webContents.mainFrame }, { action: 'appearance', theme: 'invalid' }), /Invalid app theme/);
+  assert.equal(electron.nativeTheme.themeSource, 'dark');
+  await window.loadURL(dashboard.href);
+  console.log('Fixture Dashboard reloaded');
+  await wait(() => evaluate(`!!document.querySelector('.pane iframe')?.contentDocument?.querySelector('textarea')`), 'terminal restored after appearance reload');
+  await wait(() => electron.nativeTheme.themeSource === 'dark', 'saved native appearance after reload');
   await evaluate(`document.querySelector('[data-layout="cols-2x2"]').click()`);
   await wait(() => evaluate(`document.querySelectorAll('.new-browser-pane').length === 3`), 'desktop empty slot actions');
   const baseline = ttyLoads;
@@ -100,6 +118,8 @@ async function run() {
   await wait(() => host.panes.size === 1 && [...host.panes.values()][0].view.webContents.getTitle().startsWith('Browser fixture'), 'native website loaded');
   const [id, pane] = [...host.panes][0];
   const web = pane.view.webContents;
+  await assert.rejects(host.request({ sender: web, senderFrame: web.mainFrame }, { action: 'appearance', theme: 'light' }), /Untrusted/);
+  assert.equal(electron.nativeTheme.themeSource, 'dark', 'Web panes cannot change native appearance');
   const webId = web.id;
   await wait(() => pane.view.getVisible(), 'native view visible');
   assert.equal(await web.executeJavaScript('window.fixture'), true, 'X-Frame-Options DENY does not block top-level WebContentsView');
@@ -194,7 +214,7 @@ async function run() {
 run().then(() => cleanup(0), async error => {
   console.error(error);
   if (window && !window.isDestroyed()) {
-    console.error('Fixture state:', await evaluate(`({hidden:document.hidden,panes:[...document.querySelectorAll('.browser-card')].map(n=>({class:n.className,status:n.querySelector('.browser-status').textContent,rect:n.querySelector('.browser-surface').getBoundingClientRect().toJSON()}))})`).catch(() => 'unavailable'));
+    console.error('Fixture state:', await evaluate(`({hidden:document.hidden,body:document.body.innerText.slice(0,1200),frames:[...document.querySelectorAll('iframe')].map(n=>n.src),panes:[...document.querySelectorAll('.browser-card')].map(n=>({class:n.className,status:n.querySelector('.browser-status').textContent,rect:n.querySelector('.browser-surface').getBoundingClientRect().toJSON()}))})`).catch(() => 'unavailable'));
   }
   cleanup(1);
 });

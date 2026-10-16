@@ -3,6 +3,26 @@ const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const policy = require('../apps/desktop/policy.cjs');
 const dashboard = policy.dashboardURL('http://127.0.0.1:7860/?token=fixture');
+const { BrowserHost } = require('../apps/desktop/browser-host.cjs');
+
+test('appearance updates native chrome only for trusted Dashboard and valid preferences', async () => {
+  const contents = { mainFrame: { url: dashboard.href } };
+  const nativeTheme = { themeSource: 'system', get shouldUseDarkColors() { return this.themeSource !== 'light'; } };
+  const colors = [];
+  const host = { dashboard, electron: { nativeTheme }, window: { webContents: contents, setBackgroundColor: color => colors.push(color) } };
+  const event = { sender: contents, senderFrame: contents.mainFrame };
+  for (const theme of ['dark', 'light', 'system']) {
+    assert.deepEqual(await BrowserHost.prototype.request.call(host, event, { action: 'appearance', theme }), { ok: true });
+    assert.equal(nativeTheme.themeSource, theme);
+    assert.equal(colors.at(-1), theme === 'light' ? '#f5f7fa' : '#0d1117');
+  }
+  for (const theme of ['', 'auto', '#ffffff', null, {}]) {
+    await assert.rejects(BrowserHost.prototype.request.call(host, event, { action: 'appearance', theme }), /Invalid app theme/);
+  }
+  await assert.rejects(BrowserHost.prototype.request.call(host, { sender: contents, senderFrame: { url: dashboard.href } }, { action: 'appearance', theme: 'light' }), /Untrusted/);
+  assert.equal(nativeTheme.themeSource, 'system');
+  assert.equal(colors.length, 3, 'Rejected requests have no side effects');
+});
 
 test('Dashboard accepts loopback HTTP or trusted HTTPS, root only', () => {
   assert.equal(policy.dashboardURL('https://dashboard.example/').origin, 'https://dashboard.example');

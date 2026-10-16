@@ -75,7 +75,7 @@ async function build(args = process.argv.slice(2)) {
     stageApp(__dirname, stage, path.resolve(root, 'LICENSE'), commit, update ? 'sparkle' : '', buildNumber);
     const iconset = path.join(temporary, 'SiLing.iconset');
     fs.mkdirSync(iconset);
-    const sourceIcon = path.resolve(__dirname, '../../static/icons/orchestrator-512.png');
+    const sourceIcon = path.resolve(__dirname, '../../static/icons/orchestrator-1024.png');
     for (const size of [16, 32, 128, 256, 512]) {
       for (const scale of [1, 2]) {
         const file = `icon_${size}x${size}${scale === 2 ? '@2x' : ''}.png`;

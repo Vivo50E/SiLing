@@ -31,7 +31,8 @@ async function connect(initial, choose = false) {
         ipcMain.removeHandler('siling:browser');
         if (window && !window.isDestroyed()) window.destroy();
         window = new BrowserWindow({ width: 1440, height: 960, minWidth: 800, minHeight: 600,
-          title: 'SiLing · 司令', webPreferences: {
+          title: 'SiLing · 司令', show: false,
+          backgroundColor: electron.nativeTheme.shouldUseDarkColors ? '#0d1117' : '#f5f7fa', webPreferences: {
             preload: path.join(__dirname, 'preload.cjs'), partition: 'persist:siling-dashboard-v1',
             nodeIntegration: false, contextIsolation: true, sandbox: true,
             webviewTag: false, navigateOnDragDrop: false,
@@ -40,6 +41,7 @@ async function connect(initial, choose = false) {
         host = new BrowserHost(electron, window, dashboard);
         ipcMain.handle('siling:browser', (event, message) => host.request(event, message));
         await window.loadURL(dashboard.href);
+        window.show();
         return;
       } catch {
         host?.clear();
@@ -58,6 +60,9 @@ async function connect(initial, choose = false) {
 }
 
 app.whenReady().then(async () => {
+  electron.nativeTheme.on('updated', () => {
+    if (window && !window.isDestroyed()) window.setBackgroundColor(electron.nativeTheme.shouldUseDarkColors ? '#0d1117' : '#f5f7fa');
+  });
   updater = createUpdater(electron, build);
   app.once('before-quit', () => updater.dispose());
   app.setAboutPanelOptions({ applicationName: 'SiLing · 司令', applicationVersion: app.getVersion(),

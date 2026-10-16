@@ -9,8 +9,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="SiLing" />
 <link rel="manifest" href="/static/manifest.webmanifest" />
-<link rel="icon" type="image/svg+xml" href="/static/icons/orchestrator.svg" />
-<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="/static/icons/orchestrator-192.png?v=2" />
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png?v=2" />
 <!-- Dev-mode cache busting: browsers (esp. Safari) aggressively cache this
      HTML + its inline <script>, which makes iteration painful when the
      backend is serving a live index.html. Tell everyone to never cache. -->
@@ -2770,9 +2770,9 @@
   .cwd-picker-row button { flex:0 0 auto; }
   #working-directory-dialog .cwd-restart:not([hidden]) { display:flex; align-items:center; gap:8px; }
 </style>
-<link rel="stylesheet" href="/static/ui-foundation.css?v=8" />
+<link rel="stylesheet" href="/static/ui-foundation.css?v=9" />
 <script src="/static/ui-messages.js?v=26"></script>
-<script src="/static/ui-foundation.js?v=14"></script>
+<script src="/static/ui-foundation.js?v=15"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=7" />
 <script src="/static/pane-group-outlines.js?v=2"></script>
 <script src="/static/resume-all.js?v=1"></script>
@@ -2806,7 +2806,7 @@
 <div class="app">
   <aside class="sidebar" id="sidebar">
     <div class="brand">
-      <h1><img class="brand-mark" src="/static/icons/orchestrator.svg" alt="" />SiLing</h1>
+      <h1><img class="brand-mark" src="/static/icons/orchestrator-192.png?v=2" alt="" />SiLing</h1>
       <div class="ctrls">
         <button id="btn-notif" class="ui-icon-button" title="Agent notifications (off)" data-ui-title=Agent%20notifications%20(off) aria-label="Agent notifications: off" data-ui-label=Agent%20notifications%3A%20off></button>
         <button id="btn-organize" class="ui-icon-button" data-ui-icon="folder" aria-label="Organize ended sessions" data-ui-label=Organize%20ended%20sessions title="Run `siling organize`: an AI agent classifies ended sessions into projects/" data-ui-title=Run%20%60siling%20organize%60%3A%20an%20AI%20agent%20classifies%20ended%20sessions%20into%20projects%2F></button>

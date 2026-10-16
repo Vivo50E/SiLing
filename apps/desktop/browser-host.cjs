@@ -121,6 +121,12 @@ class BrowserHost {
   async request(event, message) {
     if (!policy.trustedSender(event, this.window.webContents, this.dashboard)) throw Error('Untrusted desktop request');
     if (!message || typeof message !== 'object') throw Error('Invalid desktop request');
+    if (message.action === 'appearance') {
+      if (!['system', 'dark', 'light'].includes(message.theme)) throw Error('Invalid app theme');
+      this.electron.nativeTheme.themeSource = message.theme;
+      this.window.setBackgroundColor(this.electron.nativeTheme.shouldUseDarkColors ? '#0d1117' : '#f5f7fa');
+      return { ok: true };
+    }
     if (message.action === 'external-url') {
       await this.electron.shell.openExternal(policy.browserURL(message.url, this.dashboard));
       return { ok: true };

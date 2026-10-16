@@ -160,6 +160,22 @@
     translate(root);
     return observer;
   }
+  let chromeMedia;
+  function syncChrome(theme) {
+    if (typeof window === 'undefined') return;
+    if (!chromeMedia && window.matchMedia) {
+      chromeMedia = window.matchMedia('(prefers-color-scheme: dark)');
+      chromeMedia.addEventListener('change', () => updateChromeColor(document.documentElement.dataset.appTheme));
+    }
+    updateChromeColor(theme);
+    // The desktop host checks the exact Dashboard main-frame sender and enum.
+    // Send the preference, not its resolved color, so System continues to follow OS changes.
+    window.silingDesktop?.request({ action: 'appearance', theme }).catch(() => {});
+  }
+  function updateChromeColor(theme) {
+    const dark = theme === 'dark' || (theme === 'system' && chromeMedia?.matches);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0d1117' : '#f5f7fa');
+  }
   function apply(value, root = document.documentElement) {
     const prefs = normalize(value);
     language = prefs.language === "system" ? (navigator.language.startsWith("zh") ? "zh" : "en") : prefs.language;
@@ -168,6 +184,7 @@
     root.dataset.density = prefs.density;
     root.dataset.motion = prefs.motion;
     root.style.setProperty("--ui-font-size", `${prefs.fontSize}px`);
+    syncChrome(prefs.theme);
     translate();
   }
   function containDialogFocus(dialog) {

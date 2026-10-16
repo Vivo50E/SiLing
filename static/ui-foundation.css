@@ -1,5 +1,6 @@
 /* Presentation layer only: terminal iframe palettes and session state stay independent. */
 :root {
+  background: var(--bg, #0d1117);
   --ui-font-size: 14px;
   --surface-rgb: 22 27 34;
   --space-1: 4px;
