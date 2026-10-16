@@ -101,3 +101,5 @@
 .btn-jira[hidden] { display:none !important; }
 #group-jira-row { display:flex; align-items:center; gap:10px; }
 #group-jira-enabled { width:auto; }
+
+#group-second-color > label:first-child { grid-column: 1 / -1; }

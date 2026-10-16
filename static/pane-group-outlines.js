@@ -78,6 +78,10 @@
             x1:Math.min(...cells.map(c=>c.left)),y1:Math.min(...cells.map(c=>c.top)),
             x2:Math.max(...cells.map(c=>c.right)),y2:Math.max(...cells.map(c=>c.bottom))},defs);
           node('stop',{offset:'0%','stop-color':group.color},paint);
+          if (group.color_style === 'split') {
+            node('stop',{offset:'50%','stop-color':group.color},paint);
+            node('stop',{offset:'50%','stop-color':group.color2},paint);
+          }
           node('stop',{offset:'100%','stop-color':group.color2},paint);
           stroke = `url(#${paintId})`;
         }

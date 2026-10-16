@@ -6,7 +6,8 @@
   const colorStyle = group => {
     const first = group ? colorValue(group.color) : "transparent";
     const second = group?.color2 ? colorValue(group.color2) : first;
-    return `--group-color:${first};--group-color-2:${second};--group-gradient:linear-gradient(135deg,${first},${second})`;
+    const stops = group?.color_style === "split" ? `${first} 50%,${second} 50%` : `${first},${second}`;
+    return `--group-color:${first};--group-color-2:${second};--group-gradient:linear-gradient(135deg,${stops})`;
   };
   window.SiLingPaneGroups = ({api, ui, sessions, language, changed, refresh, beforeFilter, arrange}) => {
     const $ = id => document.getElementById(id);
@@ -84,6 +85,7 @@
               </div>
               <label class="group-duotone-toggle"><input id="group-duotone" type="checkbox"><span id="group-duotone-label"></span></label>
               <div id="group-second-color" class="group-custom-color" hidden>
+                <label><span id="group-color-style-label"></span><select id="group-color-style"><option value="gradient" id="group-style-gradient"></option><option value="split" id="group-style-split"></option></select></label>
                 <label><span id="group-second-label"></span><input id="group-color2" type="color" value="#39b5a4"></label>
                 <label><span>HEX</span><input id="group-hex2" type="text" value="#39b5a4" pattern="#[0-9a-fA-F]{6}" maxlength="7" required disabled spellcheck="false" autocomplete="off"></label>
               </div><p id="group-color-help" class="ui-secondary"></p>
@@ -235,6 +237,7 @@
         "pane-groups-title": t("Project groups", "项目分组"),
         "pane-groups-help": t("Names, colors, order and membership sync between your devices connected to this Dashboard. Your layout stays on this device. Agents keep running.", "名称、颜色、顺序和归属会同步到连接此 Dashboard 的电脑与手机；当前布局留在本设备，Agent 始终继续运行。"),
         "group-edit-label": t("Your groups", "我的分组"), "group-name-label": t("Group name", "分组名称"),
+        "group-color-style-label": t("Color style", "双色样式"), "group-style-gradient": t("Gradient", "渐变"), "group-style-split": t("Diagonal split", "双色斜切"),
         "group-duotone-label": t("Two colors", "双色"), "group-second-label": t("Second color", "第二种颜色"),
         "group-new": t("+ New group", "+ 新建分组"), "group-picker-label": t("Custom color", "自定义颜色"),
         "group-color-help": t("Pick a swatch, choose any color, or enter #RRGGBB. Preview updates immediately; Save applies it.", "可点选色块、自由取色或输入 #RRGGBB。预览即时更新，保存后才会应用。"),
@@ -260,7 +263,7 @@
       $("group-new").setAttribute("aria-pressed", String(!editing));
     }
     function updatePreview() {
-      $("group-preview").style.cssText = colorStyle({color:draftColor, color2:$("group-duotone").checked ? draftColor2 : null});
+      $("group-preview").style.cssText = colorStyle({color:draftColor, color_style:$("group-color-style").value, color2:$("group-duotone").checked ? draftColor2 : null});
       $("group-color2").value = draftColor2;
       $("group-second-color").hidden = !$("group-duotone").checked;
       $("group-hex2").disabled = !$("group-duotone").checked;
@@ -287,6 +290,7 @@
       const group = groups.find(g => g.id === editing);
       $("group-name").value = group?.name || "";
       $("group-duotone").checked = !!group?.color2;
+      $("group-color-style").value = group?.color_style === "split" ? "split" : "gradient";
       draftColor2 = colorValue(group?.color2 || "teal");
       $("group-hex2").value = draftColor2; $("group-hex2").setCustomValidity("");
       $("group-jira-enabled").checked=group?.jira_enabled === true;
@@ -310,6 +314,7 @@
     $("group-duotone").addEventListener("change", () => {
       $("group-hex2").value = draftColor2; $("group-hex2").setCustomValidity(""); updatePreview();
     });
+    $("group-color-style").addEventListener("change", updatePreview);
     $("group-color2").addEventListener("input", event => {
       draftColor2 = colorValue(event.target.value); $("group-hex2").value = draftColor2;
       $("group-hex2").setCustomValidity(""); updatePreview();
@@ -373,7 +378,7 @@
     $("pane-group-form").addEventListener("submit", e => {
       e.preventDefault();
       if (!$("pane-group-form").reportValidity()) return;
-      save({action:editing ? "update" : "create", group_id:editing, name:$("group-name").value, color:draftColor, color2:$("group-duotone").checked ? draftColor2 : null, ...(jiraEnabled ? {jira_enabled:$("group-jira-enabled").checked} : {})}, $("group-result"));
+      save({action:editing ? "update" : "create", group_id:editing, name:$("group-name").value, color:draftColor, color_style:$("group-color-style").value, color2:$("group-duotone").checked ? draftColor2 : null, ...(jiraEnabled ? {jira_enabled:$("group-jira-enabled").checked} : {})}, $("group-result"));
     });
     $("group-delete").addEventListener("click", () => {
       if (confirm(t("Delete this group? Sessions will become ungrouped and keep running.", "删除此分组？会话将变为未分组并继续运行。"))) {

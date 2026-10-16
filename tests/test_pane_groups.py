@@ -26,6 +26,41 @@ class PaneGroupTests(unittest.TestCase):
         self.store.change({"action": "create", "name": name, "color": "teal"})
         return self.store.view([])["groups"][-1]["id"]
 
+    def test_split_style_persists_and_old_client_edits_preserve_it(self):
+        gid = self.create()
+        self.assign(gid)
+        self.store.change({"action": "update", "group_id": gid, "name": "Split", "color": "blue",
+                           "color2": "teal", "color_style": "split", "jira_enabled": True})
+        reopened = PaneGroups(self.root)
+        self.assertEqual(reopened.view([self.row])["groups"][0]["color_style"], "split")
+        self.store.change({"action": "update", "group_id": gid, "name": "Rename", "color": "pink"})
+        view = reopened.view([self.row])
+        self.assertEqual(view["groups"][0]["color_style"], "split")
+        self.assertTrue(view["groups"][0]["jira_enabled"])
+        self.assertEqual(view["members"][self.row["run_id"]], gid)
+        self.store.change({"action": "update", "group_id": gid, "name": "Gradient", "color": "pink", "color_style": "gradient"})
+        self.assertEqual(reopened.view([])["groups"][0]["color_style"], "gradient")
+
+    def test_invalid_color_styles_do_not_change_storage(self):
+        gid = self.create()
+        original = self.store.path.read_bytes()
+        for style in (None, "diagonal", "url(evil)", [], {}):
+            with self.assertRaises(ValueError):
+                self.store.change({"action": "update", "group_id": gid, "name": "Bad", "color": "blue", "color_style": style})
+            self.assertEqual(self.store.path.read_bytes(), original)
+        data = self.store.read()
+        data["groups"][gid]["color_style"] = "bad"
+        self.store.path.write_text(json.dumps(data))
+        with self.assertRaises(ValueError):
+            self.store.read()
+
+    def test_legacy_groups_without_style_remain_readable(self):
+        gid = self.create()
+        data = self.store.read()
+        data["groups"][gid].pop("color_style", None)
+        self.store.path.write_text(json.dumps(data))
+        self.assertEqual(self.store.view([])["groups"][0].get("color_style", "gradient"), "gradient")
+
     def assign(self, gid, rows=None):
         self.store.change({"action": "assign", "group_id": gid}, rows or [self.row])
 

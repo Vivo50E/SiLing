@@ -415,8 +415,8 @@ const server = http.createServer((req, res) => {
       req.on('end', () => {
         if (failGroupSave) { res.writeHead(503); res.end(JSON.stringify({detail:'Fixture save failed'})); return; }
         const edit = JSON.parse(body);
-        if (edit.action === 'create') groupFixture.groups.push({id:'project-fixture', name:edit.name, color:edit.color, color2:edit.color2, ...(typeof edit.jira_enabled==='boolean'?{jira_enabled:edit.jira_enabled}:{})});
-        if (edit.action === 'update') Object.assign(groupFixture.groups.find(g => g.id === edit.group_id), {name:edit.name, color:edit.color, color2:edit.color2, ...(typeof edit.jira_enabled==='boolean'?{jira_enabled:edit.jira_enabled}:{})});
+        if (edit.action === 'create') groupFixture.groups.push({id:'project-fixture', name:edit.name, color:edit.color, color2:edit.color2, ...(edit.color_style?{color_style:edit.color_style}:{}), ...(typeof edit.jira_enabled==='boolean'?{jira_enabled:edit.jira_enabled}:{})});
+        if (edit.action === 'update') Object.assign(groupFixture.groups.find(g => g.id === edit.group_id), {name:edit.name, color:edit.color, color2:edit.color2, ...(edit.color_style?{color_style:edit.color_style}:{}), ...(typeof edit.jira_enabled==='boolean'?{jira_enabled:edit.jira_enabled}:{})});
         if (edit.action === 'reorder') {const moved=groupFixture.groups.find(g=>g.id===edit.group_id);groupFixture.groups=groupFixture.groups.filter(g=>g.id!==edit.group_id);const index=edit.before_id?groupFixture.groups.findIndex(g=>g.id===edit.before_id):groupFixture.groups.length;groupFixture.groups.splice(index,0,moved);}
         if (edit.action === 'assign') for (const id of edit.run_ids) groupFixture.members[id] = edit.group_id;
         if (edit.action === 'delete') {

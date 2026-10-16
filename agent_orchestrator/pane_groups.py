@@ -59,7 +59,8 @@ def _validate(data: dict) -> dict:
                 or group.get("color") not in COLORS
                 or ("jira_enabled" in group and not isinstance(group["jira_enabled"], bool))
                 or ("custom_color" in group and not _is_hex_color(group["custom_color"]))
-                or ("color2" in group and not _is_hex_color(group["color2"]))):
+                or ("color2" in group and not _is_hex_color(group["color2"]))
+                or group.get("color_style", "gradient") not in ("gradient", "split")):
             raise ValueError("Invalid project-group storage")
     if any(not isinstance(v, str) for v in data["members"].values()):
         raise ValueError("Invalid project-group membership storage")
@@ -120,6 +121,8 @@ class PaneGroups:
             color2 = body.get("color2")
             if color2 is not None and color2 not in COLORS and not _is_hex_color(color2):
                 raise ValueError("Unsupported second group color")
+        if "color_style" in body and body["color_style"] not in ("gradient", "split"):
+            raise ValueError("Unsupported group color style")
         if "jira_enabled" in body and not isinstance(body["jira_enabled"], bool):
             raise ValueError("jira_enabled must be a boolean")
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -140,6 +143,7 @@ class PaneGroups:
                 # Old clients omit color2; preserve it on unrelated edits.
                 second = body.get("color2", groups.get(group_id, {}).get("color2"))
                 groups[group_id] = {"id": group_id, "name": name.strip(), **_stored_color(color),
+                                    "color_style": body.get("color_style", groups.get(group_id, {}).get("color_style", "gradient")),
                                     "jira_enabled": body.get("jira_enabled", groups.get(group_id, {}).get("jira_enabled", False))}
                 if second is not None:
                     groups[group_id]["color2"] = COLOR_HEX[second] if second in COLORS else second.lower()
