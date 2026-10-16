@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-export async function checkWorkingDirectory({evaluate,waitFor,cdp,viewport,screenshot,submissions,requests,mode,configure}) {
+export async function checkWorkingDirectory({evaluate,waitFor,cdp,viewport,screenshot,submissions,requests,mode,configure,picker}) {
   await waitFor(`!!document.querySelector('#session-list .session-item')`);
   configure();
   await viewport(1280,900);
@@ -14,8 +14,43 @@ export async function checkWorkingDirectory({evaluate,waitFor,cdp,viewport,scree
   };
   await open();
   assert.equal(await evaluate(`document.querySelector('#working-directory-path').value`),'/original');
+  await waitFor(`document.querySelector('#working-directory-dialog .cwd-pick').disabled===false`);
+  picker.mode('cancel');
+  await evaluate(`document.querySelector('#working-directory-dialog .cwd-pick').click()`);
+  await waitFor(`!document.querySelector('#working-directory-dialog .cwd-pick').disabled`);
+  assert.equal(await evaluate(`document.querySelector('#working-directory-path').value`),'/original','Cancel keeps the path');
+  picker.mode('error');
+  await evaluate(`document.querySelector('#working-directory-dialog .cwd-pick').click()`);
+  await waitFor(`!!document.querySelector('.cwd-pick-status').textContent`);
+  assert.equal(await evaluate(`document.querySelector('#working-directory-path').value`),'/original','Failure keeps manual input');
+  picker.mode('delay');
+  const beforePick = picker.requests.length;
+  await evaluate(`document.querySelector('#working-directory-dialog .cwd-pick').click();document.querySelector('#working-directory-dialog .cwd-pick').click()`);
+  await waitFor(`document.querySelector('#working-directory-dialog .cwd-pick').disabled`);
+  // Wait for the fixture to receive the asynchronous POST before releasing it.
+  for(let i=0;i<60&&picker.requests.length===beforePick;i++)await new Promise(r=>setTimeout(r,50));
+  assert.equal(picker.requests.length,beforePick+1,'Repeated click opens one chooser');
+  assert.equal(picker.requests.at(-1).intent,'user-click');
+  await evaluate(`document.querySelector('#working-directory-dialog .cwd-cancel').click()`);
+  await open();picker.release();
+  await waitFor(`!document.querySelector('#working-directory-dialog .cwd-pick').disabled`);
+  assert.equal(await evaluate(`document.querySelector('#working-directory-path').value`),'/original','Closed/reopened dialog rejects a late selection');
+  picker.mode('ok');
+  await evaluate(`document.querySelector('#working-directory-dialog .cwd-pick').click()`);
+  await waitFor(`document.querySelector('#working-directory-path').value==='/fixture/picked folder'`);
+  assert.equal(submissions.length,0,'Selecting only fills the input');
+  await screenshot('working-directory-picker');
+
   await evaluate(`document.querySelector('#working-directory-dialog .cwd-cancel').click()`);
   assert.equal(submissions.length,0);
+  await evaluate(`document.querySelector('#btn-new').click()`);
+  await waitFor(`document.querySelector('#new-cwd-pick').disabled===false`);
+  await evaluate(`document.querySelector('#new-cwd-pick').click()`);
+  await waitFor(`document.querySelector('#new-cwd').value==='/fixture/picked folder'`);
+  await evaluate(`{const n=document.querySelector('#new-node');n.add(new Option('Remote fixture','picker-remote'));n.value='picker-remote';n.dispatchEvent(new Event('change'));}`);
+  assert.equal(await evaluate(`document.querySelector('#new-cwd-pick').disabled`),true,'Remote target cannot open local Finder');
+  await evaluate(`document.querySelector('#new-close').click()`);
+
   await open();mode('error');
   await evaluate(`document.querySelector('#working-directory-path').value='/new project';document.querySelector('#working-directory-dialog form').requestSubmit()`);
   await waitFor(`!document.querySelector('#working-directory-dialog .cwd-error').hidden`);

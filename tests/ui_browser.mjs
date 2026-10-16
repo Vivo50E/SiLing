@@ -48,6 +48,8 @@ const updateApplies = [];
 const updateCandidate = () => ({eligible:true,branch:"agent/self-improve-fixture",head:updateHead,short_head:updateHead.slice(0,7),target_head:"a".repeat(40),ahead:1});
 const requests = [];
 let cwdMode='ok';
+let pickerMode='ok', pickerReply=null;
+const pickerRequests=[];
 const cwdSubmissions=[];
 let renameMode='ok',renameReply;
 const renameSubmissions=[];
@@ -138,6 +140,16 @@ const server = http.createServer((req, res) => {
       if(renameMode==='error'){res.writeHead(503);res.end(JSON.stringify({detail:'Fixture rename failure'}));return;}
       const reply=()=>{const session=sessions.find(s=>s.run_id===decodeURIComponent(url.pathname.split('/')[3]));session.label=body.label.trim();session.display_name=session.label||originalNames.get(session.run_id);res.end(JSON.stringify({ok:true,label:session.label}));};
       if(renameMode==='delay'){renameReply=reply;return;}reply();
+    });return;
+  }
+  if (url.pathname === '/api/directories/pick') {
+    let raw='';req.on('data',c=>raw+=c);req.on('end',()=>{
+      pickerRequests.push({body:JSON.parse(raw),intent:req.headers['x-siling-directory-pick']});
+      res.setHeader('Content-Type','application/json');
+      const send=()=>res.end(JSON.stringify({ok:true,cancelled:pickerMode==='cancel',path:pickerMode==='cancel'?null:'/fixture/picked folder'}));
+      if(pickerMode==='error'){res.writeHead(503);res.end('{}');return;}
+      if(pickerMode==='delay'){pickerReply=send;return;}
+      send();
     });return;
   }
   if (url.pathname.endsWith('/working-directory')) {
@@ -441,7 +453,7 @@ const server = http.createServer((req, res) => {
     }
     if (url.pathname.endsWith('/restart')) { pendingRestart = res; return; }
     let value = { ok: true };
-    if (url.pathname === '/api/config') value = { projects_browser_url: '/fixture-tty/browser-default', remote_nodes: [], system_browser_available: systemBrowserAvailable };
+    if (url.pathname === '/api/config') value = { projects_browser_url: '/fixture-tty/browser-default', remote_nodes: [], system_browser_available: systemBrowserAvailable, directory_picker_available:true };
     if (url.pathname === '/api/health') value = { ttyd: true };
     if (url.pathname === '/api/sessions') value = { sessions, snapshot: { ready: true }, pane_groups: groupFixture,
       session_archives:archiveMode==='metadata-error' ? {error:'fixture unavailable'} : archiveFixture };
@@ -527,6 +539,7 @@ try {
     text:value=>{plainText=value;},failure:value=>{plainFailure=value;},reads:()=>plainReads});
   const placementCheck=()=>checkPanePlacement({evaluate,waitFor,cdp,viewport,pause,configure:rows=>{forkMode="ok";sessions.push(...rows);}});
   const cwdCheck=()=>checkWorkingDirectory({evaluate,waitFor,cdp,viewport,screenshot,submissions:cwdSubmissions,requests,
+    picker:{requests:pickerRequests,mode:value=>{pickerMode=value;},release:()=>{pickerReply();pickerReply=null;}},
     mode:value=>{cwdMode=value;},configure:()=>{sessions.push({run_id:'cwd-agent',kind:'run',agent:'claude',alive:true,resume_id:'cwd-native',cwd:'/original',display_name:'Directory fixture'},{run_id:'cwd-terminal',kind:'run',agent:'terminal',alive:true,cwd:'/original',display_name:'Shell fixture'});}});
   const arrangeNamesCheck=()=>checkArrangeNames({evaluate,waitFor,cdp,viewport,screenshot,configure:rows=>{
     sessions.push(...rows);groupFixture.groups=[{id:'arr-b',name:'B',color:'blue'},{id:'arr-a',name:'A',color:'teal'}];
@@ -990,7 +1003,7 @@ try {
   assert.equal(await evaluate(`document.querySelector('.pane-theme-select option[value="soft-dark"]').textContent`),'柔和深色');
   assert.equal(await evaluate(`document.querySelector('.pane-state-select option[value="blocked"]').textContent`),'受阻');
   assert.equal(await evaluate(`document.querySelector('#folder-modal-copy').textContent`),'复制路径');
-  assert.equal(await evaluate(`document.querySelector('#new-cwd-field > span').textContent`),'工作目录');
+  assert.equal(await evaluate(`document.querySelector('#new-cwd-field > label').textContent`),'工作目录');
   assert.equal(await evaluate(`document.querySelector('#new-kind option[value="resume"]').textContent`),'恢复');
   assert.equal(await evaluate(`document.querySelector('#new-kind option[value="resume"]').value`),'resume','Translation never changes API values');
   assert.ok(await evaluate(`document.querySelector('[data-priority-filter="all"]').textContent.startsWith('全部')`));
@@ -1009,7 +1022,7 @@ try {
   await evaluate(`{const c=document.querySelector('[data-appearance="language"]');c.value='en';c.dispatchEvent(new Event('change'));}`);
   assert.equal(await evaluate(`document.querySelector('.btn-progress').textContent`),'Progress');
   assert.equal(await evaluate(`document.querySelector('.btn-monitor').textContent`),'Monitor');
-  assert.equal(await evaluate(`document.querySelector('#new-cwd-field > span').textContent`),'Working dir');
+  assert.equal(await evaluate(`document.querySelector('#new-cwd-field > label').textContent`),'Working dir');
   assert.equal(await evaluate(`document.querySelector('#btn-apply-global-theme').textContent`),'Apply to open panes');
   assert.ok(!/\p{Script=Han}/u.test(await evaluate(`document.querySelector('.pane-input textarea').placeholder`)));
   await evaluate(`document.querySelector('#untranslated-user-data').remove()`);

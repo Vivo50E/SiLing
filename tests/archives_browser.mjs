@@ -129,10 +129,15 @@ export async function checkArchives({evaluate, waitFor, viewport, screenshot, pa
   // Finish the legitimate mobile-to-desktop attachments before measuring
   // whether the following failed-metadata page boot starts any terminals.
   await waitFor(`['fixture-1','fixture-3'].every(id=>document.querySelector('#grid [data-run-id="'+id+'"] iframe')?.contentDocument?.querySelector('textarea'))`);
+  // Tear down the old page before recording the new boot's requests. A late
+  // legitimate attachment from that page must not count as a metadata bypass.
+  const origin=await evaluate('location.origin');
+  await cdp('Page.navigate',{url:origin+'/fixture-tty/archive-reset'});
+  await waitFor(`location.pathname==='/fixture-tty/archive-reset' && document.readyState==='complete'`);
   mode('metadata-error');
   await evaluate(`localStorage.setItem('orch_slots',JSON.stringify(['fixture-0','fixture-1','fixture-2','fixture-3']))`);
   const unavailableStart=requests.length;
-  await cdp('Page.reload');
+  await cdp('Page.navigate',{url:origin+'/'});
   await waitFor(`document.querySelectorAll('#grid .empty-slot[role="status"]').length===4`);
   assert.equal(requests.slice(unavailableStart).some(r=>r.path.endsWith('/tty')),false,'Unknown archive state cannot replay old layout into terminals');
   assert.match(await evaluate(`document.querySelector('#grid .empty-slot').textContent`),/归档状态不可用/);

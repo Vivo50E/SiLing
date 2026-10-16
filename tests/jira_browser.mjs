@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict';
 export async function checkJira({evaluate,waitFor,cdp,viewport,screenshot,requests,pause,mode,configure}) {
-  await waitFor(`!!document.querySelector('#session-list .session-item')`);configure();await viewport(1280,900);
+  await waitFor(`!!document.querySelector('#session-list .session-item')`);await viewport(1280,900);
+  // Stop the preceding Dashboard before replacing shared fixture sessions:
+  // its polling/rendering can otherwise rewrite the next case's saved slots.
+  const origin=await evaluate('location.origin');
+  await cdp('Page.navigate',{url:origin+'/fixture-tty/jira-reset'});
+  await waitFor(`location.pathname==='/fixture-tty/jira-reset' && document.readyState==='complete'`);
+  configure();
   await evaluate(`localStorage.clear();localStorage.setItem('orch_layout','cols-2');localStorage.setItem('orch_slots',JSON.stringify(['jira-on','jira-off']));localStorage.setItem('siling_web_link_target','external');localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'en'}))`);
-  await cdp('Page.reload');await waitFor(`document.querySelectorAll('#grid iframe').length===2`);
+  await cdp('Page.navigate',{url:origin+'/'});await waitFor(`document.querySelectorAll('#grid iframe').length===2`);
   const on='[data-run-id="jira-on"] .btn-jira',off='[data-run-id="jira-off"] .btn-jira';
   assert.equal(await evaluate(`document.querySelector('${on}').hidden`),true);
   assert.equal(await evaluate(`getComputedStyle(document.querySelector('${on}')).display`),'none');

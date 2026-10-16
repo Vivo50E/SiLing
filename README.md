@@ -191,6 +191,16 @@ the shortcut before ttyd loses the Shift modifier, without changing global
 tmux settings. Plain Terminal and unknown/custom agents retain native keys.
 The bottom input box also supports Shift+Enter or Option/Alt+Enter for newlines.
 
+**Working dir** in New session and **Change working directory** in a pane offer
+**Choose folder…** on macOS. A direct connection to the Dashboard Mac opens its
+native folder chooser; selecting only fills the path, and Cancel keeps the old
+value. Create/Save remains a separate action. Remote nodes, other devices and
+non-macOS hosts retain manual path input. If a background service cannot show
+the chooser, enter the path manually. The chooser expires after three minutes.
+An SSH tunnel without forwarding headers cannot be distinguished from a local
+connection; the chooser opens on the Dashboard host, not the viewing device.
+
+
 Pane **More → Secret configuration and operations → Secret operations** defaults
 to **Slack — check authentication**, with the name `slack_check` prefilled: enter
 only the key to register. This preset calls Slack's `auth.test` only; it cannot

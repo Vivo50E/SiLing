@@ -64,6 +64,7 @@ from . import artifacts, session_lifecycle, pane_relations, cursor_runtime
 from .plugins import Plugins
 from .workflows import DispatchRejected, Workflows, validate as validate_workflow
 from .agent_cli import resolve_agent_cli
+from .directory_picker import choose_directory
 from .browser_open import open_system_browser, system_browser_available, validate_web_url
 from . import terminal_files, terminal_control, secret_input, secret_config
 from .secret_broker import SecretBroker
@@ -9041,7 +9042,32 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             **_dashboard_client_config(),
             "remote_nodes": remote_nodes.browser_config(),
             "system_browser_available": system_browser_available(request),
+            "directory_picker_available": system_browser_available(request),
         }, headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/directories/pick")
+    async def pick_directory(request: Request):
+        if not system_browser_available(request):
+            raise HTTPException(403, "Folder selection requires a direct connection from this Mac")
+        if request.headers.get("x-siling-directory-pick") != "user-click":
+            raise HTTPException(403, "Explicit folder-selection intent required")
+        if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
+            raise HTTPException(415, "Folder-selection requests require JSON")
+        origin = request.headers.get("origin")
+        if (origin and origin != str(request.base_url).rstrip("/")) or request.headers.get("sec-fetch-site") == "cross-site":
+            raise HTTPException(403, "Same-origin folder-selection request required")
+        raw = await request.body()
+        if len(raw) > 32768:
+            raise HTTPException(413, "Folder-selection request too large")
+        try:
+            body = json.loads(raw)
+        except (ValueError, UnicodeError):
+            raise HTTPException(400, "Invalid JSON") from None
+        if not isinstance(body, dict) or set(body) != {"cwd"}:
+            raise HTTPException(400, "Specify only the starting directory")
+        path = await choose_directory(body["cwd"])
+        return JSONResponse({"ok": True, "cancelled": path is None, "path": path},
+                            headers={"Cache-Control": "no-store"})
 
     @app.post("/api/browser/open")
     async def browser_open(request: Request):

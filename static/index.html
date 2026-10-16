@@ -2763,16 +2763,20 @@
     color: var(--warn);
     border-color: var(--warn);
   }
+  .cwd-picker-row { display:flex; align-items:center; gap:8px; }
+  .cwd-picker-row input { flex:1; min-width:0; }
+  .cwd-picker-row button { flex:0 0 auto; }
   #working-directory-dialog .cwd-restart:not([hidden]) { display:flex; align-items:center; gap:8px; }
 </style>
 <link rel="stylesheet" href="/static/ui-foundation.css?v=8" />
-<script src="/static/ui-messages.js?v=24"></script>
+<script src="/static/ui-messages.js?v=25"></script>
 <script src="/static/ui-foundation.js?v=14"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=7" />
 <script src="/static/pane-group-outlines.js?v=2"></script>
 <script src="/static/resume-all.js?v=1"></script>
 <script src="/static/pane-groups.js?v=11"></script>
 <script src="/static/new-session-options.js?v=1"></script>
+<script src="/static/directory-picker.js?v=1"></script>
 <script src="/static/session-help.js?v=1"></script>
 <script src="/static/terminal-files.js?v=3"></script>
 <link rel="stylesheet" href="/static/pane-reviews.css?v=1">
@@ -2929,11 +2933,14 @@
             <option value="max" data-ui-message=max>max</option>
           </select>
         </label>
-        <label class="fld" id="new-cwd-field">
-          <span><span data-ui-message=Working%20dir>Working dir</span></span>
+        <div class="fld" id="new-cwd-field">
+          <label for="new-cwd" data-ui-message=Working%20dir>Working dir</label>
+          <div class="cwd-picker-row">
           <input id="new-cwd" type="text" value="~/Workflows"
                  placeholder="~/project" autocomplete="off" />
-        </label>
+          <button type="button" id="new-cwd-pick"></button>
+          </div><small id="new-cwd-pick-status" role="status"></small>
+        </div>
       </div>
       <div class="modal-foot">
         <button class="btn-secondary" id="new-cancel"><span data-ui-message=Cancel>Cancel</span></button>
@@ -3433,7 +3440,7 @@
   const PROJECTS_BROWSER_TABS_KEY = "orch_projects_browser_tabs_v1";
   const OPEN_LINKS_INTERNALLY_KEY = "siling_open_links_internally";
   const SYSTEM_BROWSER_KEY = "siling_system_browser";
-  let systemBrowserAvailable = false;
+  let systemBrowserAvailable = false, directoryPickerAvailable = false;
   let useSystemBrowser = localStorage.getItem(SYSTEM_BROWSER_KEY) !== "0";
   const PANEL_OPACITY_KEY = "siling_panel_opacity";
   const GLOBAL_TERMINAL_THEME_KEY = "orch_global_terminal_theme";
@@ -3503,6 +3510,7 @@
   function applyDashboardConfig(raw) {
     const config = Object.assign({}, DEFAULT_DASHBOARD_CONFIG, raw || {});
     systemBrowserAvailable = config.system_browser_available === true;
+    directoryPickerAvailable = config.directory_picker_available === true;
     syncSettingsControls();
     NOTES_URL = String(config.notes_url || "").trim();
     PROJECTS_BROWSER_URL = String(config.projects_browser_url || "").trim();
@@ -7252,7 +7260,8 @@
   cwdDialog.innerHTML = `<form class="modal-body">
     <h2 id="working-directory-heading"></h2><p class="cwd-context ui-secondary"></p>
     <label for="working-directory-path"></label>
-    <input id="working-directory-path" type="text" required autocomplete="off" spellcheck="false" style="width:100%;box-sizing:border-box" aria-describedby="working-directory-help" />
+    <div class="cwd-picker-row"><input id="working-directory-path" type="text" required autocomplete="off" spellcheck="false" style="width:100%;box-sizing:border-box" aria-describedby="working-directory-help" />
+    <button type="button" class="cwd-pick"></button></div><p class="cwd-pick-status ui-secondary" role="status"></p>
     <p id="working-directory-help" class="ui-secondary"></p>
     <label class="cwd-restart"><input type="checkbox" style="width:auto;margin:0;flex:0 0 auto" /><span></span></label>
     <p class="cwd-error" role="alert" hidden></p>
@@ -7264,9 +7273,14 @@
   const cwdInput = cwdDialog.querySelector("input[type=text]");
   const cwdRestart = cwdDialog.querySelector("input[type=checkbox]");
   const cwdError = cwdDialog.querySelector(".cwd-error");
+  const cwdPicker = window.SilingDirectoryPicker({api, message:key=>ui.message(key),
+    button:cwdDialog.querySelector('.cwd-pick'), input:cwdInput, status:cwdDialog.querySelector('.cwd-pick-status'),
+    available:()=>directoryPickerAvailable && !!cwdRunId && !sessions.find(s=>s.run_id===cwdRunId)?.remote
+      && (!sessions.find(s=>s.run_id===cwdRunId)?.node_id || sessions.find(s=>s.run_id===cwdRunId)?.node_id === 'local'),
+    context:()=>cwdRunId, visible:()=>cwdDialog.open});
   cwdDialog.querySelector(".cwd-cancel").onclick = () => { if (!cwdBusy) cwdDialog.close(); };
   cwdDialog.addEventListener("cancel", event => { if (cwdBusy) event.preventDefault(); });
-  cwdDialog.addEventListener("close", () => { cwdRunId = ""; cwdOpener?.focus({preventScroll:true}); });
+  cwdDialog.addEventListener("close", () => { cwdRunId = ""; cwdPicker.invalidate(); cwdOpener?.focus({preventScroll:true}); });
   function openWorkingDirectory(runId, opener) {
     const s = sessions.find(row => row.run_id === runId);
     if (!s || cwdBusy || cwdDialog.open) return;
@@ -7283,6 +7297,7 @@
     cwdRestart.disabled = !(paneCtrls.has(runId) && s.alive && !s.agent_exited && ["claude", "codex", "cursor"].includes(s.agent) && s.resume_id);
     cwdDialog.querySelector(".cwd-restart").hidden = cwdRestart.disabled;
     cwdError.hidden = true; cwdError.textContent = "";
+    cwdPicker.invalidate();
     cwdDialog.showModal(); cwdInput.focus(); cwdInput.select();
   }
   cwdDialog.querySelector("form").addEventListener("submit", async event => {
@@ -7307,6 +7322,7 @@
     } finally {
       clearTimeout(timeout);
       cwdBusy = false; controls.forEach((control, i) => { control.disabled = disabled[i]; });
+      cwdPicker.update();
       if (cwdDialog.open) cwdInput.focus();
     }
   });
@@ -13490,6 +13506,10 @@
 
   // ---------- New-session modal ----------
   const modal = $("new-modal");
+  const newCwdPicker = window.SilingDirectoryPicker({api, message:key=>ui.message(key),
+    button:$("new-cwd-pick"), input:$("new-cwd"), status:$("new-cwd-pick-status"),
+    available:()=>directoryPickerAvailable && selectedNodeId() === 'local',
+    context:()=>selectedNodeId(), visible:()=>!modal.hidden});
   const sessionHelp = window.SiLingSessionHelp({button:$("new-standard-help-toggle"), panel:$("new-standard-help"), visible:()=>!modal.hidden});
   const sessionOptions = window.SiLingSessionOptions({api, message:(key)=>ui.message(key),
     groups:()=>paneGroups.creationChoices(),
@@ -13595,6 +13615,7 @@
     updateNewSessionMode();
   }
   const closeModal = () => {
+    newCwdPicker.invalidate();
     modal.hidden = true;
     sessionOptions.close();
     sessionHelp.close();
@@ -13797,6 +13818,7 @@
   }
 
   function updateNewSessionMode() {
+    newCwdPicker.update();
     $("new-agent-badge").innerHTML = ui.agentBadge($("new-agent").value);
     const kind = $("new-kind").value;
     const isResume = kind === "resume";
@@ -13847,6 +13869,7 @@
   });
   $("new-import-agent").addEventListener("change", loadNativeSessions);
   $("new-node").addEventListener("change", () => {
+    newCwdPicker.invalidate();
     resumableSessions = [];
     nativeSessions = [];
     updateNewSessionTarget(true);
