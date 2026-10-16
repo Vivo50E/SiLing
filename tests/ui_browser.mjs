@@ -921,9 +921,11 @@ try {
   // Compare status accents without changing sessions or remounting terminal frames.
   await evaluate(`window.statusStyleFixture = Array.from(document.querySelectorAll('.pane-card')).slice(0,4).map(el => ({el, classes:el.className})); window.statusFixtureTheme=document.documentElement.getAttribute('data-app-theme');`);
   for (const theme of ['dark', 'light']) {
-    await evaluate(`document.documentElement.setAttribute('data-app-theme', ${JSON.stringify(theme)}); window.statusStyleFixture.forEach(({el},i)=>{el.classList.remove('focused','busy','background-working','attention-ready','attention-reminder','attention-needs-input','attention-blocked');el.classList.add(['busy','attention-needs-input','attention-ready','attention-blocked'][i]);});`);
-    assert.ok(await evaluate(`window.statusStyleFixture.every(({el})=>getComputedStyle(el).animationName==='none')`), 'Status borders do not pulse');
-    assert.ok(await evaluate(`window.statusStyleFixture.every(({el})=>getComputedStyle(el.querySelector('.pane-head')).boxShadow!=='none')`), 'Status accent stays in header');
+    // Polling can legitimately replace fixture classes between CDP calls.
+    // Set and measure the synthetic status styles in one renderer task.
+    const styles = await evaluate(`(()=>{document.documentElement.setAttribute('data-app-theme', ${JSON.stringify(theme)}); return window.statusStyleFixture.map(({el},i)=>{el.classList.remove('focused','busy','background-working','attention-ready','attention-reminder','attention-needs-input','attention-blocked');el.classList.add(['busy','attention-needs-input','attention-ready','attention-blocked'][i]);return {animation:getComputedStyle(el).animationName,shadow:getComputedStyle(el.querySelector('.pane-head')).boxShadow};});})()`);
+    assert.ok(styles.every(style=>style.animation==='none'), 'Status borders do not pulse');
+    assert.ok(styles.every(style=>style.shadow!=='none'), 'Status accent stays in header');
     await screenshot('pane-status-' + theme);
   }
   await evaluate(`window.statusStyleFixture[0].el.classList.add('focused');`);
