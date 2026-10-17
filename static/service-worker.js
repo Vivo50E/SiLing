@@ -1,4 +1,4 @@
-const CACHE_NAME = "siling-pwa-v4";
+const CACHE_NAME = "siling-pwa-v5";
 const OFFLINE_ASSETS = [
   "/static/offline.html",
   "/static/icons/orchestrator-192.png",
