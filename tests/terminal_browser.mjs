@@ -106,6 +106,13 @@ try {
   if (process.env.TERMINAL_RECONNECT_ONLY === '1') {
     const originalPid=tmux('display-message','-p','-t','check','#{pane_pid}').trim();
     const count=await evaluate('connectionCount');
+    const update=fetch(new URL('/api/self-update/fetch',terminalUrl),{method:'POST',headers:{'Content-Type':'application/json','X-Orch-Self-Update':'reviewed'},body:'{}'});
+    await pause(300);
+    const health=await fetch(new URL('/fixture/status',terminalUrl),{signal:AbortSignal.timeout(2000)});
+    assert.equal(health.status,200,'Slow update status does not block terminal relay event loop');
+    assert.equal((await update).status,200);
+    assert.equal(await evaluate('connectionCount'),count,'Slow Git update check keeps the terminal connected');
+    console.log('PASS: seven-second Git status check preserves active terminal connection and concurrent requests');
     await fetch(new URL('/fixture/drop',terminalUrl),{method:'POST'});
     for(let i=0;i<80 && await evaluate('connectionCount')===count;i++)await pause(100);
     assert.equal(await evaluate('connectionCount'),count+1,'Abnormal relay disconnect reconnects without pressing Enter');
@@ -674,5 +681,5 @@ finally:
   relay?.kill();
   ws?.close();browser?.kill('SIGKILL');ttyd.kill();selectionServer.close();
   try{tmux('kill-server');}catch{}
-  await pause(300);fs.rmSync(profile,{recursive:true,force:true});
+  await pause(300);fs.rmSync(profile,{recursive:true,force:true,maxRetries:5,retryDelay:200});
 }

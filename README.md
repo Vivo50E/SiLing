@@ -152,6 +152,8 @@ intervene.
 
 - Group two-color styles support **Gradient** (default) and **Diagonal split**, which separates two solid colors at a sharp diagonal boundary. Choose the style in **Manage groups → Two colors** and save; previews, group tabs, pane badges and All-view outlines share the style. Existing groups keep their gradient.
 
+- Periodic update checks run Git candidate discovery off the terminal event loop, so slow repository checks do not pause all panes or their heartbeats.
+
 - Terminal display relays send idle WebSocket heartbeats and preserve abnormal close status, allowing ttyd to reconnect automatically without Enter after an upstream connection failure. A genuinely ended session remains closed.
 
 - Clicks and selections in native browser scrollback no longer send mouse reports to the live terminal or jump to the latest output. Typing still resumes live output. Transient tmux inventory failures preserve the last session snapshot and terminal connections. Cached panes reuse their terminal across layout and window-size changes, retaining browser history and drafts instead of reconnecting solely to resize. Hidden-pane cache limits still apply (15 panes / 30 minutes). Terminal relay disconnect logs include the session, timestamp and connection side; disconnected idle relays are cleaned up promptly.

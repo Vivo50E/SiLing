@@ -9124,7 +9124,11 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             fetch = await asyncio.to_thread(self_updates.fetch_upstream)
         except SelfUpdateError as exc:
             raise HTTPException(409, str(exc)) from exc
-        return {**self_updates.status(), "fetch": fetch}
+        # Candidate discovery runs multiple Git subprocesses. This endpoint is
+        # polled every five minutes; blocking the ASGI loop here also stalls
+        # every terminal relay and its WebSocket heartbeats.
+        status = await asyncio.to_thread(self_updates.status)
+        return {**status, "fetch": fetch}
 
     @app.post("/api/self-update/verify")
     async def self_update_verify(request: Request):

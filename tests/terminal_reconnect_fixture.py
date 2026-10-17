@@ -1,5 +1,5 @@
 """Isolated real relay fixture for terminal_browser.mjs (never production)."""
-import asyncio
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 import sys
@@ -43,5 +43,7 @@ async def status():
 if __name__ == '__main__':
     with patch.object(dashboard.TtydManager, 'port_for', return_value=upstream_port), \
             patch.object(dashboard, 'tmux_alive', return_value=True), \
-            patch.object(dashboard.websockets, 'connect', tracked_connect):
+            patch.object(dashboard.websockets, 'connect', tracked_connect), \
+            patch.object(dashboard.SelfUpdateManager, 'fetch_upstream', return_value={'ok': True}), \
+            patch.object(dashboard.SelfUpdateManager, 'status', side_effect=lambda: (time.sleep(7), {'available': True})[1]):
         uvicorn.run(app, host='127.0.0.1', port=proxy_port, log_level='warning')
