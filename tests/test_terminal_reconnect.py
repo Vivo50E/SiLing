@@ -57,6 +57,38 @@ class TerminalReconnectTests(unittest.TestCase):
                 pass
             self.assertTrue(released.wait(2), 'Idle relay must release its tmux client immediately after browser disconnect')
 
+    def test_upstream_failure_requests_automatic_browser_reconnect(self):
+        self._check_upstream_close(fail=True, expected=1011)
+
+    def test_normal_session_end_remains_a_normal_close(self):
+        self._check_upstream_close(fail=False, expected=1000)
+
+    def _check_upstream_close(self, *, fail, expected):
+        from fastapi.testclient import TestClient
+        from starlette.websockets import WebSocketDisconnect
+        from websockets.exceptions import ConnectionClosedError
+        class Upstream:
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *args):
+                pass
+            async def send(self, message):
+                pass
+            async def __aiter__(self):
+                yield b'0fixture output'
+                if fail:
+                    raise ConnectionClosedError(None, None)
+        with patch.object(dashboard.TtydManager, '_sweep_orphans', return_value=0):
+            app = dashboard.create_app(Path('/nonexistent/siling-reconnect-test'), ttyd_enabled=True, remote_nodes_enabled=False)
+        with patch.object(dashboard.TtydManager, 'port_for', return_value=12345), patch.object(dashboard.websockets, 'connect', return_value=Upstream()) as connect, TestClient(app) as client:
+            with client.websocket_connect('/tty/fixture/ws') as socket:
+                self.assertEqual(socket.receive_bytes(), b'0fixture output')
+                with self.assertRaises(WebSocketDisconnect) as closed:
+                    socket.receive_bytes()
+                self.assertEqual(closed.exception.code, expected)
+            self.assertEqual(connect.call_args.kwargs['ping_interval'], 20)
+            self.assertEqual(connect.call_args.kwargs['ping_timeout'], 60)
+
     def test_snapshot_retains_last_good_sessions_after_scan_failure(self):
         import time
         calls = 0

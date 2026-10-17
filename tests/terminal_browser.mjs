@@ -36,7 +36,8 @@ const selectionServer=http.createServer((req,res)=>{
 await new Promise(r=>selectionServer.listen(0,'127.0.0.1',r));
 const selectionPort=selectionServer.address().port;
 const ttyd=spawn('ttyd',['-i','127.0.0.1','-p',String(port),'-W','tmux','-S',socket,'-T','sync','attach','-t','check'],{stdio:'ignore'});
-let browser, ws;
+let browser, ws, relay;
+let terminalUrl=`http://127.0.0.1:${port}`;
 const errors = [];
 try {
   browser = spawn(executable, ['--headless=new', '--disable-gpu', '--no-first-run', '--disable-extensions', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { stdio: 'ignore' });
@@ -75,9 +76,16 @@ try {
     fs.writeFileSync(path.join(artifacts, name + '.png'), Buffer.from(shot.data, 'base64'));
   };
   await cdp('Page.enable'); await cdp('Runtime.enable');
+  if (process.env.TERMINAL_RECONNECT_ONLY === '1') {
+    const probe=http.createServer();await new Promise(r=>probe.listen(0,'127.0.0.1',r));const proxyPort=probe.address().port;await new Promise(r=>probe.close(r));
+    relay=spawn(python,['-m','tests.terminal_reconnect_fixture',String(port),String(proxyPort)],{cwd:root,stdio:'ignore'});
+    terminalUrl=`http://127.0.0.1:${proxyPort}/tty/check/`;
+    for(let i=0;i<100;i++){try{if((await fetch(new URL('/fixture/status',terminalUrl))).ok)break;}catch{}await pause(100);}
+    await cdp('Page.addScriptToEvaluateOnNewDocument',{source:`window.connectionCount=0;const NativeSocket=WebSocket;window.WebSocket=class extends NativeSocket{constructor(...args){super(...args);this.addEventListener('open',()=>window.connectionCount++);}};`});
+  }
   await viewport(1280, 800);
   await pause(500);
-  await cdp('Page.navigate',{url:`http://127.0.0.1:${port}`});
+  await cdp('Page.navigate',{url:terminalUrl});
   for(let i=0;i<80;i++){if(await evaluate('!!window.term'))break;await pause(100);}
   assert.ok(await evaluate('!!window.term'));
   await evaluate('window.term.focus()');
@@ -95,6 +103,23 @@ try {
   await evaluate(injection);
   // Let initial font fitting and ttyd's 300 ms resize overlay settle.
   await pause(500);
+  if (process.env.TERMINAL_RECONNECT_ONLY === '1') {
+    const originalPid=tmux('display-message','-p','-t','check','#{pane_pid}').trim();
+    const count=await evaluate('connectionCount');
+    await fetch(new URL('/fixture/drop',terminalUrl),{method:'POST'});
+    for(let i=0;i<80 && await evaluate('connectionCount')===count;i++)await pause(100);
+    assert.equal(await evaluate('connectionCount'),count+1,'Abnormal relay disconnect reconnects without pressing Enter');
+    await pause(500);
+    assert.equal(tmux('display-message','-p','-t','check','#{pane_pid}').trim(),originalPid,'Reconnect keeps the original shell process');
+    await cdp('Input.insertText',{text:'echo RECONNECTED_INPUT_OK'});
+    await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,text:'\r'});
+    await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
+    await pause(500);
+    assert.ok(tmux('capture-pane','-t','check','-p','-S','-').split('\n').includes('RECONNECTED_INPUT_OK'));
+    for(let i=0;i<50;i++){const state=await(await fetch(new URL('/fixture/status',terminalUrl))).json();if(state.ping_observed)break;await pause(500);}
+    assert.equal((await(await fetch(new URL('/fixture/status',terminalUrl))).json()).ping_observed,true,'Idle upstream receives protocol heartbeats');
+    console.log('PASS: real relay auto-reconnect without Enter, same shell, working input and idle ping/pong');
+  } else {
   tmux('copy-mode','-t','check');tmux('send-keys','-t','check','-X','-N','30','scroll-up');
   await pause(150);
   const tmuxHistoryBefore=tmux('display-message','-p','-t','check','#{pane_in_mode}:#{scroll_position}').trim();
@@ -644,7 +669,9 @@ finally:
   console.log('PASS: leaving the iframe stops drag auto-scroll');
 
   }
+  }
 }finally{
+  relay?.kill();
   ws?.close();browser?.kill('SIGKILL');ttyd.kill();selectionServer.close();
   try{tmux('kill-server');}catch{}
   await pause(300);fs.rmSync(profile,{recursive:true,force:true});

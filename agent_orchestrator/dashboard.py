@@ -9554,7 +9554,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         upstream_url = f"ws://127.0.0.1:{port}/ws"
         try:
             async with websockets.connect(upstream_url, subprotocols=["tty"],
-                                          max_size=None, ping_interval=None) as up:
+                                          max_size=None, ping_interval=20, ping_timeout=60) as up:
                 async def c2s():
                     try:
                         while True:
@@ -9571,7 +9571,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                                 up, session, data,
                                 resume_live=session in live_input_sessions,
                             )
-                    except (WebSocketDisconnect, WsClosed):
+                    except WebSocketDisconnect:
                         return
                 async def s2c():
                     mapper = _TtydOutputThemeMapper(
@@ -9591,7 +9591,9 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                         logging.getLogger("uvicorn.error").info(
                             "Terminal display disconnected at=%s session=%s side=upstream error=%s",
                             _iso_now(), session, type(exc).__name__)
-                        return
+                        # ttyd treats 1000 as a deliberate end and waits for
+                        # Enter. Preserve failures so the browser reconnects.
+                        raise
                 tasks = {asyncio.create_task(c2s()), asyncio.create_task(s2c())}
                 close_code = 1000
                 try:
