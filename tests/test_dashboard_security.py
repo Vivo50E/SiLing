@@ -1689,7 +1689,7 @@ class TtydRecoveryTests(unittest.TestCase):
             reaped = manager.reap_dead(min_interval_s=0)
 
         self.assertEqual(reaped, 1)
-        inventory.assert_called_once_with()
+        inventory.assert_called_once_with(strict=True)
         first.terminate.assert_not_called()
         second.terminate.assert_called_once_with()
         kill_shadow.assert_called_once_with("orch-two", owner=manager._owner)

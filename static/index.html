@@ -4470,7 +4470,6 @@
   // session switching, while still bounding long-lived hidden WebSockets.
   const PANE_CACHE_MAX = 15;
   const PANE_CACHE_TTL_MS = 30 * 60 * 1000;
-  const PANE_CACHE_SIZE_TOLERANCE_PX = 32;
   // Rebuilding every pane after a browser/dashboard restart used to create a
   // thundering herd of ttyd HTTP + WebSocket connections. Two staged attaches
   // keep the UI responsive while still restoring a 4x4 layout quickly.
@@ -7788,29 +7787,10 @@
     };
   }
 
-  function measureTargetPaneSize(slotIdx) {
-    const grid = $("grid");
-    if (!grid) return null;
-    const probe = document.createElement("div");
-    probe.className = "pane-card empty-slot";
-    probe.style.order = String(slotIdx);
-    probe.style.visibility = "hidden";
-    probe.style.pointerEvents = "none";
-    probe.setAttribute("aria-hidden", "true");
-    grid.appendChild(probe);
-    const size = measurePaneRectForCache(probe);
-    probe.remove();
-    return size;
-  }
-
-  function cachedPaneMatchesTarget(ctrl, slotIdx) {
-    if (!ctrl.cached) return true;
-    if ((Date.now() - (ctrl.cachedAt || 0)) > PANE_CACHE_TTL_MS) return false;
-    if (ctrl.cachedLayout !== layout) return false;
-    const target = measureTargetPaneSize(slotIdx);
-    if (!target || !ctrl.cachedWidth || !ctrl.cachedHeight) return true;
-    return Math.abs(target.width - ctrl.cachedWidth) <= PANE_CACHE_SIZE_TOLERANCE_PX
-        && Math.abs(target.height - ctrl.cachedHeight) <= PANE_CACHE_SIZE_TOLERANCE_PX;
+  function cachedPaneCanRestore(ctrl) {
+    // xterm's fit observer handles the new size. Rebuilding a cached iframe
+    // loses native scrollback, selections and its WebSocket just to resize it.
+    return !ctrl.cached || (Date.now() - (ctrl.cachedAt || 0)) <= PANE_CACHE_TTL_MS;
   }
 
   function markPaneCached(ctrl) {
@@ -7822,7 +7802,6 @@
     ctrl.cached = true;
     ctrl.cachedAt = Date.now();
     ctrl.cacheTouchedAt = ctrl.cachedAt;
-    ctrl.cachedLayout = layout;
     ctrl.cachedWidth = size.width;
     ctrl.cachedHeight = size.height;
     ctrl.cachedSlotIdx = ctrl.slotIdx;
@@ -7968,7 +7947,7 @@
     const existing = paneCtrls.get(runId);
     if (existing) {
       if (existing.cached) {
-        if (!cachedPaneMatchesTarget(existing, slotIdx)) {
+        if (!cachedPaneCanRestore(existing)) {
           closePane(runId);
           openPane(runId, slotIdx);
           const rebuilt = paneCtrls.get(runId);

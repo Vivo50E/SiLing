@@ -95,6 +95,45 @@ try {
   await evaluate(injection);
   // Let initial font fitting and ttyd's 300 ms resize overlay settle.
   await pause(500);
+  tmux('copy-mode','-t','check');tmux('send-keys','-t','check','-X','-N','30','scroll-up');
+  await pause(150);
+  const tmuxHistoryBefore=tmux('display-message','-p','-t','check','#{pane_in_mode}:#{scroll_position}').trim();
+  assert.match(tmuxHistoryBefore,/^1:[1-9][0-9]*$/,'Fixture is genuinely browsing tmux history');
+  await evaluate('term.blur();term.focus()');
+  await cdp('Input.dispatchMouseEvent',{type:'mousePressed',x:600,y:300,button:'left',buttons:1,clickCount:1});
+  await cdp('Input.dispatchMouseEvent',{type:'mouseReleased',x:600,y:300,button:'left',buttons:0,clickCount:1});
+  await pause(150);
+  assert.equal(tmux('display-message','-p','-t','check','#{pane_in_mode}:#{scroll_position}').trim(),tmuxHistoryBefore,'Clicking tmux history keeps its scroll position');
+  tmux('send-keys','-t','check','-X','cancel');
+  await pause(150);
+  // Focus reports must not count as typing when inspecting native history.
+  await evaluate(`new Promise(resolve=>term.write('\\x1b[?1049l\\x1b[?1004h'+Array.from({length:100},(_,i)=>'focus-history-'+i+'\\r\\n').join(''),resolve))`);
+  await evaluate(`term.scrollLines(-15);window.historyBeforeFocus=term.buffer.active.viewportY;window.focusReports=[];window.focusSubscription=term.onData(data=>focusReports.push(data));term.blur();term.focus()`);
+  assert.ok(await evaluate('historyBeforeFocus<term.buffer.active.baseY'),'Fixture is browsing native history');
+  assert.ok((await evaluate('focusReports')).includes('\x1b[I'),'Focus reporting is enabled');
+  await evaluate('focusSubscription.dispose()');
+  assert.equal(await evaluate('term.buffer.active.viewportY'),await evaluate('window.historyBeforeFocus'),'Focus alone must retain native history position');
+  await evaluate(`new Promise(resolve=>term.write('\\x1b[?1004l',resolve))`);
+  await evaluate('term.scrollToBottom()');
+  await evaluate(`new Promise(resolve=>term.write('\\x1b[?1000h\\x1b[?1006h',resolve))`);
+  await evaluate('term.scrollLines(-15);window.historyBeforeClick=term.buffer.active.viewportY');
+  await cdp('Input.dispatchMouseEvent',{type:'mousePressed',x:600,y:300,button:'left',buttons:1,clickCount:1});
+  assert.equal(await evaluate('term.buffer.active.viewportY'),await evaluate('window.historyBeforeClick'),'Clicking history must not jump to latest');
+  await cdp('Input.dispatchMouseEvent',{type:'mouseReleased',x:600,y:300,button:'left',buttons:0,clickCount:1});
+  const beforeHistoryWheel=await evaluate('term.buffer.active.viewportY');
+  await cdp('Input.dispatchMouseEvent',{type:'mouseWheel',x:600,y:300,deltaX:0,deltaY:-100});await pause(100);
+  assert.ok(await evaluate('term.buffer.active.viewportY')<beforeHistoryWheel,'Wheel stays in native history while app mouse tracking is enabled');
+  const historyLine=await evaluate('term.buffer.active.getLine(term.buffer.active.viewportY).translateToString(true)');
+  await viewport(1000,800);await pause(400);
+  assert.equal(await evaluate('term.buffer.active.getLine(term.buffer.active.viewportY).translateToString(true)'),historyLine,'Resize preserves the visible history line');
+  await viewport(1280,800);await pause(400);
+  await evaluate(`new Promise(resolve=>term.write('\\x1b[?1000l\\x1b[?1006l',resolve))`);
+  await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:'c',code:'KeyC',modifiers:2,windowsVirtualKeyCode:67,text:'\x03'});
+  await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'c',code:'KeyC',modifiers:2,windowsVirtualKeyCode:67});
+  assert.ok(await evaluate('term.buffer.active.viewportY === term.buffer.active.baseY'),'Keyboard input still returns to live output');
+  await evaluate('term.scrollToBottom()');
+  console.log('PASS: focus/click/resize retain native scrollback; keyboard input returns to live');
+  if (process.env.TERMINAL_HISTORY_ONLY !== '1') {
   if (await evaluate('/Mac/.test(navigator.platform)')) {
     assert.equal(await evaluate('term.options.fontFamily'), 'Consolas,Liberation Mono,Menlo,Courier,"PingFang SC","Apple Color Emoji",monospace');
     assert.equal(await evaluate('term._core._renderService.dimensions.css.cell.width'), originalCell,
@@ -604,6 +643,7 @@ finally:
   await cdp('Input.dispatchMouseEvent',{type:'mouseReleased',x:200,y:250,button:'left',buttons:0,clickCount:1});
   console.log('PASS: leaving the iframe stops drag auto-scroll');
 
+  }
 }finally{
   ws?.close();browser?.kill('SIGKILL');ttyd.kill();selectionServer.close();
   try{tmux('kill-server');}catch{}

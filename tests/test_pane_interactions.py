@@ -203,6 +203,10 @@ class PaneInteractionTests(unittest.TestCase):
             app = dashboard.create_app(Path("/nonexistent/siling-input-test"),
                                        ttyd_enabled=True, remote_nodes_enabled=False)
         upstream_context = AsyncMock()
+        async def idle_output():
+            await asyncio.Event().wait()
+            yield b""
+        upstream_context.__aenter__.return_value.__aiter__.side_effect = idle_output
         forward = AsyncMock(side_effect=RuntimeError("probe complete"))
         with TestClient(app) as client, \
                 patch.object(dashboard.TtydManager, "available", return_value=True), \
@@ -322,7 +326,7 @@ const selection = {
 };
 const mouse = { triggerMouseEvent: () => { reported++; return true; } };
 global.window = {
-  term: { options: {}, onRender() {}, _core: { coreMouseService: mouse, _selectionService: selection } },
+  term: { options: {}, buffer: {active: {viewportY: 0, baseY: 0}}, onRender() {}, _core: { coreMouseService: mouse, _selectionService: selection } },
   frameElement: { dataset: { nativeSelection: String(sessionPrefersNativeSelection({agent: 'codex'})) } },
   addEventListener: () => {},
 };

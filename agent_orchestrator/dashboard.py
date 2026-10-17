@@ -38,6 +38,7 @@ import html as html_lib
 import inspect
 import io
 import json
+import logging
 import mimetypes
 import os
 import plistlib
@@ -1386,15 +1387,23 @@ async def _deliver_first_prompt(session: str, prompt: str,
         return False
 
 
-def tmux_list_sessions() -> list[str]:
-    """Return all live tmux session names."""
+def tmux_list_sessions(*, strict: bool = False) -> list[str]:
+    """Distinguish an unavailable inventory from a confirmed empty server."""
     try:
         r = subprocess.run(["tmux", "ls", "-F", "#{session_name}"],
                            capture_output=True, text=True, timeout=5)
         if r.returncode != 0:
+            error = str(r.stderr or "").strip()
+            absent = error.startswith("no server running on ") or (
+                error.startswith("error connecting to ")
+                and error.endswith("(No such file or directory)"))
+            if strict and not absent:
+                raise RuntimeError("tmux session inventory unavailable")
             return []
         return [ln.strip() for ln in r.stdout.splitlines() if ln.strip()]
-    except (subprocess.SubprocessError, FileNotFoundError):
+    except (subprocess.SubprocessError, OSError) as exc:
+        if strict:
+            raise RuntimeError("tmux session inventory unavailable") from exc
         return []
 
 
@@ -6901,7 +6910,7 @@ def _discover_runs_unlocked(
     if not outputs_dir.exists():
         return []
     runs: list[dict[str, Any]] = []
-    live_sessions = tmux_list_sessions()
+    live_sessions = tmux_list_sessions(strict=True)
     # O(1) membership test replaces the ~46 `tmux has-session` subprocess
     # calls that used to dominate _discover_runs (~1s per call). The live
     # set is authoritative because `tmux_list_sessions()` already asked
@@ -8416,7 +8425,11 @@ class TtydManager:
             # One tmux server query replaces two `tmux has-session` subprocess
             # calls per pane.  A 4x4 dashboard previously launched about 32
             # tmux commands on every five-second browser poll.
-            live_sessions = set(tmux_list_sessions())
+            try:
+                live_sessions = set(tmux_list_sessions(strict=True))
+            except RuntimeError:
+                logging.getLogger("uvicorn.error").warning("tmux inventory unavailable; preserving terminal connections")
+                return 0
             reaped = 0
             for session, (proc, _, _) in list(self._procs.items()):
                 if (session in live_sessions and proc.poll() is None
@@ -9547,6 +9560,9 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                         while True:
                             msg = await ws.receive()
                             if msg["type"] == "websocket.disconnect":
+                                logging.getLogger("uvicorn.error").info(
+                                    "Terminal display disconnected at=%s session=%s side=browser code=%s",
+                                    _iso_now(), session, msg.get("code"))
                                 return
                             data = msg.get("bytes") if msg.get("bytes") is not None else msg.get("text")
                             if data is None:
@@ -9571,10 +9587,32 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                         tail = mapper.finish()
                         if tail is not None:
                             await ws.send_bytes(tail)
-                    except (WebSocketDisconnect, WsClosed):
+                    except (WebSocketDisconnect, WsClosed) as exc:
+                        logging.getLogger("uvicorn.error").info(
+                            "Terminal display disconnected at=%s session=%s side=upstream error=%s",
+                            _iso_now(), session, type(exc).__name__)
                         return
-                await asyncio.gather(c2s(), s2c())
+                tasks = {asyncio.create_task(c2s()), asyncio.create_task(s2c())}
+                close_code = 1000
+                try:
+                    done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                    for task in done:
+                        task.result()
+                except Exception:
+                    close_code = 1011
+                    raise
+                finally:
+                    try:
+                        await ws.close(code=close_code)
+                    except Exception:
+                        pass
+                    for task in tasks:
+                        if not task.done():
+                            task.cancel()
+                    await asyncio.gather(*tasks, return_exceptions=True)
         except Exception as e:
+            logging.getLogger("uvicorn.error").warning(
+                "Terminal display relay failed session=%s error=%s", session, type(e).__name__)
             try:
                 await ws.close(code=1011, reason=str(e)[:120])
             except Exception:

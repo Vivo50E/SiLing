@@ -390,13 +390,32 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       try { return window.frameElement?.dataset.inlineSelection === "true"; }
       catch (_) { return false; }
     };
+    const browsingNativeHistory = () => {
+      const buffer = terminal.buffer.active;
+      return buffer.viewportY < buffer.baseY;
+    };
+    screen.addEventListener("wheel", event => {
+      if (!browsingNativeHistory() || event.ctrlKey || !event.deltaY) return;
+      // While above the live buffer, wheel input belongs to browser history,
+      // even if the live application has enabled terminal mouse tracking.
+      const height = core._renderService?.dimensions?.css?.cell?.height || 16;
+      const lines = event.deltaMode === 1 ? event.deltaY
+        : event.deltaMode === 2 ? event.deltaY * terminal.rows : event.deltaY / height;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      terminal.scrollLines(Math.sign(lines) * Math.max(1, Math.round(Math.abs(lines))));
+    }, {capture: true, passive: false});
     const originalForceSelection = selection.shouldForceSelection.bind(selection);
     selection.shouldForceSelection = (event) => (
-      (nativeSelection(event) && (!inlineSelection() || mode === "native-link" || event.detail >= 2))
+      (browsingNativeHistory() && event.button === 0 && !event.ctrlKey)
+        || (nativeSelection(event) && (!inlineSelection() || mode === "native-link" || event.detail >= 2))
         || originalForceSelection(event)
     );
     const originalTriggerMouseEvent = mouse.triggerMouseEvent.bind(mouse);
     mouse.triggerMouseEvent = (event) => (
+      // Old browser-buffer coordinates do not belong to the live application.
+      // Reporting a click/hover also makes xterm scroll to its live bottom.
+      browsingNativeHistory() && event.button !== 4 ? false :
       mode === "tmux-selection"
         ? (event.button === 0 && event.action === 0 ? false : originalTriggerMouseEvent(event))
         : mode ? false : originalTriggerMouseEvent(event)
@@ -737,6 +756,10 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       pendingUrl = urlForEvent(event);
       const point = coordsForEvent(event);
       pendingFileContext = point ? window.silingFileContextForRow?.(point[1]) || "" : "";
+      if (browsingNativeHistory()) {
+        mode = pendingUrl ? "native-link" : "selection";
+        return;
+      }
       if (nativeSelection(event)) {
         mode = pendingUrl ? "native-link" : inlineSelection() ? "tmux-selection" : "selection";
         tmuxSelectionPending = false;
