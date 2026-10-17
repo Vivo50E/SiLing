@@ -19,6 +19,7 @@ import { checkPaneHeader } from './pane_header_browser.mjs';
 import { checkPaneMenu } from './pane_menu_browser.mjs';
 import { checkSidebarMenu } from './sidebar_menu_browser.mjs';
 import { checkJira } from './jira_browser.mjs';
+import { checkRestartAll } from './restart_all_browser.mjs';
 import { checkResumeAll } from './resume_all_browser.mjs';
 import { checkGroupOutlines } from './group_outlines_browser.mjs';
 import { checkArrangeNames } from './arrange_names_browser.mjs';
@@ -454,7 +455,18 @@ const server = http.createServer((req, res) => {
       if(modelMode==='fail') {res.writeHead(503);res.end(JSON.stringify({detail:'Fixture catalog failure'}));return;}
       res.end(JSON.stringify(payload));return;
     }
-    if (url.pathname.endsWith('/restart')) { pendingRestart = res; return; }
+    if (url.pathname.endsWith('/restart')) {
+      if (process.env.UI_RESTART_ALL_ONLY === '1') {
+        const id=decodeURIComponent(url.pathname.split('/')[3]);bulkBodies.push({run_id:id});
+        const reply=()=>{
+          if(id==='bulk-fail'){res.end(JSON.stringify({ok:false,reason:'Fixture restart failure'}));return;}
+          const old=sessions.find(s=>s.run_id===id);old.alive=false;
+          const next={...old,run_id:id+'-restarted',alive:true};sessions.push(next);res.end(JSON.stringify({ok:true,run_id:next.run_id}));
+        };
+        if(id==='bulk-first'){bulkHold=reply;return;}reply();return;
+      }
+      pendingRestart = res; return;
+    }
     let value = { ok: true };
     if (url.pathname === '/api/config') value = { projects_browser_url: '/fixture-tty/browser-default', remote_nodes: [], system_browser_available: systemBrowserAvailable, directory_picker_available:true };
     if (url.pathname === '/api/health') value = { ttyd: true };
@@ -584,6 +596,12 @@ try {
     assert.deepEqual(errors, [], 'No uncaught pane header errors');
   } else if (process.env.UI_JIRA_ONLY === '1') {
     await jiraCheck();assert.deepEqual(errors, [], 'No uncaught Jira errors');
+  } else if (process.env.UI_RESTART_ALL_ONLY === '1') {
+    await checkRestartAll({evaluate,waitFor,cdp,viewport,pause,bodies:bulkBodies,
+      configure:rows=>{archiveMode='ok';sessions.splice(0,sessions.length,...rows);archiveFixture.entries={'bulk-archived':{archived:true}};},
+      ready:()=>!!bulkHold,release:()=>{bulkHold();bulkHold=null;},
+      stop:id=>{sessions.find(s=>s.run_id===id).alive=false;}});
+    assert.deepEqual(errors, [], 'No uncaught bulk restart errors');
   } else if (process.env.UI_RESUME_ALL_ONLY === '1') {
     await bulkCheck();
     assert.deepEqual(errors, [], 'No uncaught bulk recovery errors');
@@ -1583,7 +1601,8 @@ try {
   assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-2"] .pane-input textarea').disabled`),true);
   assert.equal(await evaluate(`!!document.querySelector('[data-run-id="fixture-2"] iframe')`),false,'Ended terminal becomes a log view');
   await screenshot('ended-session-resume');
-  ended.resume_id='';await evaluate(`document.querySelector('#btn-refresh').click()`);await pause(150);
+  ended.resume_id='';await evaluate(`document.querySelector('#btn-refresh').click()`);
+  await waitFor(`document.querySelector('[data-run-id="fixture-2"] .btn-resume-ended')?.hidden===true`);
   assert.equal(await evaluate(`document.querySelector('[data-run-id="fixture-2"] .btn-resume-ended').hidden`),true,'Missing metadata does not advertise recovery');
   ended.resume_id='fixture-native-resume';await evaluate(`document.querySelector('#btn-refresh').click()`);
   await waitFor(`document.querySelector('.pane-card[data-run-id="fixture-2"] .btn-resume-ended')?.hidden===false`);

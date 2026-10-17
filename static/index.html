@@ -2776,6 +2776,7 @@
 <link rel="stylesheet" href="/static/pane-groups.css?v=8" />
 <script src="/static/pane-group-outlines.js?v=3"></script>
 <script src="/static/resume-all.js?v=1"></script>
+<script src="/static/restart-all.js?v=1"></script>
 <script src="/static/pane-groups.js?v=13"></script>
 <script src="/static/new-session-options.js?v=1"></script>
 <script src="/static/directory-picker.js?v=1"></script>
@@ -3374,6 +3375,7 @@
       <div class="modal-body">
       <div class="panel-actions-left ui-menu-group" aria-label="Saved active-session actions" data-ui-label=Saved%20active-session%20actions>
         <button id="btn-resume-all">Resume all sessions</button>
+        <button id="btn-restart-all">Restart all Agents</button>
         <button id="btn-save-active" title="Save all currently active sessions for later restore" data-ui-title=Save%20all%20currently%20active%20sessions%20for%20later%20restore><span data-ui-message=Save%20active%20sessions>Save active sessions</span></button>
         <button id="btn-restore-active" title="Restore the last saved active-session set" data-ui-title=Restore%20the%20last%20saved%20active-session%20set><span data-ui-message=Restore%20saved%20sessions>Restore saved sessions</span></button>
       </div>
@@ -9733,28 +9735,30 @@
     }
   });
 
-  async function restartAgentSession(runId) {
-    const s = sessions.find(x => x.run_id === runId);
+  async function restartAgentSession(runId, options = {}) {
+    const s = options.session || sessions.find(x => x.run_id === runId);
     const ctrl = paneCtrls.get(runId);
-    if (!s?.alive || !ctrl || sessionIsTerminal(s) || restartingSessions.has(runId)) return;
+    if (!s?.alive || sessionIsTerminal(s) || restartingSessions.has(runId) || s.agent_exited === true) return {ok:false,reason:"Session is unavailable or already restarting"};
     const name = s.display_name || s.task || s.run_name || "session";
-    if (!confirm(`${ui.t("restartConfirm")}\n\n${name}`)) return;
+    if (!options.bulk && !confirm(`${ui.t("restartConfirm")}\n\n${name}`)) return;
     restartingSessions.add(runId);
     retainedRestartFailures.delete(runId);
-    const draft = ctrl.inputEl.value;
-    const wasZoomed = paneZoomState?.card === ctrl.cardEl;
-    const controls = [...ctrl.cardEl.querySelectorAll("button, select, textarea")];
+    const draft = ctrl?.inputEl.value || "";
+    const wasZoomed = !!ctrl && paneZoomState?.card === ctrl.cardEl;
+    const controls = [...(ctrl?.cardEl.querySelectorAll("button, select, textarea") || [])];
     const disabledBefore = controls.map(el => el.disabled);
     controls.forEach(el => { el.disabled = true; });
-    ctrl.cardEl.classList.add("agent-restarting");
-    ctrl.cardEl.setAttribute("aria-busy", "true");
-    ctrl.paneEl.dataset.restartStatus = ui.t("restartingAgent");
-    ctrl.paneEl.inert = true;
-    ctrl.inputEl.blur();
+    if (ctrl) {
+      ctrl.cardEl.classList.add("agent-restarting");
+      ctrl.cardEl.setAttribute("aria-busy", "true");
+      ctrl.paneEl.dataset.restartStatus = ui.t("restartingAgent");
+      ctrl.paneEl.inert = true;
+      ctrl.inputEl.blur();
+    }
     const abort = new AbortController();
     const timeout = setTimeout(() => abort.abort(), 75000);
     try {
-      const result = await api(`/api/sessions/${encodeURIComponent(runId)}/restart`, { method: "POST", signal: abort.signal });
+      const result = await api(`/api/sessions/${encodeURIComponent(runId)}/restart`, { method: "POST", signal: options.signal || abort.signal });
       if (!result?.ok || !result.run_id) {
         throw new Error([result?.reason, result?.hint].filter(Boolean).join("\n") || "Restart failed");
       }
@@ -9770,20 +9774,36 @@
       const input = paneCtrls.get(newRunId)?.inputEl;
       if (input && !input.value) input.value = draft;
       $("conn-status").textContent = ui.t("restartStarted");
+      return result;
     } catch (error) {
       // Keep the original pane/draft available even if the agent has stopped.
       retainedRestartFailures.add(runId);
-      alert(`${ui.t("restartFailed")}\n\n${error.message}`);
+      if (!options.bulk) alert(`${ui.t("restartFailed")}\n\n${error.message}`);
+      return {ok:false,reason:error.message};
     } finally {
       clearTimeout(timeout);
       restartingSessions.delete(runId);
       controls.forEach((el, i) => { if (el.isConnected) el.disabled = disabledBefore[i]; });
-      ctrl.cardEl.classList.remove("agent-restarting");
-      ctrl.cardEl.removeAttribute("aria-busy");
-      ctrl.paneEl.inert = false;
+      ctrl?.cardEl.classList.remove("agent-restarting");
+      ctrl?.cardEl.removeAttribute("aria-busy");
+      if (ctrl) ctrl.paneEl.inert = false;
       void refreshList();
     }
   }
+
+  window.SilingRestartAll({ui, trigger:$("btn-restart-all"),
+    load: async signal => {
+      const data = await api("/api/sessions", {signal});
+      if (data.snapshot?.ready === false || data.snapshot?.error || !data.session_archives || data.session_archives.error)
+        throw new Error("Session or archive information is unavailable; refresh before retrying");
+      return conversationSessions(data.sessions || []).filter(s =>
+        s.alive && s.agent_exited !== true && ["claude", "codex", "cursor"].includes(String(s.agent || "").trim().toLowerCase())
+        && s.resume_id && !(s.remote && s.node_online === false)
+        && !data.session_archives.entries?.[s.run_id]?.archived);
+    },
+    restart:(session, signal)=>restartAgentSession(session.run_id, {bulk:true,session,signal}),
+    refresh:()=>void refreshList(),
+  });
 
   window.SilingResumeAll({ui, trigger:$("btn-resume-all"),
     load: async signal => {

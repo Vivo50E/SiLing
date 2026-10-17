@@ -136,6 +136,8 @@ intervene.
   records cannot overwrite a later Dashboard model setting. Without a newer model
   record, the saved setting remains in use.
 
+- Open **More → Restart all Agents** (beside **Resume all sessions**) to review and sequentially restart running Claude, Codex and Cursor sessions across all groups, including background sessions. Confirming interrupts current work and resumes each saved conversation/model using the installed CLI; it does not download CLI updates. Terminal/SSH, stopped, archived, offline and sessions without a saved conversation are skipped. Pane positions and drafts are retained. Stop remaining cancels the queue after the current request; failures are shown individually and never retried automatically.
+
 - **More → Resume all sessions** previews stopped, resumable Agents across all groups.
   Confirm to recover them one at a time, preserving existing pane slots; unplaced
   sessions run in the background. Running, archived, offline and Terminal/SSH
