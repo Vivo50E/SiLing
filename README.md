@@ -150,6 +150,8 @@ intervene.
   defaults off and is saved in this browser.
 - Pane headers no longer show the status dot. In **Settings → Appearance → Show pane numbers**, turn off the switch to hide header slot numbers. Numbers are shown by default; the preference is saved in this browser and applies immediately, including expanded panes. Drag the title to rearrange panes even with numbers hidden.
 
+- Each pane has a thin group-colored strip below its title (neutral when ungrouped). Foreground and background work show a left-to-right highlight; idle, waiting and offline panes stay still. Gradient and diagonal-split group colors are preserved, reduced-motion preferences are respected, and animation does not resize the terminal.
+
 - Group two-color styles support **Gradient** (default) and **Diagonal split**, which separates two solid colors at a sharp diagonal boundary. Choose the style in **Manage groups → Two colors** and save; previews, group tabs, pane badges and All-view outlines share the style. Existing groups keep their gradient.
 
 - Periodic update checks run Git candidate discovery off the terminal event loop, so slow repository checks do not pause all panes or their heartbeats.

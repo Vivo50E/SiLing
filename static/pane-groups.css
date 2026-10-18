@@ -103,3 +103,32 @@
 #group-jira-enabled { width:auto; }
 
 #group-second-color > label:first-child { grid-column: 1 / -1; }
+
+/* Header-bottom group identity; only the inner highlight moves, never the terminal. */
+.pane-card > .pane-head { position: relative; }
+.pane-group-activity {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
+  overflow: hidden; pointer-events: none;
+  background-color: var(--group-color, var(--border));
+  background-image: var(--group-gradient, none);
+}
+.pane-group-activity::after {
+  content: ""; position: absolute; inset: 0 auto 0 0; width: 40%;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / .8), transparent);
+  transform: translateX(-100%); opacity: 0;
+}
+.pane-card:is(.busy, .background-working) > .pane-head > .pane-group-activity::after {
+  opacity: 1; animation: pane-group-running 1.8s linear infinite;
+}
+.pane-card:is(.cached-pane, .group-hidden) > .pane-head > .pane-group-activity::after {
+  animation-play-state: paused;
+}
+@keyframes pane-group-running {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(350%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pane-card:is(.busy, .background-working) > .pane-head > .pane-group-activity::after {
+    animation: none; opacity: 0;
+  }
+}

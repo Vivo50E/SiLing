@@ -15,6 +15,7 @@ import { checkPanePlacement } from './pane_placement_browser.mjs';
 import { checkPlainPolling } from './plain_polling_browser.mjs';
 import { checkFork } from './fork_browser.mjs';
 import { checkPaneCache } from './pane_cache_browser.mjs';
+import { checkPaneActivityBar } from './pane_activity_bar_browser.mjs';
 import { checkPaneHeader } from './pane_header_browser.mjs';
 import { checkPaneMenu } from './pane_menu_browser.mjs';
 import { checkSidebarMenu } from './sidebar_menu_browser.mjs';
@@ -588,7 +589,14 @@ try {
     groupFixture.groups=[{id:'jira-group',name:'Jira group',color:'teal'},{id:'other-group',name:'Other',color:'blue'}];
     groupFixture.members={'jira-on':'jira-group','jira-off':'other-group'};
   }});
-  if (process.env.UI_PANE_CACHE_ONLY === '1') {
+  if (process.env.UI_ACTIVITY_BAR_ONLY === '1') {
+    await checkPaneActivityBar({evaluate,waitFor,cdp,viewport,screenshot,configure:(state,color)=>{
+      groupFixture.groups=[{id:'activity-group',name:'Activity group',color,color2:'#a477ef',color_style:'split'}];
+      groupFixture.members={'fixture-0':'activity-group','fixture-1':'activity-group'};
+      sessions[0].native_activity={state,updated_at:Date.now()/1000};
+    }});
+    assert.deepEqual(errors, [], 'No uncaught activity bar errors');
+  } else if (process.env.UI_PANE_CACHE_ONLY === '1') {
     await checkPaneCache({evaluate,waitFor,cdp,viewport,pause});
     assert.deepEqual(errors, [], 'No uncaught cache errors');
   } else if (process.env.UI_PANE_HEADER_ONLY === '1') {

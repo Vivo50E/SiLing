@@ -407,6 +407,14 @@
       badge.title = group?.name || "";
       badge.hidden = !group;
       badge.style.cssText = colorStyle(group);
+      let activityBar = card.querySelector(".pane-group-activity");
+      if (!activityBar) {
+        activityBar = document.createElement("span");
+        activityBar.className = "pane-group-activity";
+        activityBar.setAttribute("aria-hidden", "true");
+        card.querySelector(".pane-head").append(activityBar);
+      }
+      activityBar.style.cssText = group ? colorStyle(group) : "";
       decorateMenu(card.querySelector(".pane-menu-common"), row);
     }
 
