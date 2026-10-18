@@ -24,6 +24,9 @@ export async function checkReviews({evaluate,waitFor,cdp,viewport,screenshot,con
   await evaluate(`document.querySelector('#pane-review-url').value='https://github.com/demo/repo/pull/77';document.querySelector('#pane-reviews form').requestSubmit()`);
   await waitFor(`document.querySelector('#pane-review-url').value==='' && !document.querySelector('#pane-reviews [data-add]').disabled`);
   assert.equal(requests.filter(r=>r.method==='POST'&&r.path==='/api/sessions/reviews-agent/folders').length,1);
+  mode('history');await evaluate(`document.querySelector('#pane-reviews [data-refresh]').click()`);
+  await waitFor(`document.querySelector('#pane-reviews [data-status]').textContent.includes('More history remains')`);
+  assert.equal(await evaluate(`document.querySelectorAll('#pane-reviews li').length`),2,'Partial history keeps discovered links visible');
   mode('error');await evaluate(`document.querySelector('#pane-reviews [data-refresh]').click()`);
   await waitFor(`document.querySelector('#pane-reviews [data-status]').textContent.includes('Retry')`);
   mode('empty');await evaluate(`document.querySelector('#pane-reviews [data-refresh]').click()`);

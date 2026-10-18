@@ -8,6 +8,12 @@ from agent_orchestrator import reviews, dashboard
 
 
 class ReviewTests(unittest.TestCase):
+    def fixture_lookup(self, root, run):
+        original = dashboard._lookup_run_light
+        return patch.object(dashboard, '_lookup_run_light', side_effect=lambda outputs, run_id:
+                            run if outputs == root/'outputs' and run_id == 'fixture'
+                            else original(outputs, run_id))
+
     def test_urls_normalize_suffixes_without_accepting_credentials_or_scripts(self):
         pr = reviews.review_url('https://github.com/org/repo/pull/12/files?tab=x#diff')
         self.assertEqual(pr['url'], 'https://github.com/org/repo/pull/12')
@@ -44,8 +50,95 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual([r['number'] for r in rows],[1])
         self.assertEqual(branch,'feature/test')
         self.assertEqual(warning,'')
-        self.assertIn('github.com/base/r',calls[-1])
+        self.assertEqual([args[args.index('--repo')+1] for args in calls if args[0]=='gh'],
+                         ['github.com/base/r','github.com/mine/r'])
         self.assertIn('feature/test',calls[-1])
+
+    def test_fork_origin_results_survive_upstream_lookup_failure(self):
+        def execute(args, cwd, timeout=3):
+            if args[0] == 'gh':
+                if 'github.com/base/r' in args:
+                    raise ValueError('upstream unavailable')
+                return json.dumps([{'url':'https://github.com/mine/r/pull/7',
+                                    'headRepositoryOwner':{'login':'mine'}}])
+            return {'HEAD':'feature','origin':'git@github.com:mine/r.git',
+                    'upstream':'git@github.com:base/r.git'}[args[-1]]
+        with patch.object(reviews, '_run', side_effect=execute):
+            rows, _, warning = reviews.branch_reviews('/fixture')
+        self.assertEqual([row['number'] for row in rows], [7])
+        self.assertTrue(warning)
+
+    def test_history_cursor_overlap_rotation_and_session_isolation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            log = root/'pane.log'
+            url = 'https://github.com/o/r/pull/9'
+            log.write_text('x'*100 + ' ' + url + ' ' + 'x'*600)
+            run = {'run_dir':temp, 'log_file':'pane.log'}
+            with patch.object(reviews, 'SCAN_BYTES', 128):
+                result = reviews.discover(run, '', root/'a', lookup=False)
+                self.assertTrue(result['history_pending'])
+                for _ in range(12):
+                    result = reviews.discover(run, '', root/'a', lookup=False)
+                    if not result['history_pending']:
+                        break
+            self.assertEqual([item['url'] for item in result['items']], [url])
+            self.assertFalse(result['history_pending'])
+            log.unlink()
+            log.write_text('https://gitlab.example/g/r/-/merge_requests/6')
+            result = reviews.discover(run, '', root/'a', lookup=False)
+            self.assertEqual(len(result['items']), 2)
+            self.assertEqual(reviews.discover({}, '', root/'b', lookup=False)['items'], [])
+
+    def test_removed_manual_link_is_not_kept_as_an_automatic_discovery(self):
+        with tempfile.TemporaryDirectory() as temp:
+            run = {'linked_folders':[{'path':'https://github.com/o/r/pull/4'}]}
+            self.assertEqual(len(reviews.discover(run, '', temp, lookup=False)['items']), 1)
+            self.assertEqual(reviews.discover({}, '', temp, lookup=False)['items'], [])
+
+    def test_branch_results_remain_available_to_initial_counts_after_reload(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            run = {'agent':'codex','cwd':temp}
+            item = dict(reviews.review_url('https://github.com/o/r/pull/3'), source='branch')
+            app = dashboard.create_app(root/'outputs',token='fixture',ttyd_enabled=False,remote_nodes_enabled=False)
+            with TestClient(app) as client, self.fixture_lookup(root, run), \
+                    patch.object(reviews,'branch_reviews',return_value=([item],'feature','')) as branch:
+                path = '/api/sessions/fixture/reviews'
+                headers = {'Authorization':'Bearer fixture'}
+                self.assertEqual(len(client.get(path,headers=headers).json()['items']), 1)
+                branch.reset_mock()
+                self.assertEqual(len(client.get(path+'?branch=false',headers=headers).json()['items']), 1)
+                branch.assert_not_called()
+
+    def test_route_retains_discoveries_across_refresh_and_reload(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            log = root/'pane.log'
+            early = 'https://github.com/o/r/pull/1'
+            recent = 'https://github.com/o/r/pull/2'
+            branch_url = 'https://github.com/o/r/pull/3'
+            log.write_text(early+'\n'+' '*300000+recent)
+            run = {'agent':'codex','cwd':temp,'run_dir':temp,'log_file':'pane.log'}
+            headers = {'Authorization':'Bearer fixture'}
+            def app():
+                return dashboard.create_app(root/'outputs',token='fixture',ttyd_enabled=False,remote_nodes_enabled=False)
+            with self.fixture_lookup(root, run), \
+                    patch.object(reviews,'branch_reviews',return_value=([dict(reviews.review_url(branch_url),source='branch',title='Saved title',state='open')],'feature','')) as branch:
+                with TestClient(app()) as client:
+                    path = '/api/sessions/fixture/reviews'
+                    result = client.get(path,headers=headers).json()
+                    self.assertEqual({row['url'] for row in result['items']}, {early,recent,branch_url})
+                    log.write_text('no links remain in the live output')
+                    branch.return_value = ([], 'another-branch', 'Lookup failed')
+                    self.assertEqual(len(client.get(path,headers=headers).json()['items']), 3)
+                    branch.reset_mock()
+                    self.assertEqual(len(client.get(path+'?branch=false',headers=headers).json()['items']), 3)
+                    branch.assert_not_called()
+                with TestClient(app()) as client:
+                    restored = client.get(path+'?branch=false',headers=headers).json()['items']
+                    self.assertEqual(len(restored), 3)
+                    self.assertEqual(next(row for row in restored if row['url']==branch_url)['title'], 'Saved title')
 
     def test_gitlab_nested_project_and_failure_keep_linked_results(self):
         def execute(args,cwd,timeout=3):

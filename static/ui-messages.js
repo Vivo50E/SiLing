@@ -2,6 +2,9 @@
 (() => {
   const zh = {
     "Related PRs / MRs": "相关 PR / MR",
+    "Discovered PR/MR links are saved for this session. Refresh checks branches and continues scanning history.": "已发现的 PR/MR 链接会保存在当前会话中。刷新可查询分支并继续扫描历史输出。",
+    "More history remains. Refresh to continue scanning.": "还有历史输出未扫描，请刷新继续。",
+    "Showing up to 1000 related PRs / MRs.": "最多显示 1000 个相关 PR / MR。",
     "Add a PR/MR link": "添加 PR/MR 链接",
     "Add": "添加",
     "Loading PRs / MRs…": "正在查询 PR / MR…",
@@ -18,9 +21,9 @@
     "closed": "已关闭",
     "merged": "已合并",
     "draft": "草稿",
-    "branch": "当前分支",
+    "branch": "分支查询",
     "linked": "已关联",
-    "output": "最近输出",
+    "output": "输出链接",
 
     "Session options help": "会话选项说明",
     "Project group": "项目分组",

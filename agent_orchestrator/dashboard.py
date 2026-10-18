@@ -10308,7 +10308,8 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             text += "\n" + (tmux_capture_lines(session, 200, "tail") or "")
         # A shell may have cd'ed or SSH'ed elsewhere; its launch cwd is not
         # evidence of the repository currently shown in the terminal.
-        return reviews.collect(run, text, lookup=branch and _norm_agent(run.get("agent", "")) != "terminal")
+        return reviews.discover(run, text, terminal_files.state_dir(outputs_dir, run_id),
+                                lookup=branch and _norm_agent(run.get("agent", "")) != "terminal")
 
     @app.get("/api/sessions/{run_id}/jira")
     def get_session_jira(run_id: str):

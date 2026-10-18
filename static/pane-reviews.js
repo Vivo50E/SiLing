@@ -13,7 +13,7 @@
       <form><label for="pane-review-url" data-label></label><div class="review-toolbar"><input id="pane-review-url" type="url" required placeholder="https://…" autocomplete="off"><button type="submit" data-add></button></div><p data-error role="alert"></p></form>`;
     const el = name => dialog.querySelector(`[data-${name}]`);
     document.body.append(dialog);
-    const labels={close:'Close',refresh:'Refresh',label:'Add a PR/MR link',add:'Add',help:'Related branch results, linked URLs and recent output. Nothing is polled in the background.'};
+    const labels={close:'Close',refresh:'Refresh',label:'Add a PR/MR link',add:'Add',help:'Discovered PR/MR links are saved for this session. Refresh checks branches and continues scanning history.'};
     for (const [name,label] of Object.entries(labels)) el(name).textContent=ui.message(label);
     dialog.querySelector('h2').textContent=ui.message('Related PRs / MRs');
     el('session').textContent=title;
@@ -23,7 +23,11 @@
       window.SilingPaneLinkCounts.loaded(runId, 'reviews', data.items);
       el('list').replaceChildren();
       el('branch').textContent=data.branch || '';
-      el('status').textContent=data.warning ? ui.message(data.warning) : data.items.length ? '' : ui.message('No related PR/MR found. Add a link below.');
+      const notices=[];
+      if(data.warning)notices.push(ui.message(data.warning));
+      if(data.history_pending)notices.push(ui.message('More history remains. Refresh to continue scanning.'));
+      if(data.limit_reached)notices.push(ui.message('Showing up to 1000 related PRs / MRs.'));
+      el('status').textContent=notices.join(' ') || (data.items.length ? '' : ui.message('No related PR/MR found. Add a link below.'));
       for (const item of data.items) {
         // Validate even server-provided URLs before handing them to web routing.
         let url;try {url=new URL(item.url);} catch {continue;}
