@@ -112,7 +112,7 @@ async def discover(agent: str, cwd: str) -> list[dict]:
                 return normalize(data.get("result", {}).get("data", []), agent)
     try:
         return await asyncio.wait_for(read_catalog(), timeout=QUERY_TIMEOUT)
-    except (TimeoutError, OSError, ValueError, TypeError, AttributeError) as exc:
+    except (asyncio.TimeoutError, OSError, ValueError, TypeError, AttributeError) as exc:
         raise CatalogUnavailable("CLI model query unavailable; retry or use a custom model") from exc
     finally:
         try:
@@ -121,7 +121,7 @@ async def discover(agent: str, cwd: str) -> list[dict]:
             pass
         try:
             await asyncio.wait_for(process.wait(), timeout=2)
-        except TimeoutError:
+        except asyncio.TimeoutError:
             try:
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:

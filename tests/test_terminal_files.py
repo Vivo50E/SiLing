@@ -154,7 +154,17 @@ class TerminalFilesTests(unittest.TestCase):
         client,headers=self.client()
         run={'run_dir':str(self.root),'kind':'run','tmux_session':'fixture'}
         (self.root/'session.json').write_text('{}')
-        self.stack.enter_context(patch.object(dashboard,'_lookup_run_light',return_value=run))
+        def lookup(outputs_dir, run_id):
+            return run if outputs_dir == self.root and run_id == 'fixture' else None
+        self.stack.enter_context(patch.object(dashboard,'_lookup_run_light',side_effect=lookup))
+        # A worker from another test must not be redirected into this fixture.
+        with patch.object(dashboard, '_persist_resume_metadata', return_value=True) as persist, \
+                patch.object(dashboard, '_persist_resume_capture_status') as status:
+            dashboard._capture_native_resume_for_run(
+                self.root/'other-outputs', 'other-run::task',
+                preallocated_meta={'resume_id':'fixture-native-id'}, attempts=(0,))
+            persist.assert_not_called()
+            status.assert_not_called()
         detect=self.stack.enter_context(patch.object(files,'detect_environment',return_value={'host':'dev','cwd':'','source':'ssh-process'}))
         prefix='/api/sessions/fixture/'
         config=client.put(prefix+'file-context',headers=headers,json={'mode':'auto','cwd':'/remote/work'})

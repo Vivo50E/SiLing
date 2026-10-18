@@ -1,11 +1,12 @@
 """Creation choices persist on the owning Dashboard; catalogs never run a turn."""
 import asyncio
 import json
+import signal
 from pathlib import Path
 import tempfile
 import httpx
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from fastapi.testclient import TestClient
 from agent_orchestrator import dashboard, model_catalog
@@ -16,6 +17,11 @@ class SessionOptionsTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
+        # The launch itself is mocked; leave no capture workers behind when
+        # this fixture's temporary session metadata is removed.
+        capture = patch.object(dashboard, '_schedule_native_resume_capture')
+        self.capture = capture.start()
+        self.addCleanup(capture.stop)
         self.root = Path(self.tmp.name)
         self.store = PaneGroups(self.root)
         self.store.change({"action": "create", "name": "Project", "color": "blue"})
@@ -31,6 +37,7 @@ class SessionOptionsTests(unittest.TestCase):
                 'agent':'terminal', 'cwd':str(self.root), 'mode':'background', 'group_id':self.gid}).json()
         self.assertTrue(result['ok'])
         self.assertEqual(result['group_id'], self.gid)
+        self.capture.assert_called_once()
         self.assertEqual(self.store.view([{'run_id':result['run_id'], 'agent':'terminal'}])['members'][result['run_id']], self.gid)
 
     def test_deleted_group_and_corrupt_storage_reject_before_launch(self):
@@ -129,10 +136,36 @@ input()
             await self.probe('cursor', "print('private credentials: failure')\n")
 
     async def test_timeout_reaps_worker_and_sanitizes_errors(self):
-        with patch.object(model_catalog,'QUERY_TIMEOUT',0.15):
+        processes = []
+        spawn = asyncio.create_subprocess_exec
+        async def record_process(*args, **kwargs):
+            process = await spawn(*args, **kwargs)
+            processes.append(process)
+            return process
+        with patch.object(model_catalog,'QUERY_TIMEOUT',0.15), patch.object(
+                model_catalog.asyncio, 'create_subprocess_exec', side_effect=record_process):
             with self.assertRaises(model_catalog.CatalogUnavailable) as caught:
                 await self.probe('cursor', "import time\ntime.sleep(60)\n")
         self.assertIn('retry',str(caught.exception))
+        self.assertEqual(len(processes), 1)
+        self.assertIsNotNone(processes[0].returncode, 'Timed-out worker is reaped before returning')
+
+    async def test_worker_termination_timeout_escalates_and_reaps(self):
+        process = Mock(pid=123456)
+        process.stdin.drain = AsyncMock()
+        response = {'type':'control_response', 'response':{'request_id':'models',
+                    'response':{'models':[{'value':'fixture-model'}]}}}
+        process.stdout.readline = AsyncMock(return_value=(json.dumps(response)+'\n').encode())
+        process.wait = AsyncMock(side_effect=[asyncio.TimeoutError(), 0])
+        with patch.object(model_catalog, 'executable', return_value='fixture-cli'), patch.object(
+                model_catalog.asyncio, 'create_subprocess_exec', return_value=process), patch.object(
+                model_catalog.os, 'killpg') as kill:
+            result = await model_catalog.discover('claude', '/fixture')
+        self.assertEqual(result, [{'id':'fixture-model','label':'fixture-model'}])
+        self.assertEqual([call.args for call in kill.call_args_list],
+                         [(process.pid, signal.SIGTERM), (process.pid, signal.SIGKILL)])
+        self.assertEqual(process.wait.await_count, 2)
+        process.stdin.close.assert_called_once()
 
     async def test_query_failure_is_cached_and_explicit_refresh_retries(self):
         catalog=model_catalog.ModelCatalog()
