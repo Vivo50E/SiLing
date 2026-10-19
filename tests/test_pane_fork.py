@@ -74,10 +74,12 @@ class PaneForkTests(unittest.TestCase):
         self.send.assert_not_called()
 
     def test_codex_fork_does_not_save_parent_as_child_resume_id(self):
+        self.source['proxy_mode'] = 'devin'
         self.source['agent'] = 'codex'
         result = self.post()
         self.assertEqual(result.status_code, 200, result.text)
         self.assertIn('--fork-id', self.calls[0])
+        self.assertEqual(self.calls[0][self.calls[0].index('--proxy-mode')+1], 'devin')
         self.assertNotIn('--resume-id', self.calls[0])
         self.assertNotIn('--native-session-id', self.calls[0])
         self.assertNotIn('preallocated_resume_id', result.json())

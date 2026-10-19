@@ -131,6 +131,21 @@ intervene.
   Unchanged log snapshots keep their existing text and selection instead of
   repeatedly laying out large histories; scrolling up pauses updates until
   you return to the bottom.
+- **Pane More → Proxy mode** selects Local execution, Devin, or cmux Cloud for
+  that Claude/Codex/Cursor session. The local agent coordinates and reviews;
+  implementation and expensive tests are delegated. Devin uses the installed
+  `delegate-to-devin` skill. cmux Cloud uses its [official CLI](https://cmux.com/docs/cloud/cli);
+  install/sign in on the session host first. Saving does not interrupt work:
+  restart/resume to apply, or select the explicit restart checkbox. A `↻` badge
+  marks a pending change. Restart, resume, snapshot restore and fork inherit the
+  choice; switching to Terminal drops it. Returning to Local sends an explicit
+  reset of the earlier preference on the next launch. These are native startup
+  prompt instructions, not enforced sandbox restrictions or an automatic job
+  scheduler. Provider availability checks only detect local tools; the agent
+  checks credentials/access, reports remote progress and blocks instead of
+  silently implementing locally if delegation fails. No paid job starts merely
+  by saving the preference. CLI users can pass `siling run --proxy-mode devin claude`
+  (also `local` or `cmux-cloud`). Shared project/global agent settings are untouched.
 - Restart / Resume for Claude and Codex uses a newer model recorded in the primary
   conversation instead of the original launch model. Older turns and subagent/tool
   records cannot overwrite a later Dashboard model setting. Without a newer model

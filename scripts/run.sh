@@ -40,6 +40,7 @@ NATIVE_RESUME_SOURCE=""
 RUN_NAME_OVERRIDE=""
 TERMINAL_THEME="${ORCH_DEFAULT_TERMINAL_THEME:-soft-dark}"
 NO_ATTACH=0
+PROXY_MODE=""
 POSITIONAL=()
 
 while [[ $# -gt 0 ]]; do
@@ -54,6 +55,9 @@ while [[ $# -gt 0 ]]; do
         --run-name)   RUN_NAME_OVERRIDE="$2"; shift 2 ;;
         --theme|--terminal-theme) TERMINAL_THEME="$2"; shift 2 ;;
         --no-attach)  NO_ATTACH=1; shift ;;   # spawn tmux + watcher, don't attach
+        --proxy-mode)
+            if [ $# -lt 2 ]; then echo "--proxy-mode requires a mode" >&2; exit 2; fi
+            PROXY_MODE="$2"; shift 2 ;;
         --fast)       MODEL="composer-2-fast"; shift ;;
         --think)      MODEL="claude-opus-4-7-thinking-high"; shift ;;
         --codex)      MODEL="gpt-5.3-codex"; shift ;;
@@ -69,6 +73,18 @@ done
 AGENT_TYPE="${POSITIONAL[0]:-cursor}"
 TASK_NAME="${POSITIONAL[1]:-interactive}"
 CWD="${POSITIONAL[2]:-$(pwd)}"
+
+# Explicit mode changes are supplied as a fresh native user message, including
+# on resume/fork. This reaches direct terminal input sessions too, without
+# rewriting shared project instructions or the user's global CLI configuration.
+PROXY_PROMPT=""
+if [ -n "$PROXY_MODE" ]; then
+    case "$AGENT_TYPE" in
+        claude|codex|cursor|agent) ;;
+        *) echo "Proxy mode requires a supported coding agent" >&2; exit 2 ;;
+    esac
+    PROXY_PROMPT=$(python3 "$REPO_DIR/agent_orchestrator/proxy_mode.py" "$PROXY_MODE") || exit $?
+fi
 
 # Resolve before creating metadata/tmux. A launchd PATH often omits the
 # user-local native CLI install; use the same lookup as restart preflight.
@@ -243,6 +259,10 @@ if [ -n "$RESUME_ID" ]; then
     esac
 fi
 
+if [ -n "$PROXY_PROMPT" ]; then
+    AGENT_CMD="$AGENT_CMD $(printf '%q' "$PROXY_PROMPT")"
+fi
+
 METADATA_RESUME_ID="${RESUME_ID:-$NATIVE_SESSION_ID}"
 METADATA_RESUME_SOURCE="$NATIVE_RESUME_SOURCE"
 if [ -n "$METADATA_RESUME_ID" ] && [ -z "$METADATA_RESUME_SOURCE" ]; then
@@ -326,6 +346,8 @@ cat > "$SESSION_JSON" <<EOF
   "agent": "$AGENT_TYPE",
   "model": "$MODEL_METADATA",
   "effort": "$EFFORT",
+  "proxy_mode": "$PROXY_MODE",
+  "proxy_mode_applied": "$PROXY_MODE",
   "cwd": "$CWD",
   "tmux_session": "$SESSION",
   "log_file": "logs/${TASK_NAME}.log",

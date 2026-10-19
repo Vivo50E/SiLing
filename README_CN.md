@@ -113,6 +113,18 @@ Terminal Session 不会自动确认任何提示，适合手动执行命令。之
 - 在不同 slot 之间拖动 task，不会重启底层 session。
 - 将 Codex、Claude Code 和 Cursor Agent 放在同一个视图中管理。
 
+**Pane 更多 → 代理模式** 可为单个 Claude/Codex/Cursor 会话选择「本地执行」、
+Devin 或 cmux Cloud。本地 Agent 负责沟通、拆解和验收，代码修改及耗时测试委派到远程。
+Devin 使用会话主机上安装的 `delegate-to-devin` skill；cmux Cloud 使用
+[官方 CLI](https://cmux.com/docs/cloud/cli)，需先在会话主机安装并登录。
+保存不打断当前任务，下次重启或恢复生效；也可勾选保存后重启并确认。标题上的 `↻`
+表示尚待应用。重启、恢复、快照恢复和 fork 继承选择，切换为普通 Terminal 时取消。
+改回「本地执行」会在下次启动时明确取消旧代理指令。这是传给原生 Agent 的启动提示词，
+不是强制沙箱或自动任务调度器，不保证模型绝不偏离。工具检查只确认本机工具存在，
+登录和仓库权限由 Agent 在委派时检查；Agent 需报告远程进度，失败时先报告而非静默本地执行。
+仅保存设置不会创建付费任务。命令行也可用 `siling run --proxy-mode devin claude`，
+另支持 `local`、`cmux-cloud`；不修改项目或全局 Agent 配置。
+
 浏览器只是控制面；即使关闭页面，后台 tmux sessions 仍会继续运行。
 
 ## 按项目分组 pane

@@ -2777,6 +2777,7 @@
 <script src="/static/pane-group-outlines.js?v=3"></script>
 <script src="/static/resume-all.js?v=1"></script>
 <script src="/static/restart-all.js?v=1"></script>
+<script src="/static/proxy-mode.js?v=1"></script>
 <script src="/static/pane-groups.js?v=14"></script>
 <script src="/static/new-session-options.js?v=1"></script>
 <script src="/static/directory-picker.js?v=1"></script>
@@ -6955,6 +6956,7 @@
       restartSession.disabled = restartingSessions.has(s.run_id) || !!(s.remote && s.node_online === false);
     }
     updatePanelStateSelect(ctrl, s.panel_state || "");
+    proxyMode.decorate(card, s);
     paneGroups.decorate(card, s);
     applyPaneTerminalTheme(ctrl, s);
 
@@ -7347,6 +7349,11 @@
       if (cwdDialog.open) cwdInput.focus();
     }
   });
+
+  const proxyMode = window.SilingProxyMode({ui, api, sessions:()=>sessions,
+    restart:runId=>restartAgentSession(runId),
+    canRestart:s=>paneCtrls.has(s.run_id) && s.alive && !s.agent_exited && !!s.resume_id
+      && !(s.remote && s.node_online === false)});
 
   const renameDialog = document.createElement("dialog");
   renameDialog.id = "rename-session-dialog";
@@ -8277,6 +8284,7 @@
             <button class="btn-compact-compose" data-dialog-close data-ui-message="Write%20a%20message">Write a message</button>
           </div>
           <div class="ui-menu-group pane-menu-common">
+            <button class="btn-proxy-mode" ${["run", "task"].includes(s.kind) && ["claude", "codex", "cursor", "agent"].includes(s.agent) && !(s.remote && s.node_online === false) ? "" : "disabled"} data-dialog-close data-ui-message="Proxy%20mode">Proxy mode</button>
             <button class="btn-rename-session" ${["task", "run", "orphan"].includes(s.kind) ? "" : "hidden"} data-dialog-close data-ui-message="Rename%20session">Rename session</button>
             <button class="btn-reload" data-dialog-close>${ui.icon("refresh")}<span data-i18n="reconnect">Reconnect display</span></button>
             <button class="btn-unpin" data-dialog-close>${ui.icon("close")}<span data-i18n="closePane">Close pane</span></button>
@@ -8324,7 +8332,11 @@
     grid.appendChild(card);
     ui.translate(card);
     paneGroups.decorate(card, s);
+    proxyMode.decorate(card, s);
     const paneMenu = card.querySelector(".pane-menu");
+    card.querySelector(".btn-proxy-mode").addEventListener("click", () => {
+      paneMenu.addEventListener("close", () => proxyMode.open(runId, card.querySelector(".btn-pane-more")), {once:true});
+    });
     card.querySelector(".btn-archive-session").onclick = () => void sessionArchives.change(runId);
     const moveSelect = card.querySelector(".pane-move-select");
     ui.wireDialog(card.querySelector(".pane-related-menu"), card.querySelector(".btn-related-sessions"), () => renderRelatedSessions(card, runId));

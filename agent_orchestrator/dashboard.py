@@ -61,7 +61,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Optional
 from urllib.parse import quote, urlparse
 
-from . import artifacts, session_lifecycle, pane_relations, cursor_runtime
+from . import artifacts, session_lifecycle, pane_relations, cursor_runtime, proxy_mode
 from .plugins import Plugins
 from .workflows import DispatchRejected, Workflows, validate as validate_workflow
 from .agent_cli import resolve_agent_cli
@@ -3327,6 +3327,8 @@ def _saved_resume_meta(data: dict[str, Any]) -> dict[str, str]:
 
 
 def _add_resume_fields(row: dict[str, Any], data: dict[str, Any]) -> None:
+    row["proxy_mode"] = data.get("proxy_mode", "")
+    row["proxy_mode_applied"] = data.get("proxy_mode_applied", "")
     row["runtime_config_updated_at"] = data.get("runtime_config_updated_at", "")
     row["forked_from_resume_id"] = data.get("forked_from_resume_id", "")
     row["forked_from_run_id"] = data.get("forked_from_run_id", "")
@@ -3894,6 +3896,7 @@ def _snapshot_entry_from_run(r: dict[str, Any],
     model = "" if model in _MODEL_DEFAULTS else model
     return {
         "source_run_id": r.get("run_id", ""),
+        "proxy_mode": r.get("proxy_mode", ""),
         "source_run_dir": r.get("run_dir", ""),
         "source_metadata_path": _run_metadata_path(r),
         "kind": r.get("kind", ""),
@@ -11088,6 +11091,39 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             if isinstance(spec, dict):
                 spec['value'] = ''
 
+    @app.get("/api/sessions/{run_id}/proxy-mode")
+    def get_proxy_mode(run_id: str):
+        row = _lookup_run_light(outputs_dir, run_id)
+        if not row:
+            raise HTTPException(404, "run not found")
+        return {"mode": row.get("proxy_mode") or "local",
+                "applied": row.get("proxy_mode_applied") or "local",
+                "available": proxy_mode.availability()}
+
+    @app.post("/api/sessions/{run_id}/proxy-mode")
+    async def post_proxy_mode(run_id: str, request: Request):
+        row = _lookup_run_light(outputs_dir, run_id)
+        if not row:
+            raise HTTPException(404, "run not found")
+        if row.get("kind") not in ("run", "task") or _norm_agent(row.get("agent", "")) not in ("claude", "codex", "cursor"):
+            raise HTTPException(409, "Proxy mode requires a persisted coding agent session")
+        try:
+            body = await request.json()
+            mode = proxy_mode.validate(body.get("mode") if isinstance(body, dict) else None)
+        except (ValueError, UnicodeDecodeError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+        metadata = Path(row["run_dir"]) / ("session.json" if row["kind"] == "run" else "state.json")
+        if not metadata.is_file():
+            raise HTTPException(409, "session metadata is unavailable")
+        with edit_json(metadata) as data:
+            target = data if row["kind"] == "run" else data.get(row.get("task"))
+            if not isinstance(target, dict):
+                raise HTTPException(409, "session metadata is unavailable")
+            target["proxy_mode"] = mode
+        session_snapshots.request_refresh()
+        return {"ok": True, "proxy_mode": mode,
+                "proxy_mode_applied": row.get("proxy_mode_applied") or "local"}
+
     @app.post("/api/sessions/{run_id}/working-directory")
     async def post_working_directory(run_id: str, request: Request):
         """Save a launch preference without sending commands to a live shell."""
@@ -11342,6 +11378,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         effort_mode: str = "",
         terminal_theme: Optional[str] = None,
         fork_id: str = "",
+        proxy: Optional[str] = None,
     ) -> dict:
         """Build `run.sh` args, spawn the session, and return
         {"ok": True, "method": ..., "command": ..., "tmux_session": ...(optional)}.
@@ -11352,6 +11389,13 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         follow up (e.g. inject a first prompt for "clone w/ log").
         """
         model = _clean_cli_model_arg(model)
+        if proxy is not None:
+            try:
+                proxy_mode.validate(proxy)
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
+            if _norm_agent(agent) not in ("claude", "codex", "cursor"):
+                raise HTTPException(400, "Proxy mode requires a coding agent")
         orch_bin = str(SCRIPTS_DIR / "run.sh")
         runtime_env = os.environ.copy()
         runtime_env["ORCH_OUTPUTS_DIR"] = str(outputs_dir)
@@ -11369,6 +11413,9 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         if projects_root:
             parts.append(f"ORCH_PROJECTS_ROOT={shlex.quote(projects_root)}")
         parts.append(shlex.quote(orch_bin))
+        if proxy is not None:
+            arg_list += ["--proxy-mode", proxy]
+            parts += ["--proxy-mode", shlex.quote(proxy)]
         agent_kind = _norm_agent(agent)
         cursor_state = None
         if agent_kind == "cursor" and resume_id:
@@ -11868,7 +11915,8 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             data[receipt] = {"kind": kind, "status": "starting"}
         result = _spawn_session(agent, source.get("model") or "", label, cwd, "background",
                                 effort=source.get("effort") or "", effort_mode=source.get("effort_mode") or "",
-                                terminal_theme=source.get("terminal_theme"), fork_id=fork_id)
+                                terminal_theme=source.get("terminal_theme"), fork_id=fork_id,
+                                proxy=source.get("proxy_mode") or None)
         result.update(forked_from=run_id, fork_kind=kind, source_preserved=True)
         # Record success before any optional metadata copy can fail.
         with edit_json(path, create=True) as data:
@@ -11938,7 +11986,8 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             data[receipt] = {"digest": digest, "status": "starting"}
         # Preserve the source process. A pane slot changes, never the process identity.
         result = _spawn_session(agent, material["model"], str(label), cwd, "background",
-                                effort=material["effort"], terminal_theme=theme)
+                                effort=material["effort"], terminal_theme=theme,
+                                proxy=(source.get("proxy_mode") or None) if agent != "terminal" else None)
         linked = _copy_linked_folders_to_spawned_run(
             outputs_dir, source, result, exclude_run_id=run_id, label=str(label))
         result = {**result, "switched_from": run_id, "source_preserved": True,
@@ -12533,7 +12582,8 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             result = _spawn_session(agent, model, label, cwd, mode,
                                     resume_id=resume_id, resume_meta=meta,
                                     effort=effort, effort_mode=effort_mode,
-                                    terminal_theme=terminal_theme)
+                                    terminal_theme=terminal_theme,
+                                    proxy=entry.get("proxy_mode") or None)
             active_resume_ids.add(resume_id)
             linked_copy = _copy_linked_folders_to_spawned_run(
                 outputs_dir, src, result, exclude_run_id=source_run_id,
@@ -12682,6 +12732,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         result = _spawn_session(agent, model, label, cwd, mode,
                                 resume_id=resume_id,
                                 resume_meta=inherited_resume,
+                                proxy=src.get("proxy_mode") or None,
                                 effort=effort,
                                 effort_mode=effort_mode,
                                 terminal_theme=terminal_theme)
@@ -12829,7 +12880,8 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
 
         result = _spawn_session(agent, model, new_label, cwd, mode,
                                 effort=effort, effort_mode=effort_mode,
-                                terminal_theme=terminal_theme)
+                                terminal_theme=terminal_theme,
+                                proxy=src.get("proxy_mode") or None)
         linked_copy = _copy_linked_folders_to_spawned_run(
             outputs_dir, src, result, exclude_run_id=run_id, label=new_label)
         new_tmux = (result.get("tmux_session") or "").strip()

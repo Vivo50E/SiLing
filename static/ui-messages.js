@@ -1,6 +1,19 @@
 /* Authored Dashboard copy only. Never translate terminal output or user data. */
 (() => {
   const zh = {
+    "Proxy mode": "代理模式",
+    "Code execution provider": "代码执行方",
+    "Local execution": "本地执行",
+    "Save proxy mode": "保存代理模式",
+    "Proxy mode was not saved": "代理模式未保存",
+    "Checking provider tools…": "正在检查代理工具…",
+    "Provider tool found. Authentication and repository access are checked by the agent when delegating.": "已找到代理工具。委派时由 Agent 检查登录和仓库权限。",
+    "Install the delegate-to-devin skill on the session host before delegating.": "请先在会话主机安装 delegate-to-devin skill。",
+    "Install cmux and sign in to cmux Cloud on the session host before delegating.": "请先在会话主机安装 cmux 并登录 cmux Cloud。",
+    "Provider check failed. You can still save and check the session host.": "工具检查失败，仍可保存，请检查会话主机。",
+    "Proxy mode saved; restart or resume to apply": "代理模式已保存，重启或恢复 Agent 后生效",
+    "Proxy instructions loaded at launch; remote job status is reported by the agent": "启动时已加载代理指令，远程任务状态由 Agent 报告",
+    "The local agent coordinates; code changes and expensive tests go to the remote provider. This is an agent instruction, not a sandbox. Saving applies on the next restart or resume and leaves the current task running.": "本地 Agent 负责协调，代码修改和耗时测试交给远程执行方。这是 Agent 行为指令，不是沙箱限制。保存后在下次重启或恢复时生效，当前任务继续运行。",
     "Related PRs / MRs": "相关 PR / MR",
     "Discovered PR/MR links are saved for this session. Refresh checks branches and continues scanning history.": "已发现的 PR/MR 链接会保存在当前会话中。刷新可查询分支并继续扫描历史输出。",
     "More history remains. Refresh to continue scanning.": "还有历史输出未扫描，请刷新继续。",

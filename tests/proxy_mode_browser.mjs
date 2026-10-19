@@ -1,0 +1,46 @@
+import assert from 'node:assert/strict';
+export async function checkProxyMode({evaluate,waitFor,cdp,viewport,screenshot,requests,configure}) {
+  configure();
+  await viewport(1280,900);
+  await evaluate(`localStorage.setItem('orch_layout','cols-2');localStorage.setItem('orch_slots',JSON.stringify(['proxy-fixture','fixture-1']));localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'en'}))`);
+  await cdp('Page.reload');
+  await waitFor(`document.querySelector('[data-run-id="proxy-fixture"] iframe')`);
+  await evaluate(`window.proxyFrame=document.querySelector('[data-run-id="proxy-fixture"] iframe');document.querySelector('[data-run-id="proxy-fixture"] .pane-input textarea').value='keep draft'`);
+  const open=async()=>{
+    await evaluate(`document.querySelector('[data-run-id="proxy-fixture"] .btn-pane-more').click();document.querySelector('[data-run-id="proxy-fixture"] .btn-proxy-mode').click()`);
+    await waitFor(`document.querySelector('#proxy-mode-dialog').open`);
+    assert.equal(await evaluate(`!!document.querySelector('.pane-menu[open]')`),false);
+  };
+  await open();
+  await evaluate(`document.querySelector('#proxy-mode-dialog select').value='devin';document.querySelector('#proxy-mode-dialog select').dispatchEvent(new Event('change'))`);
+  await waitFor(`document.querySelector('.proxy-status').textContent.includes('tool found')`);
+  const restarts=requests.filter(r=>r.path.endsWith('/restart')).length;
+  await evaluate(`document.querySelector('#proxy-mode-dialog form').requestSubmit()`);
+  await waitFor(`!document.querySelector('#proxy-mode-dialog').open`);
+  assert.equal(requests.filter(r=>r.path.endsWith('/restart')).length,restarts);
+  assert.equal(await evaluate(`document.querySelector('[data-run-id="proxy-fixture"] iframe')===proxyFrame`),true);
+  assert.equal(await evaluate(`document.querySelector('[data-run-id="proxy-fixture"] .pane-input textarea').value`),'keep draft');
+  assert.equal(await evaluate(`document.querySelector('[data-run-id="proxy-fixture"] .pane-proxy-badge').textContent`),'Devin · ↻');
+  await open();
+  assert.equal(await evaluate(`document.querySelector('#proxy-mode-dialog select').value`),'devin');
+  await evaluate(`document.querySelector('#proxy-mode-dialog select').value='cmux-cloud';document.querySelector('#proxy-mode-dialog select').dispatchEvent(new Event('change'))`);
+  await waitFor(`document.querySelector('.proxy-status').textContent.includes('Install cmux')`);
+  await screenshot('proxy-mode-options');
+  await evaluate(`document.querySelector('.proxy-cancel').click()`);
+  await open();
+  assert.equal(await evaluate(`document.querySelector('#proxy-mode-dialog select').value`),'devin','Cancel preserves selection');
+  await evaluate(`window.proxyOldConfirm=window.confirm;window.proxyConfirms=[];window.confirm=text=>{proxyConfirms.push(text);return false};document.querySelector('#proxy-mode-dialog input').checked=true;document.querySelector('#proxy-mode-dialog select').value='local';document.querySelector('#proxy-mode-dialog form').requestSubmit()`);
+  await waitFor(`proxyConfirms.length===1`);
+  assert.equal(requests.filter(r=>r.path.endsWith('/restart')).length,restarts,'Declining confirmation leaves the agent running');
+  await evaluate(`window.confirm=proxyOldConfirm`);
+  await waitFor(`!document.querySelector('#proxy-mode-dialog').open`);
+  assert.equal(await evaluate(`document.querySelector('[data-run-id="proxy-fixture"] .pane-proxy-badge').hidden`),true);
+  await evaluate(`localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'zh'}))`);
+  await cdp('Page.reload');await waitFor(`document.querySelector('[data-run-id="proxy-fixture"] .btn-proxy-mode')`);
+  await open();await viewport(390,844);
+  assert.equal(await evaluate(`document.querySelector('#proxy-mode-heading').textContent`),'代理模式');
+  assert.ok(await evaluate(`document.querySelector('#proxy-mode-dialog').getBoundingClientRect().width<=innerWidth`));
+  await screenshot('proxy-mode-chinese');
+  await evaluate(`document.querySelector('.proxy-cancel').click()`);
+  console.log('PASS: per-pane proxy mode, save/cancel, pending badge, provider availability, no restart, frame/draft preservation and Chinese/mobile layout');
+}

@@ -26,6 +26,7 @@ import { checkGroupOutlines } from './group_outlines_browser.mjs';
 import { checkArrangeNames } from './arrange_names_browser.mjs';
 import { checkMissingConversation } from './missing_conversation_browser.mjs';
 import { checkReviews } from './reviews_browser.mjs';
+import { checkProxyMode } from './proxy_mode_browser.mjs';
 import { checkWorkingDirectory } from './working_directory_browser.mjs';
 import { checkRename } from './rename_browser.mjs';
 import { checkArchives } from './archives_browser.mjs';
@@ -155,6 +156,15 @@ const server = http.createServer((req, res) => {
       if(pickerMode==='error'){res.writeHead(503);res.end('{}');return;}
       if(pickerMode==='delay'){pickerReply=send;return;}
       send();
+    });return;
+  }
+  if (url.pathname.endsWith('/proxy-mode')) {
+    res.setHeader('Content-Type','application/json');
+    const row=sessions.find(s=>s.run_id===decodeURIComponent(url.pathname.split('/')[3]));
+    if(req.method==='GET'){res.end(JSON.stringify({mode:row.proxy_mode||'local',available:{devin:true,'cmux-cloud':false}}));return;}
+    let raw='';req.on('data',c=>raw+=c);req.on('end',()=>{
+      const body=JSON.parse(raw);row.proxy_mode=body.mode;
+      res.end(JSON.stringify({ok:true,proxy_mode:body.mode,proxy_mode_applied:row.proxy_mode_applied||'local'}));
     });return;
   }
   if (url.pathname.endsWith('/working-directory')) {
@@ -554,6 +564,7 @@ try {
     configure:text=>{plainText=text;plainFailure=false;if(!sessions.some(s=>s.run_id==='fixture-plain-perf'))sessions.push({run_id:'fixture-plain-perf',kind:'task',agent:'terminal',display_name:'Large ended log',alive:false});},
     text:value=>{plainText=value;},failure:value=>{plainFailure=value;},reads:()=>plainReads});
   const placementCheck=()=>checkPanePlacement({evaluate,waitFor,cdp,viewport,pause,configure:rows=>{forkMode="ok";sessions.push(...rows);}});
+  const proxyCheck=()=>checkProxyMode({evaluate,waitFor,cdp,viewport,screenshot,requests,configure:()=>{sessions.push({run_id:'proxy-fixture',kind:'run',agent:'claude',alive:true,resume_id:'proxy-native',display_name:'Proxy fixture',cwd:'/fixture'});}});
   const cwdCheck=()=>checkWorkingDirectory({evaluate,waitFor,cdp,viewport,screenshot,submissions:cwdSubmissions,requests,
     picker:{requests:pickerRequests,mode:value=>{pickerMode=value;},release:()=>{pickerReply();pickerReply=null;}},
     mode:value=>{cwdMode=value;},configure:()=>{sessions.push({run_id:'cwd-agent',kind:'run',agent:'claude',alive:true,resume_id:'cwd-native',cwd:'/original',display_name:'Directory fixture'},{run_id:'cwd-terminal',kind:'run',agent:'terminal',alive:true,cwd:'/original',display_name:'Shell fixture'});}});
@@ -628,6 +639,9 @@ try {
   } else if (process.env.UI_ARRANGE_NAMES_ONLY === '1') {
     await arrangeNamesCheck();
     assert.deepEqual(errors, [], 'No uncaught arrange errors');
+  } else if (process.env.UI_PROXY_ONLY === '1') {
+    await proxyCheck();
+    assert.deepEqual(errors, [], 'No uncaught proxy mode errors');
   } else if (process.env.UI_CWD_ONLY === '1') {
     await cwdCheck();
     assert.deepEqual(errors, [], 'No uncaught directory errors');
@@ -1908,6 +1922,7 @@ try {
   await plainCheck();
   await placementCheck();
   await cwdCheck();
+  await proxyCheck();
   await arrangeNamesCheck();
   await sidebarMenuCheck();
   await missingConversationCheck();
