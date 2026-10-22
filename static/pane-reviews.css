@@ -15,3 +15,8 @@
 
 .pane-card .btn-reviews, .pane-card .btn-jira { width: auto; min-width: 30px; gap: 4px; padding-inline: 6px; }
 .pane-link-count { font-size: 11px; font-variant-numeric: tabular-nums; }
+
+.pane-card .btn-reviews[data-review-state="open"] { color: #3fb950; }
+.pane-card .btn-reviews[data-review-state="merged"] { color: #bc8cff; }
+html[data-app-theme="light"] .pane-card .btn-reviews[data-review-state="open"] { color: #167d32; }
+html[data-app-theme="light"] .pane-card .btn-reviews[data-review-state="merged"] { color: #8250df; }

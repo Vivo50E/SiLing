@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 const cards = [];
-const button = (hidden=false) => ({hidden, disabled:false, badge:null,
+const button = (hidden=false) => ({hidden, disabled:false, badge:null,dataset:{},
   querySelector(){return this.badge;}, append(badge){this.badge=badge;}, setAttribute(){}});
 const context = {window:{}, document:{documentElement:{lang:'en'},
   createElement:()=>({}), querySelectorAll:()=>cards}};
@@ -16,9 +16,10 @@ for(const card of cards)counts.update(card,row(card.dataset.runId),api);
 assert.equal(pending.length,2,'At most two requests concurrently');
 assert.ok(pending.every(p=>p.path.endsWith('/reviews?branch=false')),'No provider lookup or disabled Jira discovery');
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
-counts.loaded('pane-0','reviews',[{url:'a'},{url:'b'},{url:'b'}]);
+counts.loaded('pane-0','reviews',[{url:'a',state:'open'},{url:'b',state:'merged'},{url:'b',state:'merged'}]);
 pending[0].resolve({items:[]});await tick();
 assert.equal(cards[0].reviews.badge.textContent,2,'Late initial discovery cannot overwrite a dialog count; URLs deduplicate');
+assert.equal(cards[0].reviews.dataset.reviewState,'open','Late initial discovery cannot overwrite a refreshed status');
 assert.equal(pending.length,3);
 pending[1].reject(new Error('offline'));pending[2].resolve({items:[]});await tick();
 assert.equal(cards[1].reviews.badge.textContent,'?','Failure is not zero');
@@ -35,3 +36,18 @@ counts.update(cards[0],{run_id:'pane-0',linked_folders:[{type:'url',path:'new'}]
 assert.equal(pending.length,6,'Changed saved links invalidate both counts');
 pending[4].resolve({items:[]});pending[5].resolve({items:[]});await tick();
 console.log('PASS: bounded count discovery, deduplication, race protection, no polling, error/retry, group toggle and link invalidation');
+
+const colorCases = [
+  [['open','merged'],'open'], [['opened','closed'],'open'], [['draft','unknown'],'open'],
+  [['MERGED','merged'],'merged'], [['merged','closed'],''], [['merged','unknown'],''],
+  [['closed'],''], [[undefined],''], [[], '']
+];
+for (const [states, expected] of colorCases) {
+  counts.loaded('pane-0','reviews',states.map((state,i)=>({url:String(i),state})));
+  assert.equal(cards[0].reviews.dataset.reviewState || '',expected,JSON.stringify(states));
+  counts.update(cards[0],{run_id:'pane-0',linked_folders:[{type:'url',path:'new'}]},api);
+  assert.equal(cards[0].reviews.dataset.reviewState || '',expected,'Decoration preserves status');
+}
+counts.loaded('pane-0','jira',[{url:'j',state:'open'}]);
+assert.equal(cards[0].jira.dataset.reviewState,undefined,'Jira does not inherit review colors');
+console.log('PASS: review status colors include drafts, require all merged, preserve neutral unknown/closed/empty and survive pane decoration');

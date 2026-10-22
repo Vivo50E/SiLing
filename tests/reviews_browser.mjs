@@ -2,12 +2,14 @@ import assert from 'node:assert/strict';
 export async function checkReviews({evaluate,waitFor,cdp,viewport,screenshot,configure,mode,requests,pause}) {
   await waitFor(`!!document.querySelector('#session-list .session-item')`);
   configure();await viewport(1280,900);
-  await evaluate(`localStorage.clear();localStorage.setItem('orch_layout','cols-2');localStorage.setItem('orch_slots',JSON.stringify(['reviews-agent','reviews-shell']));localStorage.setItem('siling_web_link_target','external');localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'en'}))`);
+  await evaluate(`localStorage.clear();localStorage.setItem('orch_layout','cols-2');localStorage.setItem('orch_slots',JSON.stringify(['reviews-agent','reviews-shell']));localStorage.setItem('siling_web_link_target','external');localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'en',theme:'dark'}))`);
   await cdp('Page.reload');await waitFor(`document.querySelectorAll('#grid .pane iframe').length===2`);
   const button='[data-run-id="reviews-agent"] .btn-reviews';
   await waitFor(`document.querySelector('${button} .pane-link-count')?.textContent==='2'`);
   assert.equal(await evaluate(`!!document.querySelector('${button} svg')`),true);
   assert.equal(await evaluate(`document.querySelector('${button}').getAttribute('aria-label')`),'Related PRs / MRs');
+  assert.equal(await evaluate(`document.querySelector('${button}').dataset.reviewState`),'open');
+  await waitFor(`getComputedStyle(document.querySelector('${button}')).color==='rgb(63, 185, 80)'`);
   const initialCount=requests.filter(r=>r.path.endsWith('/reviews')).length;
   await pause(1100);
   assert.equal(requests.filter(r=>r.path.endsWith('/reviews')).length,initialCount,'Counts do not poll');
@@ -27,11 +29,24 @@ export async function checkReviews({evaluate,waitFor,cdp,viewport,screenshot,con
   mode('history');await evaluate(`document.querySelector('#pane-reviews [data-refresh]').click()`);
   await waitFor(`document.querySelector('#pane-reviews [data-status]').textContent.includes('More history remains')`);
   assert.equal(await evaluate(`document.querySelectorAll('#pane-reviews li').length`),2,'Partial history keeps discovered links visible');
+  for(const [status,expected] of [['merged','merged'],['closed',''],['unknown','']]) {
+    mode(status);await evaluate(`document.querySelector('#pane-reviews [data-refresh]').click()`);
+    await waitFor(`!document.querySelector('#pane-reviews [data-refresh]').disabled && (document.querySelector('${button}').dataset.reviewState || '')==='${expected}'`);
+    if(status==='merged') {
+      await waitFor(`getComputedStyle(document.querySelector('${button}')).color==='rgb(188, 140, 255)'`);
+      await screenshot('pane-reviews-merged-dark');
+      await evaluate(`{const select=document.querySelector('[data-appearance="theme"]');select.value='light';select.dispatchEvent(new Event('change'));}`);
+      await waitFor(`getComputedStyle(document.querySelector('${button}')).color==='rgb(130, 80, 223)'`);
+      await screenshot('pane-reviews-merged-light');
+      await evaluate(`{const select=document.querySelector('[data-appearance="theme"]');select.value='dark';select.dispatchEvent(new Event('change'));}`);
+    }
+  }
   mode('error');await evaluate(`document.querySelector('#pane-reviews [data-refresh]').click()`);
   await waitFor(`document.querySelector('#pane-reviews [data-status]').textContent.includes('Retry')`);
   mode('empty');await evaluate(`document.querySelector('#pane-reviews [data-refresh]').click()`);
   await waitFor(`document.querySelector('#pane-reviews [data-status]').textContent.includes('No related')`);
   assert.equal(await evaluate(`document.querySelector('${button} .pane-link-count').textContent`),'0');
+  assert.equal(await evaluate(`document.querySelector('${button}').dataset.reviewState || ''`),'','Empty list resets status color');
   mode('ok');await evaluate(`document.querySelector('#pane-reviews [data-refresh]').click()`);
   await waitFor(`document.querySelectorAll('#pane-reviews li').length===2`);
   await evaluate(`document.querySelector('#pane-reviews a').click()`);
@@ -43,6 +58,7 @@ export async function checkReviews({evaluate,waitFor,cdp,viewport,screenshot,con
   await cdp('Page.reload');await waitFor(`!!document.querySelector('${button}')`);
   await evaluate(`document.querySelector('${button}').click()`);
   await waitFor(`document.querySelectorAll('#pane-reviews li').length===2`);
+  await waitFor(`getComputedStyle(document.querySelector('${button}')).color==='rgb(22, 125, 50)'`);
   await viewport(390,844);await screenshot('pane-reviews-chinese-mobile');
   assert.equal(await evaluate(`document.querySelector('#pane-reviews-title').textContent`),'相关 PR / MR');
   assert.ok(await evaluate(`document.querySelector('#pane-reviews').getBoundingClientRect().width<=innerWidth`));

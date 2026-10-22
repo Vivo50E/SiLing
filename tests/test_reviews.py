@@ -96,6 +96,22 @@ class ReviewTests(unittest.TestCase):
             self.assertEqual(len(reviews.discover(run, '', temp, lookup=False)['items']), 1)
             self.assertEqual(reviews.discover({}, '', temp, lookup=False)['items'], [])
 
+    def test_manual_links_keep_observed_status_and_custom_label_on_reload(self):
+        url = 'https://github.com/o/r/pull/4'
+        run = {'cwd':'/fixture', 'linked_folders':[{'path':url, 'label':'Custom label'}]}
+        for status in ['open', 'merged']:
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as temp:
+                item = dict(reviews.review_url(url), source='branch', state=status, title='Provider title')
+                with patch.object(reviews, 'branch_reviews', return_value=([item], 'feature', '')):
+                    reviews.discover(run, '', temp)
+                with patch.object(reviews, 'branch_reviews') as branch:
+                    result = reviews.discover(run, '', temp, lookup=False)['items']
+                    branch.assert_not_called()
+                self.assertEqual(len(result), 1)
+                self.assertEqual(result[0]['state'], status)
+                self.assertEqual(result[0]['title'], 'Custom label')
+                self.assertEqual(result[0]['source'], 'linked')
+
     def test_branch_results_remain_available_to_initial_counts_after_reload(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

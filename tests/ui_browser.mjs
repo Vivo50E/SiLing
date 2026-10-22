@@ -127,7 +127,7 @@ const server = http.createServer((req, res) => {
     res.setHeader('Content-Type','application/json');
     if(reviewMode==='error'){res.writeHead(503);res.end(JSON.stringify({detail:'Fixture unavailable'}));return;}
     res.end(JSON.stringify({branch:'feature/demo',warning:'',history_pending:reviewMode==='history',items:reviewMode==='empty'?[]:[
-      {url:'https://github.com/demo/repo/pull/4',title:'Improve dashboard <img src=x>',project:'demo/repo',kind:'PR',number:4,state:'open',source:'branch'},
+      {url:'https://github.com/demo/repo/pull/4',title:'Improve dashboard <img src=x>',project:'demo/repo',kind:'PR',number:4,state:reviewMode==='merged'?'merged':reviewMode==='closed'?'closed':reviewMode==='unknown'?'unknown':'open',source:'branch'},
       {url:'https://gitlab.example/team/repo/-/merge_requests/8',title:'Fix terminal layout',project:'team/repo',kind:'MR',number:8,state:'merged',source:'linked'}]}));return;
   }
   if (url.pathname === '/api/sessions/missing-native/stop') {

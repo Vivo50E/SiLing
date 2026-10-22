@@ -188,7 +188,12 @@ def discover(run, text, directory, *, lookup=True):
                     saved[item['url']] = item
         state['items'] = list(saved.values())[:MAX_ITEMS]
         result = {item['url']: item for item in state['items']}
-        result.update({item['url']: item for item in fresh['items'] if item['source'] == 'linked'})
+        for item in fresh['items']:
+            if item['source'] == 'linked':
+                # Manual links supply labels, not a new provider status. Keep
+                # the last observed status available to initial pane badges.
+                previous = result.get(item['url'], {})
+                result[item['url']] = dict(item, state=previous.get('state', item['state']))
         fresh['items'] = list(result.values())[:MAX_ITEMS]
         fresh['history_pending'] = pending
         fresh['limit_reached'] = len(result) >= MAX_ITEMS

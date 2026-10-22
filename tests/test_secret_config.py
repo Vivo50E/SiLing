@@ -26,9 +26,10 @@ class SecretConfigurationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve(); target=root/'backend.env'
             target.write_text('# keep\nOTHER="original"\nSLACK_BOT_TOKEN=old\nSLACK_BOT_TOKEN=duplicate\n')
-            with patch.object(secret_config.subprocess, 'run') as run:
+            # Do not intercept subprocess calls from background Dashboard workers.
+            with patch.object(secret_config, 'subprocess', spec=subprocess) as process:
                 secret_config.write(self.spec(root,value='fixture "quoted" \\ 中文'))
-                run.assert_not_called()
+                process.run.assert_not_called()
             self.assertEqual(target.read_text(), '# keep\nOTHER="original"\nSLACK_BOT_TOKEN="fixture \\"quoted\\" \\\\ 中文"\n')
             self.assertEqual(stat.S_IMODE(target.stat().st_mode),0o600)
             self.assertEqual(sorted(p.name for p in root.iterdir()),['backend.env'])
