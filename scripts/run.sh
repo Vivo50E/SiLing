@@ -348,6 +348,7 @@ cat > "$SESSION_JSON" <<EOF
   "effort": "$EFFORT",
   "proxy_mode": "$PROXY_MODE",
   "proxy_mode_applied": "$PROXY_MODE",
+  "proxy_delivery_status": "${PROXY_MODE:+startup}",
   "cwd": "$CWD",
   "tmux_session": "$SESSION",
   "log_file": "logs/${TASK_NAME}.log",

@@ -2777,7 +2777,7 @@
 <script src="/static/pane-group-outlines.js?v=3"></script>
 <script src="/static/resume-all.js?v=1"></script>
 <script src="/static/restart-all.js?v=1"></script>
-<script src="/static/proxy-mode.js?v=1"></script>
+<script src="/static/proxy-mode.js?v=2"></script>
 <script src="/static/pane-groups.js?v=14"></script>
 <script src="/static/new-session-options.js?v=1"></script>
 <script src="/static/directory-picker.js?v=1"></script>
@@ -7350,10 +7350,7 @@
     }
   });
 
-  const proxyMode = window.SilingProxyMode({ui, api, sessions:()=>sessions,
-    restart:runId=>restartAgentSession(runId),
-    canRestart:s=>paneCtrls.has(s.run_id) && s.alive && !s.agent_exited && !!s.resume_id
-      && !(s.remote && s.node_online === false)});
+  const proxyMode = window.SilingProxyMode({ui, api, sessions:()=>sessions});
 
   const renameDialog = document.createElement("dialog");
   renameDialog.id = "rename-session-dialog";

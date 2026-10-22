@@ -161,10 +161,10 @@ const server = http.createServer((req, res) => {
   if (url.pathname.endsWith('/proxy-mode')) {
     res.setHeader('Content-Type','application/json');
     const row=sessions.find(s=>s.run_id===decodeURIComponent(url.pathname.split('/')[3]));
-    if(req.method==='GET'){res.end(JSON.stringify({mode:row.proxy_mode||'local',available:{devin:true,'cmux-cloud':false}}));return;}
+    if(req.method==='GET'){res.end(JSON.stringify({mode:row.proxy_mode||'local',proxy_delivery_status:row.proxy_delivery_status||'',available:{devin:true,'cmux-cloud':false}}));return;}
     let raw='';req.on('data',c=>raw+=c);req.on('end',()=>{
-      const body=JSON.parse(raw);row.proxy_mode=body.mode;
-      res.end(JSON.stringify({ok:true,proxy_mode:body.mode,proxy_mode_applied:row.proxy_mode_applied||'local'}));
+      const body=JSON.parse(raw);row.proxy_mode=body.mode;row.proxy_delivery_status='queued';
+      res.end(JSON.stringify({ok:true,proxy_mode:body.mode,proxy_mode_applied:row.proxy_mode_applied||'local',proxy_delivery_status:row.proxy_delivery_status}));
     });return;
   }
   if (url.pathname.endsWith('/working-directory')) {
@@ -564,7 +564,7 @@ try {
     configure:text=>{plainText=text;plainFailure=false;if(!sessions.some(s=>s.run_id==='fixture-plain-perf'))sessions.push({run_id:'fixture-plain-perf',kind:'task',agent:'terminal',display_name:'Large ended log',alive:false});},
     text:value=>{plainText=value;},failure:value=>{plainFailure=value;},reads:()=>plainReads});
   const placementCheck=()=>checkPanePlacement({evaluate,waitFor,cdp,viewport,pause,configure:rows=>{forkMode="ok";sessions.push(...rows);}});
-  const proxyCheck=()=>checkProxyMode({evaluate,waitFor,cdp,viewport,screenshot,requests,configure:()=>{sessions.push({run_id:'proxy-fixture',kind:'run',agent:'claude',alive:true,resume_id:'proxy-native',display_name:'Proxy fixture',cwd:'/fixture'});}});
+  const proxyCheck=()=>checkProxyMode({evaluate,waitFor,cdp,viewport,screenshot,requests,delivery:state=>{const row=sessions.find(s=>s.run_id==='proxy-fixture');row.proxy_delivery_status=state;if(state==='sent')row.proxy_mode_applied=row.proxy_mode;},configure:()=>{sessions.push({run_id:'proxy-fixture',kind:'run',agent:'claude',alive:true,resume_id:'proxy-native',display_name:'Proxy fixture',cwd:'/fixture'});}});
   const cwdCheck=()=>checkWorkingDirectory({evaluate,waitFor,cdp,viewport,screenshot,submissions:cwdSubmissions,requests,
     picker:{requests:pickerRequests,mode:value=>{pickerMode=value;},release:()=>{pickerReply();pickerReply=null;}},
     mode:value=>{cwdMode=value;},configure:()=>{sessions.push({run_id:'cwd-agent',kind:'run',agent:'claude',alive:true,resume_id:'cwd-native',cwd:'/original',display_name:'Directory fixture'},{run_id:'cwd-terminal',kind:'run',agent:'terminal',alive:true,cwd:'/original',display_name:'Shell fixture'});}});

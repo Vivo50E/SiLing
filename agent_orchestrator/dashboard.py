@@ -61,7 +61,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Optional
 from urllib.parse import quote, urlparse
 
-from . import artifacts, session_lifecycle, pane_relations, cursor_runtime, proxy_mode
+from . import artifacts, session_lifecycle, pane_relations, cursor_runtime, proxy_mode, proxy_delivery
 from .plugins import Plugins
 from .workflows import DispatchRejected, Workflows, validate as validate_workflow
 from .agent_cli import resolve_agent_cli
@@ -716,6 +716,9 @@ PASTE_ENTER_DELAY_S = 0.2
 FIRST_PROMPT_SUBMIT_CHECK_DELAY_S = 0.75
 
 
+_PROXY_LAST_INPUT: dict[str, float] = {}
+
+
 def tmux_send(session: str, text: str, literal: bool = True, enter: bool = False,
               *, retries: int | None = None) -> tuple[bool, str]:
     """Send `text` to the tmux pane. Returns (ok, error_msg).
@@ -731,6 +734,7 @@ def tmux_send(session: str, text: str, literal: bool = True, enter: bool = False
     "draft text stuck in cursor-agent's input box" race — see the
     PASTE_ENTER_DELAY_S comment for the gory details.
     """
+    _PROXY_LAST_INPUT[session] = time.monotonic()
     pane, err = _tmux_target_pane(session)
     if not pane:
         return False, err
@@ -826,6 +830,63 @@ def _detect_agent_input_ready(text: str) -> bool:
         ):
             return True
     return False
+
+
+def _proxy_ready_screen(row: dict) -> str:
+    """Fresh, conservative readiness check; never exit copy mode or clear input."""
+    session = row.get("tmux_session", "")
+    last_input = _PROXY_LAST_INPUT.get(session, 0.0)
+    if not session or time.monotonic() - last_input < 3:
+        return ""
+    try:
+        info = subprocess.run([
+            "tmux", "display-message", "-p", "-t", session,
+            "#{pane_id}\t#{cursor_x}\t#{cursor_y}\t#{pane_in_mode}\t#{pane_dead}\t#{pane_current_command}",
+        ], capture_output=True, text=True, timeout=2)
+        if info.returncode:
+            return ""
+        pane, x, y, in_mode, dead, command = info.stdout.strip().split("\t")
+        if in_mode != "0" or dead != "0" or not pane.startswith("%"):
+            return ""
+        if not re.fullmatch(r"(?:claude|codex|agent|cursor-agent|node)(?:[-.][\w.-]+)?", command):
+            return ""
+        capture = subprocess.run(["tmux", "capture-pane", "-p", "-e", "-t", pane],
+                                 capture_output=True, text=True, timeout=2)
+        screen = capture.stdout
+        if capture.returncode:
+            return ""
+        tail = "\n".join(screen.splitlines()[-18:])
+        if not (_detect_agent_input_ready(screen) or re.search(
+                r'bypass permissions on|shift\+tab to cycle|for commands', tail, re.I)):
+            return ""
+        if (_detect_background_active(tail)[0] or _AGENT_EXIT_MARKER in tail
+                or re.search(r"esc(?:ape)? to (?:interrupt|cancel|stop)|ctrl\+c to stop|allow once|allow always|yes,? proceed", tail, re.I)):
+            return ""
+        if not proxy_delivery.empty_editor(screen, int(x), int(y)):
+            return ""
+        row["_proxy_pane"] = pane
+        row["_proxy_input_stamp"] = last_input
+        return info.stdout + screen + str(last_input)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return ""
+
+
+def _send_proxy_instruction(row: dict, prompt: str) -> bool:
+    pane, session = row["_proxy_pane"], row["tmux_session"]
+    stamp = row["_proxy_input_stamp"]
+    if _PROXY_LAST_INPUT.get(session, 0.0) != stamp:
+        return False
+    # Bracketed paste keeps multiline rules in one editor message. Never retry
+    # either paste or Enter after an uncertain transport result.
+    ok, _ = _tmux_send_keys(["tmux", "send-keys", "-t", pane, "-l",
+                            "\x1b[200~" + prompt + "\x1b[201~"], retries=0, timeout=3)
+    if not ok:
+        return False
+    time.sleep(PASTE_ENTER_DELAY_S)
+    if _PROXY_LAST_INPUT.get(session, 0.0) != stamp:
+        return False
+    ok, _ = _tmux_send_keys(["tmux", "send-keys", "-t", pane, "Enter"], retries=0, timeout=3)
+    return ok
 
 
 def _claude_workspace_trust_status(
@@ -3327,6 +3388,7 @@ def _saved_resume_meta(data: dict[str, Any]) -> dict[str, str]:
 
 
 def _add_resume_fields(row: dict[str, Any], data: dict[str, Any]) -> None:
+    row["proxy_delivery_status"] = data.get("proxy_delivery_status", "")
     row["proxy_mode"] = data.get("proxy_mode", "")
     row["proxy_mode_applied"] = data.get("proxy_mode_applied", "")
     row["runtime_config_updated_at"] = data.get("runtime_config_updated_at", "")
@@ -8133,6 +8195,8 @@ def _ttyd_input_resumes_live(message: bytes | str) -> bool:
 
 async def _forward_tty_input(upstream, session: str, message: bytes | str,
                              *, resume_live: bool) -> None:
+    if _ttyd_input_resumes_live(message):
+        _PROXY_LAST_INPUT[session] = time.monotonic()
     if resume_live and _ttyd_input_resumes_live(message):
         # Await cancellation before forwarding the unchanged message. This
         # also covers IME/paste and prevents the first character being eaten
@@ -8516,6 +8580,12 @@ class SessionSnapshotService:
         self._wake.set()
         return True
 
+    def pending_proxy_sessions(self) -> list[dict[str, Any]]:
+        """Copy only queued rows; idle polling must not copy the full inventory."""
+        with self._lock:
+            return [copy.deepcopy(row) for row in self._sessions
+                    if row.get("proxy_delivery_status") == "queued"]
+
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
             return {
@@ -8649,6 +8719,10 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
     remote_secret_client = httpx.AsyncClient(trust_env=False,
         timeout=httpx.Timeout(connect=3.0, read=30.0, write=30.0, pool=3.0))
 
+    proxy_sender = proxy_delivery.ProxyDelivery(
+        session_snapshots.pending_proxy_sessions,
+        _proxy_ready_screen, _send_proxy_instruction, session_snapshots.request_refresh)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         secret_broker.start()
@@ -8656,6 +8730,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         native_activity.start()
         sync_status.start()
         session_snapshots.start()
+        proxy_sender.start()
         remote_nodes.start()
         if (app.state.active_snapshot_autosave_enabled
                 and app.state.active_snapshot_autosave_thread is None):
@@ -8718,6 +8793,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             app.state.active_snapshot_autosave_thread = None
             secret_broker.close()
             link_jobs.close()
+            proxy_sender.stop()
             session_snapshots.stop(timeout=3)
             native_activity.stop(timeout=2)
             _flush_activity_timeline(outputs_dir)
@@ -11097,6 +11173,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         if not row:
             raise HTTPException(404, "run not found")
         return {"mode": row.get("proxy_mode") or "local",
+                "proxy_delivery_status": row.get("proxy_delivery_status", ""),
                 "applied": row.get("proxy_mode_applied") or "local",
                 "available": proxy_mode.availability()}
 
@@ -11115,14 +11192,12 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         metadata = Path(row["run_dir"]) / ("session.json" if row["kind"] == "run" else "state.json")
         if not metadata.is_file():
             raise HTTPException(409, "session metadata is unavailable")
-        with edit_json(metadata) as data:
-            target = data if row["kind"] == "run" else data.get(row.get("task"))
-            if not isinstance(target, dict):
-                raise HTTPException(409, "session metadata is unavailable")
-            target["proxy_mode"] = mode
+        try:
+            result = await asyncio.to_thread(proxy_delivery.save, row, mode)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise HTTPException(409, "session metadata is unavailable") from exc
         session_snapshots.request_refresh()
-        return {"ok": True, "proxy_mode": mode,
-                "proxy_mode_applied": row.get("proxy_mode_applied") or "local"}
+        return {"ok": True, **result}
 
     @app.post("/api/sessions/{run_id}/working-directory")
     async def post_working_directory(run_id: str, request: Request):

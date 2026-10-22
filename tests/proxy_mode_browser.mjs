@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-export async function checkProxyMode({evaluate,waitFor,cdp,viewport,screenshot,requests,configure}) {
+export async function checkProxyMode({evaluate,waitFor,cdp,viewport,screenshot,requests,configure,delivery}) {
   configure();
   await viewport(1280,900);
   await evaluate(`localStorage.setItem('orch_layout','cols-2');localStorage.setItem('orch_slots',JSON.stringify(['proxy-fixture','fixture-1']));localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'en'}))`);
@@ -29,12 +29,16 @@ export async function checkProxyMode({evaluate,waitFor,cdp,viewport,screenshot,r
   await evaluate(`document.querySelector('.proxy-cancel').click()`);
   await open();
   assert.equal(await evaluate(`document.querySelector('#proxy-mode-dialog select').value`),'devin','Cancel preserves selection');
-  await evaluate(`window.proxyOldConfirm=window.confirm;window.proxyConfirms=[];window.confirm=text=>{proxyConfirms.push(text);return false};document.querySelector('#proxy-mode-dialog input').checked=true;document.querySelector('#proxy-mode-dialog select').value='local';document.querySelector('#proxy-mode-dialog form').requestSubmit()`);
-  await waitFor(`proxyConfirms.length===1`);
-  assert.equal(requests.filter(r=>r.path.endsWith('/restart')).length,restarts,'Declining confirmation leaves the agent running');
-  await evaluate(`window.confirm=proxyOldConfirm`);
+  assert.equal(await evaluate(`document.querySelector('#proxy-mode-dialog input[type=checkbox]')`),null,'No restart checkbox');
+  await evaluate(`document.querySelector('#proxy-mode-dialog select').value='local';document.querySelector('#proxy-mode-dialog form').requestSubmit()`);
   await waitFor(`!document.querySelector('#proxy-mode-dialog').open`);
-  assert.equal(await evaluate(`document.querySelector('[data-run-id="proxy-fixture"] .pane-proxy-badge').hidden`),true);
+  assert.equal(requests.filter(r=>r.path.endsWith('/restart')).length,restarts,'Saving never restarts');
+  assert.equal(await evaluate(`document.querySelector('[data-run-id="proxy-fixture"] .pane-proxy-badge').hidden`),false,'Local reset is also queued');
+  for(const [state,expected] of [['queued','Waiting for an idle'],['sent','not an acknowledgement'],['uncertain','no automatic retry']]) {
+    delivery(state);await cdp('Page.reload');await waitFor(`document.querySelector('[data-run-id="proxy-fixture"] .btn-proxy-mode')`);
+    await open();await waitFor(`document.querySelector('.proxy-delivery').textContent.includes(${JSON.stringify(expected)})`);
+    await evaluate(`document.querySelector('.proxy-cancel').click()`);
+  }
   await evaluate(`localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'zh'}))`);
   await cdp('Page.reload');await waitFor(`document.querySelector('[data-run-id="proxy-fixture"] .btn-proxy-mode')`);
   await open();await viewport(390,844);
@@ -42,5 +46,5 @@ export async function checkProxyMode({evaluate,waitFor,cdp,viewport,screenshot,r
   assert.ok(await evaluate(`document.querySelector('#proxy-mode-dialog').getBoundingClientRect().width<=innerWidth`));
   await screenshot('proxy-mode-chinese');
   await evaluate(`document.querySelector('.proxy-cancel').click()`);
-  console.log('PASS: per-pane proxy mode, save/cancel, pending badge, provider availability, no restart, frame/draft preservation and Chinese/mobile layout');
+  console.log('PASS: per-pane proxy mode, save/cancel, pending/sent/uncertain states, provider availability, no restart, frame/draft preservation and Chinese/mobile layout');
 }

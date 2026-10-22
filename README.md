@@ -135,11 +135,16 @@ intervene.
   that Claude/Codex/Cursor session. The local agent coordinates and reviews;
   implementation and expensive tests are delegated. Devin uses the installed
   `delegate-to-devin` skill. cmux Cloud uses its [official CLI](https://cmux.com/docs/cloud/cli);
-  install/sign in on the session host first. Saving does not interrupt work:
-  restart/resume to apply, or select the explicit restart checkbox. A `↻` badge
-  marks a pending change. Restart, resume, snapshot restore and fork inherit the
-  choice; switching to Terminal drops it. Returning to Local sends an explicit
-  reset of the earlier preference on the next launch. These are native startup
+  install/sign in on the session host first. Saving queues a live instruction;
+  no restart is needed. The backend waits for a stable, idle agent with an empty
+  native input box; busy agents, drafts, copy mode and unknown input layouts stay
+  pending. Only the latest unsent choice is delivered. The pane badge/dialog
+  distinguishes queued, sent and uncertain delivery (sent does not mean the agent
+  acknowledged or complied). An uncertain send is never retried automatically;
+  check the terminal, or restart to reapply the saved mode. Stopped sessions load
+  it on resume. Restart, resume, snapshot restore and fork inherit the choice;
+  switching to Terminal drops it. Local execution sends an explicit reset of
+  the earlier preference. These are native user-message/startup
   prompt instructions, not enforced sandbox restrictions or an automatic job
   scheduler. Provider availability checks only detect local tools; the agent
   checks credentials/access, reports remote progress and blocks instead of

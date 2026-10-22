@@ -1,6 +1,13 @@
 /* Authored Dashboard copy only. Never translate terminal output or user data. */
 (() => {
   const zh = {
+    "No restart needed. Instructions are sent when the agent is idle and its input box is empty. Current work is not interrupted. The saved mode also loads on restart or resume. This is an agent instruction, not a sandbox.": "无需重启。Agent 空闲且输入框为空时自动发送规则，不打断当前任务。重启或恢复时也会加载已保存的模式。这是行为指令，不是沙箱限制。",
+    "Sent to agent; this is not an acknowledgement.": "已发送给 Agent，不代表 Agent 已确认执行。",
+    "Delivery unconfirmed. Check the terminal; no automatic retry. Restart can reapply the saved mode.": "发送结果不确定，请检查终端，不会自动重试。重启可重新加载已保存的模式。",
+    "Waiting for an idle agent and an empty input box.": "待发送：等待 Agent 空闲且输入框为空。",
+    "Saved. Instructions will load on the next resume.": "已保存，下次恢复时加载规则。",
+    "Instructions loaded at startup; this is not an acknowledgement.": "启动时已加载规则，不代表 Agent 已确认执行。",
+    "Saved. Save again to queue live delivery.": "已保存，再次保存可加入无需重启的发送队列。",
     "Proxy mode": "代理模式",
     "Code execution provider": "代码执行方",
     "Local execution": "本地执行",
