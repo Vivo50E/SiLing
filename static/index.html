@@ -3094,6 +3094,7 @@
           <h2 data-ui-message="Dashboard%20updates">Dashboard updates</h2>
           <p class="ui-secondary" id="dashboard-update-help"><span data-ui-message=Updates%20here%20include%20the%20Dashboard%20service%20and%20web%20interface.%20They%20do%20not%20update%20the%20Electron%20desktop%20client.%20For%20desktop%20client%20updates%2C%20use%20the%20macOS%20menu%3A%20SiLing%20%E2%86%92%20Check%20for%20Desktop%20Updates%E2%80%A6.%20Applying%20a%20Dashboard%20update%20restarts%20the%20service%20after%20verification%20and%20approval%3B%20Agent%20sessions%20keep%20running.>Updates here include the Dashboard service and web interface. They do not update the Electron desktop client. For desktop client updates, use the macOS menu: SiLing → Check for Desktop Updates…. Applying a Dashboard update restarts the service after verification and approval; Agent sessions keep running.</span></p>
           <div class="settings-inline-actions"><button id="btn-sync-status" title="Read-only workspace sync status" data-ui-title=Read-only%20workspace%20sync%20status hidden><span data-ui-message=sync%3A%20%E2%80%A6>sync: …</span></button><button id="btn-self-update" title="Check, test, and apply updates" data-ui-title=Check%2C%20test%2C%20and%20apply%20updates><span data-ui-message=apply%20update>apply update</span></button></div>
+          <details id="self-update-error" hidden open><summary data-ui-message="Update%20failure%20details">Update failure details</summary><pre id="self-update-error-output" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:16rem;overflow:auto" role="alert"></pre></details>
         </section>
         </div>
       </div>
@@ -3942,6 +3943,7 @@
   let selfUpdateVerification = null;
   let selfUpdatePhase = "idle";
   let selfUpdateActionBusy = false;
+  let selfUpdateError = "";
   const selfUpdateReminder = $("self-update-reminder");
   ui.containDialogFocus(selfUpdateReminder);
   $("self-update-later").addEventListener("click", () => selfUpdateReminder.close());
@@ -3995,7 +3997,11 @@
     const candidate = eligible[0];
     const candidateLabel = candidate?.kind === "upstream"
       ? `upstream ${candidate.source}` : candidate?.branch;
-    if (selfUpdatePhase === "verified" && candidate) {
+    $("self-update-error").hidden = !selfUpdateError;
+    $("self-update-error-output").textContent = selfUpdateError;
+    if (selfUpdatePhase === "failed" && selfUpdateError) {
+      button.title = selfUpdateError;
+    } else if (selfUpdatePhase === "verified" && candidate) {
       button.title = `Tests passed for ${candidateLabel} (${candidate.short_head}). Click again to approve, apply, and restart.`;
     } else if (candidate) {
       button.title = `Test ${candidateLabel} (${candidate.short_head}) before approval. A second click applies and restarts.`;
@@ -4014,6 +4020,13 @@
             body: {},
           })
         : await api("/api/self-update");
+      const previous = selfUpdateStatus.last_verification;
+      if (selfUpdatePhase === "idle" && previous?.ok === false
+          && selfUpdateStatus.candidates.some(c => c.head === previous.candidate_head
+            && c.target_head === previous.target_head)) {
+        selfUpdatePhase = "failed";
+        selfUpdateError = previous.output || "Tests failed";
+      }
       renderSelfUpdateStatus();
     } catch (e) {
       if (refreshUpstream) {
@@ -4030,8 +4043,8 @@
       renderSelfUpdateStatus();
       if (!silent) {
         selfUpdatePhase = "failed";
+        selfUpdateError = "Update check failed: " + e.message;
         renderSelfUpdateStatus();
-        $("btn-self-update").title = "Update check failed: " + e.message;
       }
     }
   }
@@ -4051,6 +4064,7 @@
 
       if (!verificationStillMatches()) {
         selfUpdatePhase = "verifying";
+        selfUpdateError = "";
         selfUpdateVerification = null;
         renderSelfUpdateStatus();
         try {
@@ -4068,8 +4082,8 @@
           showSelfUpdateReminder();
         } catch (e) {
           selfUpdatePhase = "failed";
+          selfUpdateError = "Verification failed: " + e.message;
           renderSelfUpdateStatus();
-          button.title = "Verification failed: " + e.message;
         }
         return;
       }
@@ -4093,8 +4107,8 @@
       } catch (e) {
         selfUpdateVerification = null;
         selfUpdatePhase = "failed";
+        selfUpdateError = "Apply failed: " + e.message;
         renderSelfUpdateStatus();
-        button.title = "Apply failed: " + e.message;
         await pollSelfUpdateStatus(true);
       }
     } finally {

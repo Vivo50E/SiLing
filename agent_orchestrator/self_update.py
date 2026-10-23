@@ -19,6 +19,7 @@ from typing import Any, Optional
 SELF_IMPROVEMENT_BRANCH_PREFIX = "agent/self-improve-"
 VERIFY_TTL_SECONDS = 15 * 60
 MAX_OUTPUT_CHARS = 16_000
+VERIFY_TIMEOUT_SECONDS = 15 * 60
 
 
 class SelfUpdateError(RuntimeError):
@@ -40,6 +41,8 @@ class SelfUpdateManager:
         self._verified: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
         self._fetch_lock = threading.Lock()
+        self._verify_lock = threading.Lock()
+        self._last_verification: dict[str, Any] | None = None
 
     def _git(
         self,
@@ -331,6 +334,7 @@ class SelfUpdateManager:
             "target_head": target_head,
             "target_dirty": target_dirty,
             "candidate_prefix": SELF_IMPROVEMENT_BRANCH_PREFIX,
+            "last_verification": self._last_verification,
             "candidates": candidates,
         }
 
@@ -344,13 +348,26 @@ class SelfUpdateManager:
         env["PATH"] = runtime_bin + os.pathsep + env.get("PATH", os.defpath)
         return env
 
-    def verify(self, branch: str, *, timeout: float = 300) -> dict[str, Any]:
+    def verify(self, branch: str, *, timeout: float = VERIFY_TIMEOUT_SECONDS) -> dict[str, Any]:
+        if not self._verify_lock.acquire(blocking=False):
+            raise SelfUpdateError("Update verification is already running; wait for it to finish")
+        try:
+            result = self._verify(branch, timeout=timeout)
+            # Keep diagnostics across page reloads, never expose an approval token
+            # through the read-only status endpoint.
+            self._last_verification = {key: value for key, value in result.items()
+                                       if key not in ("verification_token", "expires_in_seconds")}
+            return result
+        finally:
+            self._verify_lock.release()
+
+    def _verify(self, branch: str, *, timeout: float) -> dict[str, Any]:
         candidate = self._candidate(branch)
         if not candidate["eligible"]:
             raise SelfUpdateError(candidate["blocked_reason"])
         command = [
             self.python, "-m", "unittest", "discover",
-            "-s", "tests", "-p", "test_*.py", "-q",
+            "-s", "tests", "-p", "test_*.py", "-v",
         ]
         started = time.monotonic()
         test_dir = Path(candidate["worktree"])
@@ -378,9 +395,12 @@ class SelfUpdateManager:
             if result.returncode == 0 and not test_count:
                 output += "\nVerification rejected: the suite reported no tests."
         except subprocess.TimeoutExpired as exc:
-            output = f"test suite timed out after {timeout:g}s"
-            if exc.stdout:
-                output += "\n" + str(exc.stdout)
+            def decoded(value):
+                return value.decode("utf-8", errors="replace") if isinstance(value, bytes) else (value or "")
+            # unittest writes progress and failures to stderr, including when
+            # TimeoutExpired returns bytes despite text=True.
+            progress = "\n".join(filter(None, (decoded(exc.stdout), decoded(exc.stderr))))
+            output = progress + f"\nTest suite timed out after {timeout:g}s; verification did not complete."
             passed = False
             test_count = 0
         except (OSError, SelfUpdateError) as exc:

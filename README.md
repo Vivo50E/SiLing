@@ -869,6 +869,11 @@ commits on the current branch's Git upstream. If no tracking branch is set, it
 falls back to `origin/<current-branch>` and then `origin/main`. Remote refs are
 refreshed on startup, every five minutes, and whenever the button is clicked.
 
+Verification runs one full test suite at a time, with a 15-minute hard limit. Failed checks appear directly
+under **Update failure details** in Settings and remain available after a page
+reload until the service restarts. Timeout details include the last test output;
+failed or incomplete tests never enable approval.
+
 Updates require a clean working tree and a fast-forward path. The first click
 runs the complete suite against the exact candidate—upstream code is tested in
 a temporary detached worktree without changing local files. After tests pass,

@@ -2949,7 +2949,11 @@ Please approve the remote login
             remote = temp / "remote"
             for root in (local, remote):
                 (root / "tracked").mkdir(parents=True)
-                (root / "tracked" / "base.txt").write_text("base")
+                base = root / "tracked" / "base.txt"
+                base.write_text("base")
+                # This fixture represents an unchanged baseline, including its
+                # mtime. Separate writes can cross a second under machine load.
+                os.utime(base, ns=(1_700_000_000_000_000_000,) * 2)
             service = sync_status.SyncStatusService(sync_status.SyncSettings(
                 enabled=True, local_root=str(local), remote_root=str(remote),
                 paths=("tracked",),

@@ -8,6 +8,7 @@ import http from 'node:http';
 import { spawn, execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
+import { checkUpdateDiagnostics } from './update_diagnostics_browser.mjs';
 import { checkMobileReader } from './mobile_browser.mjs';
 import { checkMobileCompose } from './mobile_compose_browser.mjs';
 import { checkResources } from './resources_browser.mjs';
@@ -51,6 +52,7 @@ const sessions = ['claude', 'codex', 'terminal', 'cursor', 'custom-agent'].map((
 let plainText='',plainFailure=false,plainReads=0;
 let updateHead = "b".repeat(40), updateMode = "ok", updateReply;
 const updateApplies = [];
+let lastVerification = null;
 const updateCandidate = () => ({eligible:true,branch:"agent/self-improve-fixture",head:updateHead,short_head:updateHead.slice(0,7),target_head:"a".repeat(40),ahead:1});
 const requests = [];
 let cwdMode='ok';
@@ -180,14 +182,14 @@ const server = http.createServer((req, res) => {
     res.setHeader('Content-Type','application/json');
     if (url.pathname.endsWith('/verify')) {
       const candidate = updateCandidate();
-      const reply = () => res.end(JSON.stringify(updateMode === 'failed' ? {ok:false,output:'Fixture tests failed'} : {...candidate,candidate_head:candidate.head,ok:true,verification_token:'fixture-'+candidate.head,expires_in_seconds:600}));
+      const reply = () => {lastVerification = {...candidate,candidate_head:candidate.head,ok:updateMode !== 'failed',output:updateMode === 'failed' ? 'Fixture tests failed\nDiagnostic <img src=x> detail' : 'Tests passed'};res.end(JSON.stringify({...lastVerification,...(lastVerification.ok ? {verification_token:'fixture-'+candidate.head,expires_in_seconds:600} : {})}));};
       if (updateMode === 'delay') {updateReply=reply;return;}
       reply();return;
     }
     if (url.pathname.endsWith('/apply')) {
       let raw='';req.on('data',c=>raw+=c);req.on('end',()=>{updateApplies.push(JSON.parse(raw));res.end('{"ok":true}');});return;
     }
-    return res.end(JSON.stringify({available:true,candidates:[updateCandidate()]}));
+    return res.end(JSON.stringify({available:true,candidates:[updateCandidate()],last_verification:lastVerification}));
   }
   if (url.pathname.endsWith('/input')) {
     res.setHeader('Content-Type','application/json');
@@ -600,7 +602,9 @@ try {
     groupFixture.groups=[{id:'jira-group',name:'Jira group',color:'teal'},{id:'other-group',name:'Other',color:'blue'}];
     groupFixture.members={'jira-on':'jira-group','jira-off':'other-group'};
   }});
-  if (process.env.UI_ACTIVITY_BAR_ONLY === '1') {
+  if (process.env.UI_UPDATE_ONLY === '1') {
+    await checkUpdateDiagnostics({evaluate,waitFor,cdp,viewport,screenshot,mode:value=>{updateMode=value;},applies:updateApplies});
+  } else if (process.env.UI_ACTIVITY_BAR_ONLY === '1') {
     await checkPaneActivityBar({evaluate,waitFor,cdp,viewport,screenshot,configure:(state,color)=>{
       groupFixture.groups=[{id:'activity-group',name:'Activity group',color,color2:'#a477ef',color_style:'split'}];
       groupFixture.members={'fixture-0':'activity-group','fixture-1':'activity-group'};

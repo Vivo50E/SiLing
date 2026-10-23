@@ -153,6 +153,58 @@ class SelfUpdateManagerTests(unittest.TestCase):
             environment = manager._verification_environment()
         self.assertEqual(environment["PATH"].split(os.pathsep)[0], str(runtime_bin))
 
+    def test_timeout_preserves_stderr_progress_and_never_approves(self):
+        (self.candidate / "tests" / "test_slow.py").write_text(
+            "import sys,time,unittest\n"
+            "class SlowTest(unittest.TestCase):\n"
+            "    def test_wait(self):\n"
+            "        print('diagnostic stderr marker',file=sys.stderr,flush=True)\n"
+            "        time.sleep(30)\n"
+        )
+        _git(self.candidate, "add", "tests/test_slow.py")
+        _git(self.candidate, "commit", "-m", "add slow test")
+        result = self.manager.verify("agent/self-improve-test", timeout=5)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["test_count"], 0)
+        self.assertIn("diagnostic stderr marker", result["output"])
+        self.assertIn("test_wait", result["output"])
+        self.assertIn("timed out", result["output"])
+        self.assertNotIn("verification_token", result)
+        self.assertEqual(self.manager.status()["last_verification"], result)
+
+    def test_failed_and_empty_suites_never_receive_approval(self):
+        smoke = self.candidate / "tests" / "test_smoke.py"
+        (self.candidate / ".gitignore").write_text("__pycache__/\n")
+        _git(self.candidate, "add", ".gitignore")
+        for source in ("import unittest\nclass Fail(unittest.TestCase):\n"
+                       "    def test_no(self): self.fail('expected fixture failure')\n", ""):
+            smoke.write_text(source)
+            _git(self.candidate, "add", "tests/test_smoke.py")
+            _git(self.candidate, "commit", "-m", "change fixture suite")
+            result = self.manager.verify("agent/self-improve-test")
+            self.assertFalse(result["ok"])
+            self.assertNotIn("verification_token", result)
+            self.assertIn("expected fixture failure" if source else "Ran 0 tests", result["output"])
+
+    def test_status_diagnostics_never_expose_approval_token(self):
+        result = self.manager.verify("agent/self-improve-test")
+        self.assertTrue(result["ok"])
+        diagnostic = self.manager.status()["last_verification"]
+        self.assertEqual(diagnostic["candidate_head"], result["candidate_head"])
+        self.assertNotIn("verification_token", diagnostic)
+        self.assertNotIn("expires_in_seconds", diagnostic)
+
+    def test_concurrent_verification_is_rejected_and_lock_recovers(self):
+        self.manager._verify_lock.acquire()
+        try:
+            with self.assertRaisesRegex(SelfUpdateError, "already running"):
+                self.manager.verify("agent/self-improve-test")
+        finally:
+            self.manager._verify_lock.release()
+        with self.assertRaises(SelfUpdateError):
+            self.manager.verify("missing-branch")
+        self.assertTrue(self.manager.verify("agent/self-improve-test")["ok"])
+
     def test_apply_requires_exact_confirmation_and_verified_commits(self):
         candidate = self.manager._candidate("agent/self-improve-test")
         token = "verified-token"
