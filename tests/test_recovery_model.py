@@ -1,5 +1,7 @@
 """Recovery must not confuse launch defaults, native choices and tool output."""
 import json
+import os
+from unittest.mock import patch
 from pathlib import Path
 import tempfile
 import unittest
@@ -55,3 +57,55 @@ class RecoveryModelTests(unittest.TestCase):
         row = {}
         dashboard._add_resume_fields(row, {'runtime_config_updated_at': '2026-10-15T12:00:00Z'})
         self.assertEqual(row['runtime_config_updated_at'], '2026-10-15T12:00:00Z')
+
+
+class CodexRecoveryPathTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.home = Path(self.temp.name)
+        self.patch = patch.dict(os.environ, {'CODEX_HOME': str(self.home), 'ORCH_SLOW_TRANSCRIPT_SCAN': '0'})
+        self.patch.start()
+        self.addCleanup(self.patch.stop)
+        self.row = {'agent': 'codex', 'resume_id': 'conversation-123',
+                    'model': 'launch-model', 'effort': 'high', 'effort_mode': 'fixed',
+                    'started_at': '2026-10-15T10:00:00Z',
+                    'resume': {'source_path': str(self.home / 'old-run' / 'session.json')}}
+
+    def transcript(self, name='rollout-conversation-123.jsonl', identity='conversation-123', model='new-model'):
+        path = self.home / 'sessions' / '2026' / '09' / '01' / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        records = [{'type': 'session_meta', 'payload': {'id': identity}},
+                   {'type': 'turn_context', 'timestamp': '2026-10-15T11:00:00Z',
+                    'payload': {'model': model}}]
+        path.write_text('\n'.join(map(json.dumps, records)) + '\n')
+        return path
+
+    def test_recovery_finds_older_directory_without_slow_inventory_scan(self):
+        self.transcript()
+        self.assertEqual(dashboard._run_with_recovery_model(self.row)['model'], 'new-model')
+
+    def test_fork_filename_cannot_override_exact_conversation(self):
+        self.transcript()
+        self.transcript('rollout-conversation-123_other.jsonl', 'other', 'wrong-model')
+        self.assertEqual(dashboard._run_with_recovery_model(self.row)['model'], 'new-model')
+
+    def test_wrong_explicit_transcript_is_rejected_even_for_default_model(self):
+        self.row['model'] = 'default'
+        path = self.transcript('rollout-conversation-123_other.jsonl', 'other', 'wrong-model')
+        self.row['resume']['source_path'] = str(path)
+        self.assertEqual(dashboard._run_with_recovery_model(self.row)['model'], 'default')
+
+    def test_later_dashboard_choice_wins_over_native_history(self):
+        self.transcript()
+        self.row['runtime_config_updated_at'] = '2026-10-15T12:00:00Z'
+        self.assertEqual(dashboard._run_with_recovery_model(self.row)['model'], 'launch-model')
+
+    def test_missing_transcript_does_not_guess_a_neighbor_model(self):
+        self.transcript('rollout-other.jsonl', 'other', 'wrong-model')
+        self.assertEqual(dashboard._run_with_recovery_model(self.row)['model'], 'launch-model')
+
+    def test_snapshot_retains_dashboard_selection_boundary(self):
+        self.row['runtime_config_updated_at'] = '2026-10-15T12:00:00Z'
+        snapshot = dashboard._snapshot_entry_from_run(self.row, 0, 0)
+        self.assertEqual(snapshot['runtime_config_updated_at'], self.row['runtime_config_updated_at'])

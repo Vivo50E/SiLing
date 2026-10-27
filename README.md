@@ -603,6 +603,12 @@ More contains reconnect, terminal palette, move/swap, close pane, and terminate.
 **More → Restart agent** interrupts the selected Claude/Codex/Cursor process and
 launches a background session with the same saved native conversation ID. Use it
 to reload MCP configuration; independent MCP servers are not updated or restarted.
+Claude/Codex Restart, Resume and Restore saved use the latest recorded primary-conversation
+model unless a newer Dashboard selection overrides it. Codex recovery locates the exact
+conversation across date directories and checks the ID inside the transcript, so an old
+creation date or a fork's filename cannot select the wrong model. Snapshot restore also
+checks the source run's latest saved model preference. Native menu changes without a
+recorded turn are not inferred from another pane's global defaults.
 Cursor records model menu changes per process, including selections made before sending
 another message. Restart, Resume, and Restore saved carry this conversation-bound
 selection and its parameters into the replacement process; another pane’s shared

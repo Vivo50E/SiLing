@@ -3975,6 +3975,8 @@ def _snapshot_entry_from_run(r: dict[str, Any],
         "effort_mode_source": r.get("effort_mode_source", ""),
         "cwd": r.get("cwd", ""),
         "started_at": r.get("started_at", ""),
+        "runtime_config_updated_at": r.get("runtime_config_updated_at", ""),
+        "resume_source_path": resume.get("source_path") or r.get("resume_source_path", ""),
         "tmux_session": r.get("tmux_session", ""),
         "resume_id": r.get("resume_id", ""),
         "resume_cmd": r.get("resume_cmd", ""),
@@ -4501,6 +4503,37 @@ def _run_with_native_model_effort(r: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _codex_recovery_transcript(identity: str, source: str = "") -> Path | None:
+    """Resolve an exact conversation at recovery time, independently of run date.
+
+    This scan is deliberately outside periodic inventory. A fork's filename may
+    contain its parent's ID, so filenames alone are never identity evidence.
+    """
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", identity):
+        return None
+
+    def matches(path: Path) -> bool:
+        try:
+            with path.open(encoding="utf-8", errors="replace") as stream:
+                record = json.loads(stream.readline(1024 * 1024))
+            return (isinstance(record, dict) and record.get("type") == "session_meta"
+                    and isinstance(record.get("payload"), dict)
+                    and record["payload"].get("id") == identity)
+        except (OSError, ValueError):
+            return False
+
+    explicit = _resume_source_transcript_path(source)
+    if explicit is not None and matches(explicit):
+        return explicit
+    root = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex").expanduser() / "sessions"
+    try:
+        paths = sorted(root.glob(f"*/*/*/*{identity}*.jsonl"),
+                       key=lambda path: path.stat().st_mtime_ns, reverse=True)
+        return next((path for path in paths if matches(path)), None)
+    except OSError:
+        return None
+
+
 def _run_with_recovery_model(r: dict[str, Any]) -> dict[str, Any]:
     """Prefer a newer primary-conversation model over the launch-time value.
 
@@ -4508,18 +4541,22 @@ def _run_with_recovery_model(r: dict[str, Any]) -> dict[str, Any]:
     primary records exclude tool payloads, subagents and older conversation turns.
     A later Dashboard model change remains authoritative until a newer native turn.
     """
-    out = _run_with_native_model_effort(r)
     resume = r.get("resume") if isinstance(r.get("resume"), dict) else {}
     agent = _norm_agent(resume.get("agent") or r.get("agent") or "")
     identity = str(r.get("resume_id") or "")
     if agent not in {"claude", "codex"} or not identity:
-        return out
+        return _run_with_native_model_effort(r)
     source = str(resume.get("source_path") or r.get("resume_source_path") or "")
-    path = _resume_source_transcript_path(source)
-    if path is None:
-        path = (_claude_transcript_path(identity, str(r.get("cwd") or ""))
-                if agent == "claude" else
-                _codex_transcript_path(identity, str(r.get("started_at") or "")))
+    if agent == "codex":
+        path = _codex_recovery_transcript(identity, source)
+        if path is None:
+            return dict(r)
+        # Reuse the verified path for effort recovery and future resumes.
+        r = {**r, "resume": {**resume, "source_path": str(path)}}
+    else:
+        path = (_resume_source_transcript_path(source)
+                or _claude_transcript_path(identity, str(r.get("cwd") or "")))
+    out = _run_with_native_model_effort(r)
     if path is None:
         return out
     boundary = max(_parse_iso_epoch(r.get("started_at")) or 0,
@@ -5015,9 +5052,9 @@ def _graceful_stop_agent(session: str, agent: str,
     second_sigint_sent = False
     last_reason = "waiting for agent exit"
     while time.monotonic() < deadline:
-        time.sleep(0.35)
-        if not tmux_alive(session):
-            return {"ok": True, "reason": "tmux session exited"}
+        # Leave headroom for tmux process/IPC latency inside the CLI's short
+        # confirmation window. _agent_exited already checks session liveness.
+        time.sleep(0.05 if not second_sigint_sent else 0.35)
         pane = tmux_capture(session)
         if _agent_exited(session, pane):
             return {"ok": True, "reason": "agent exited"}
@@ -12605,6 +12642,8 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                 "label": entry.get("label", ""),
                 "agent": agent,
                 "model": entry.get("model", ""),
+                "started_at": entry.get("started_at", ""),
+                "runtime_config_updated_at": entry.get("runtime_config_updated_at", ""),
                 "effort": entry.get("effort", ""),
                 "effort_mode": entry.get("effort_mode", ""),
                 "cwd": entry.get("cwd", ""),
@@ -12616,7 +12655,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                     "cmd": entry.get("resume_cmd", ""),
                     "source": entry.get("resume_source", "active-snapshot"),
                     "recorded_at": entry.get("resume_recorded_at", ""),
-                    "source_path": entry.get("source_metadata_path", ""),
+                    "source_path": entry.get("resume_source_path") or entry.get("source_metadata_path", ""),
                     "confidence": "exact",
                 },
                 "linked_folders": _normalize_linked_folders(entry.get("linked_folders")),
@@ -12625,7 +12664,15 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             if check["status"] != "ready":
                 skipped.append({"source_run_id": source_run_id, "reason": check["reason"]})
                 continue
-            src = _run_with_native_model_effort(src)
+            # A saved snapshot may predate a Dashboard model change. Consult
+            # only its exact source record; never infer identity from the cwd.
+            latest = _lookup_run_light(outputs_dir, source_run_id) if source_run_id else None
+            if (latest and latest.get("resume_id") == resume_id
+                    and _norm_agent(latest.get("agent", "")) == agent):
+                for key in ("model", "effort", "effort_mode", "started_at", "runtime_config_updated_at"):
+                    if key in latest:
+                        src[key] = latest[key]
+            src = _run_with_recovery_model(src)
             label = str(
                 entry.get("label")
                 or entry.get("display_name")

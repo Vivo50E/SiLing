@@ -196,12 +196,50 @@ class AgentRestartTests(unittest.TestCase):
                 record = {"timestamp": "2026-10-15T11:00:00Z",
                           "type": "assistant" if agent == "claude" else "turn_context",
                           "message" if agent == "claude" else "payload": {"model": "new-choice"}}
-                self.transcript.write_text(json.dumps(record) + "\n")
+                header = (json.dumps({"type": "session_meta", "payload": {"id": "conversation-123"}}) + "\n"
+                          if agent == "codex" else "")
+                self.transcript.write_text(header + json.dumps(record) + "\n")
                 response = self.restart()
                 self.assertEqual(response.status_code, 200, response.text)
                 args = self.spawn.call_args.args[0]
                 self.assertEqual(args[args.index("--model") + 1], "new-choice")
                 self.assertEqual(args[args.index("--resume-id") + 1], "conversation-123")
+
+    def codex_cross_day_fixture(self):
+        self.stack.enter_context(patch.dict(os.environ, {'CODEX_HOME': str(self.root / 'codex')}))
+        path = self.root / 'codex' / 'sessions' / '2026' / '09' / '01' / 'rollout-conversation-123.jsonl'
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps({'type': 'session_meta', 'payload': {'id': 'conversation-123'}}) + '\n'
+                        + json.dumps({'type': 'turn_context', 'timestamp': '2026-10-15T11:00:00Z',
+                                      'payload': {'model': 'new-choice'}}) + '\n')
+        self.src.update(started_at='2026-10-15T10:00:00Z',
+                        resume={'agent': 'codex', 'source_path': str(self.root / 'old' / 'session.json')})
+
+    def test_restart_cross_day_keeps_model_and_conversation(self):
+        self.codex_cross_day_fixture()
+        response = self.restart()
+        self.assertEqual(response.status_code, 200, response.text)
+        args = self.spawn.call_args.args[0]
+        self.assertEqual(args[args.index('--model') + 1], 'new-choice')
+        self.assertEqual(args[args.index('--resume-id') + 1], 'conversation-123')
+
+    def test_snapshot_restore_recovers_native_model_and_respects_newer_dashboard_choice(self):
+        self.codex_cross_day_fixture()
+        entry = dashboard._snapshot_entry_from_run(self.src, 0, 0)
+        for latest in (None, {**self.src, 'model': 'dashboard-choice',
+                             'runtime_config_updated_at': '2026-10-15T12:00:00Z'}):
+            with self.subTest(latest=bool(latest)), \
+                    patch.object(dashboard, '_load_active_snapshot', return_value={'sessions': [entry]}), \
+                    patch.object(dashboard, '_discover_runs', return_value=[]), \
+                    patch.object(dashboard, '_lookup_run_light', return_value=latest):
+                response = self.client.post('/api/active-snapshot/restore', json={},
+                                            headers={'Authorization': 'Bearer fixture-token'})
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertEqual(response.json()['restored_count'], 1)
+                args = self.spawn.call_args.args[0]
+                self.assertEqual(args[args.index('--model') + 1],
+                                 'dashboard-choice' if latest else 'new-choice')
+                self.assertEqual(args[args.index('--resume-id') + 1], 'conversation-123')
 
     def test_resume_uses_new_model_but_respects_later_dashboard_selection(self):
         self.src.update(agent="claude", alive=False, started_at="2026-10-15T10:00:00Z",
@@ -350,7 +388,7 @@ class AgentRestartTests(unittest.TestCase):
 
 
 class GracefulExitTimingTests(unittest.TestCase):
-    def run_exit(self, *, timeout=12, exits_after=2, window=0.8, send_failure=0):
+    def run_exit(self, *, timeout=12, exits_after=2, window=0.8, send_failure=0, probe_delay=0):
         now = [0.0]
         presses = []
         exited = [False]
@@ -364,8 +402,11 @@ class GracefulExitTimingTests(unittest.TestCase):
             return True, ""
         def sleep(seconds):
             now[0] += seconds
+        def capture(_session):
+            now[0] += probe_delay
+            return dashboard._AGENT_EXIT_MARKER if exited[0] else "idle"
         with patch.object(dashboard, "tmux_alive", return_value=True), \
-                patch.object(dashboard, "tmux_capture", side_effect=lambda _: dashboard._AGENT_EXIT_MARKER if exited[0] else "idle"), \
+                patch.object(dashboard, "tmux_capture", side_effect=capture), \
                 patch.object(dashboard, "tmux_send_key", side_effect=send), \
                 patch.object(dashboard.time, "monotonic", side_effect=lambda: now[0]), \
                 patch.object(dashboard.time, "time", side_effect=lambda: now[0]), \
@@ -382,6 +423,12 @@ class GracefulExitTimingTests(unittest.TestCase):
                 self.assertTrue(result["ok"], result)
                 self.assertEqual(len(presses), 2)
                 self.assertLess(presses[1] - presses[0], 0.8)
+
+    def test_confirmation_leaves_time_for_a_slow_tmux_probe(self):
+        result, presses, _ = self.run_exit(probe_delay=0.45)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(len(presses), 2)
+        self.assertLess(presses[1] - presses[0], 0.8)
 
     def test_first_press_exit_does_not_receive_a_second_key(self):
         result, presses, _ = self.run_exit(exits_after=1)

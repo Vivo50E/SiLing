@@ -479,6 +479,10 @@ linked-file allowed roots 限制。Remote Nodes 使用节点上的同类接口�
 
 「更多 → 重启当前 Agent」会在确认后中断选中的 Claude／Codex／Cursor 进程，并用已保存的
 原生对话 ID 启动新的后台会话，适合重新加载 MCP 配置；不会更新或重启独立的 MCP 服务。
+Claude／Codex 的 Restart、Resume 和 Restore saved 会读取主对话最新记录的模型，
+并尊重时间更晚的 Dashboard 模型选择。Codex 恢复会跨日期目录查找，并核对文件内的
+真实会话 ID，避免因创建日期较早或 fork 文件名而选错模型；快照恢复也会检查来源会话
+最新保存的偏好。原生菜单切换尚未产生对话记录时，不会从其他 pane 的全局默认值猜测。
 Cursor 按进程记录菜单中的模型及参数，无需先发送消息。重启、Resume 和 Restore saved
 会携带绑定该对话的选择，其他 pane 的共享模型偏好不会覆盖它；记录仅含模型字段，不含凭据。
 更新后已有 Cursor 进程需先重启一次加载记录功能，再选择希望使用的模型。
