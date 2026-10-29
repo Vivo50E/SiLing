@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import fcntl
 import json
 import os
@@ -29,13 +30,14 @@ def _write_unlocked(path: Path, data: dict) -> None:
 
 
 @contextmanager
-def edit_json(path: Path, *, create: bool = False) -> Iterator[dict]:
+def edit_json(path: Path, *, create: bool = False, skip_unchanged: bool = False) -> Iterator[dict]:
     """Lock, load, mutate, and atomically replace one JSON object."""
     path = Path(path)
     lock_path = path.with_name(f".{path.name}.lock")
     with lock_path.open("a", encoding="utf-8") as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-        if path.exists():
+        existed = path.exists()
+        if existed:
             data = json.loads(path.read_text())
         elif create:
             data = {}
@@ -43,8 +45,10 @@ def edit_json(path: Path, *, create: bool = False) -> Iterator[dict]:
             raise FileNotFoundError(path)
         if not isinstance(data, dict):
             raise ValueError(f"JSON metadata must be an object: {path}")
+        before = copy.deepcopy(data) if skip_unchanged and existed else None
         yield data
-        _write_unlocked(path, data)
+        if not skip_unchanged or data != before:
+            _write_unlocked(path, data)
 
 
 def write_json(path: Path, data: dict) -> None:

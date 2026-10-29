@@ -109,7 +109,7 @@ def context(directory: Path, detected: dict, settings: dict | None = None) -> di
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     detected = dict(detected)
     observing = not detected.pop('browsing', False)
-    with edit_json(directory / 'context.json', create=True) as data:
+    with edit_json(directory / 'context.json', create=True, skip_unchanged=True) as data:
         if settings is not None:
             mode = settings.get('mode', 'auto')
             host = str(settings.get('host') or '').strip()

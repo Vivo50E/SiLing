@@ -15,6 +15,7 @@ import { checkResources } from './resources_browser.mjs';
 import { checkPanePlacement } from './pane_placement_browser.mjs';
 import { checkPlainPolling } from './plain_polling_browser.mjs';
 import { checkFork } from './fork_browser.mjs';
+import { checkTerminalFileResources } from './terminal_file_resources_browser.mjs';
 import { checkPaneCache } from './pane_cache_browser.mjs';
 import { checkPaneActivityBar } from './pane_activity_bar_browser.mjs';
 import { checkPaneHeader } from './pane_header_browser.mjs';
@@ -614,6 +615,7 @@ try {
     assert.deepEqual(errors, [], 'No uncaught activity bar errors');
   } else if (process.env.UI_PANE_CACHE_ONLY === '1') {
     await checkPaneCache({evaluate,waitFor,cdp,viewport,pause});
+    await checkTerminalFileResources({evaluate});
     assert.deepEqual(errors, [], 'No uncaught cache errors');
   } else if (process.env.UI_PANE_HEADER_ONLY === '1') {
     await checkPaneHeader({evaluate,waitFor,cdp,viewport,screenshot});

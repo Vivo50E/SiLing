@@ -23,6 +23,30 @@ class TerminalFilesTests(unittest.TestCase):
         result=subprocess.run(['node','tests/terminal_file_context.cjs'],capture_output=True,text=True,timeout=10)
         self.assertEqual(result.returncode,0,result.stderr)
 
+    @unittest.skipUnless(shutil.which('node'), 'Node.js required')
+    def test_browser_resource_lifecycle(self):
+        result = subprocess.run(['node', 'tests/terminal_file_resources.cjs'],
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_unchanged_context_does_not_replace_state_file(self):
+        detected = {'host': '', 'cwd': '/project', 'source': 'tmux'}
+        first = files.context(self.root, detected)
+        path = self.root / 'context.json'
+        # An unmistakably old timestamp makes the assertion independent of
+        # filesystem timestamp precision and scheduler timing.
+        os.utime(path, ns=(1000000000, 1000000000))
+        inode = path.stat().st_ino
+        self.assertEqual(files.context(self.root, detected), first)
+        self.assertEqual(path.stat().st_mtime_ns, 1000000000)
+        self.assertEqual(path.stat().st_ino, inode)
+        moved = files.context(self.root, {**detected, 'cwd': '/elsewhere'})
+        self.assertNotEqual(moved['current']['id'], first['current']['id'])
+        self.assertNotEqual(path.stat().st_mtime_ns, 1000000000)
+        self.assertEqual(files.get_context(self.root, first['current']['id'])['cwd'], '/project')
+        files.context(self.root, detected, {'mode': 'local', 'auto_discover': False})
+        self.assertFalse(files.read_state(self.root)['settings']['auto_discover'])
+
     def test_context_preserves_host_and_directory_after_ssh_exit(self):
         remote = files.context(self.root, {'host':'dev', 'cwd':'', 'source':'ssh-process'},
                                {'mode':'auto', 'cwd':'/home/demo/project'})

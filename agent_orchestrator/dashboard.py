@@ -7327,7 +7327,11 @@ def _discover_runs_unlocked(
         tracked_rows: list[dict[str, Any]] = []
         for run in runs:
             tracked = dict(run)
-            transcript = _conversation_transcript_path(run)
+            # Only live Codex runs are tailed. Claude uses hooks; resolving
+            # historical transcripts can recursively scan months of files.
+            transcript = (_conversation_transcript_path(run)
+                          if run.get("alive") and _norm_agent(run.get("agent", "")) == "codex"
+                          else None)
             tracked["_native_transcript_path"] = str(transcript or "")
             tracked_rows.append(tracked)
         native_activity.register_runs(tracked_rows)

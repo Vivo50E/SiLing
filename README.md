@@ -44,6 +44,12 @@ The following are additions and improvements maintained in
   Terminal sizing is rechecked after container and font changes. On macOS,
   the default terminal font explicitly selects Chinese and emoji fallbacks to
   reduce system font lookup; custom terminal fonts are preserved.
+- **Lower idle terminal overhead:** file-context checks run only after terminal
+  output changes; hidden panes are checked at most once every 30 seconds.
+  Unchanged context is not rewritten to disk, and closing a pane releases its
+  file observers and pending requests without stopping the agent. Lines first
+  observed after a deferred scan require explicit file context when their host
+  cannot be established safely.
 - **Links and file previews:** optional in-Dashboard web browsing, local terminal
   paths that open in Files, read-only remote file snapshots from SSH terminals
   with a configured file host, more reliable wrapped links (including long URL

@@ -1,21 +1,30 @@
 /* File context belongs to terminal output, independently of the program in it. */
 (() => {
   const tr = (en, zh) => document.documentElement.lang.startsWith('zh') ? zh : en;
-  const states = new Map();
   const likelyPath = /(?:\/|\.\.?\/|\b)[^\s<>"'`]*\.[A-Za-z0-9]{1,12}\b/u;
   window.SilingTerminalFiles = {
     create({api, openViewer}) {
+      const states = new Map();
+      const bindings = new Map();
+      const detach = id => {
+        bindings.get(id)?.();
+        bindings.delete(id);
+        states.get(id)?.stop?.();
+        states.delete(id);
+      };
       const endpoint = (id, suffix) => `/api/sessions/${encodeURIComponent(id)}/${suffix}`;
       const getState = id => {
         if (!states.has(id)) states.set(id, {id, records: [], pending: false});
         return states.get(id);
       };
-      const refresh = async state => {
-        let data = await api(endpoint(state.id, 'file-context'));
+      const refresh = async (state, signal) => {
+        let data = await api(endpoint(state.id, 'file-context'), {signal});
+        if (signal?.aborted) return null;
         let legacy = '';
         try { legacy = localStorage.getItem('siling_ssh_host:' + state.id) || ''; } catch (_) {}
         if (!data.configured && legacy) {
-          data = await api(endpoint(state.id,'file-context'),{method:'PUT',body:{mode:data.current.host===legacy?'auto':'ssh',host:legacy,cwd:'',auto_discover:true}});
+          data = await api(endpoint(state.id,'file-context'),{method:'PUT',body:{mode:data.current.host===legacy?'auto':'ssh',host:legacy,cwd:'',auto_discover:true},signal});
+          if (signal?.aborted) return null;
         }
         state.data = data;
         return data;
@@ -29,18 +38,31 @@
         return matches[0].context;
       };
       const scan = async state => {
-        if (state.pending || !state.frame?.isConnected) return;
+        if (state.pending || !state.dirty || !state.frame?.isConnected) return;
+        const hidden = document.hidden || state.frame.closest?.('.cached-pane, .group-hidden');
+        if (hidden && Date.now() - (state.lastScan || 0) < 30000) {
+          state.deferredOutput = true;
+          return;
+        }
         const term = state.frame.contentWindow?.term;
         if (!term) return;
         state.pending = true;
+        state.dirty = false;
+        state.lastScan = Date.now();
+        const abort = new AbortController();
+        state.abort = abort;
         try {
-          const {current, settings} = await refresh(state);
-          if (!state.frame?.isConnected) return;
+          const data = await refresh(state, abort.signal);
+          if (abort.signal.aborted || !data || !state.frame?.isConnected) return;
+          const {current, settings} = data;
           state.records = state.records.filter(r => !r.marker.isDisposed);
           const buffer = term.buffer.active;
           const alternate = buffer.type === 'alternate';
           const lines = [];
-          const initial = !state.initialized || state.data.observing === false;
+          // A throttled scan may span host/cwd changes. Keep newly observed
+          // lines unassigned instead of silently linking them to the wrong host.
+          const initial = !state.initialized || state.data.observing === false || state.deferredOutput;
+          state.deferredOutput = false;
           // Only observe live output. Scrolling back must not relabel old text
           // with today's host/cwd. Existing marker ownership stays immutable.
           const start = !alternate && state.lastLine && !state.lastLine.isDisposed ? Math.max(0, buffer.baseY - 200, state.lastLine.line) : buffer.baseY;
@@ -65,48 +87,63 @@
           while (state.records.length > 1024) state.records.shift().marker.dispose();
           const text = lines.join('\n').slice(0, 16000);
           if (settings.auto_discover !== false && likelyPath.test(text) && !current.unresolved) {
-            await api(endpoint(state.id, 'discover-files'), {method:'POST', body:{text, context_id:current.id, automatic:true}});
+            await api(endpoint(state.id, 'discover-files'), {method:'POST', body:{text, context_id:current.id, automatic:true}, signal:abort.signal});
           }
           state.error = '';
-        } catch (error) { state.error = error.message; }
-        finally { state.pending = false; }
+        } catch (error) {
+          if (!abort.signal.aborted) { state.error = error.message; state.dirty = true; }
+        } finally { state.pending = false; if (state.abort === abort) state.abort = null; }
       };
       const attach = (frame, id) => {
+        detach(id);
         if (frame.dataset.fileContext !== 'true') return;
-        frame.addEventListener('load', () => {
-          const state = getState(id);
-          if (state.stop) state.stop();
-          state.frame = frame;
-          for (const record of state.records) record.marker.dispose();
-          state.records = [];
-          state.initialized=false;
-          state.lastLine?.dispose();state.lastLine=null;
+        const load = () => {
+          states.get(id)?.stop?.();
+          const state = {id, records: [], pending: false, dirty: true, frame};
+          states.set(id, state);
           frame.contentWindow.silingFileContextForRow = row => rowContext(state, row);
           let writeListener;
-          const clearListeners=[];
+          const clearListeners = [];
           let disposed = false;
-          const timer = setInterval(() => {
-            if (!frame.isConnected || disposed) { state.stop(); return; }
+          const tick = () => {
+            if (disposed) return;
+            if (!frame.isConnected) { detach(id); return; }
             const term = frame.contentWindow?.term;
             if (term && !writeListener) {
-              writeListener=term.onWriteParsed(()=>{});
-              for (const final of ['J','K']) {
-                const listener=term.parser?.registerCsiHandler({final},params=>{
-                  const b=term.buffer.active; const cursor=b.baseY+b.cursorY;
-                  for(const rec of state.records) {
-                    const y=rec.marker.line;
-                    if(final==='K'?y===cursor:y>=b.baseY && (Number(params[0]||0)===2 || y>=cursor)) rec.cleared=true;
+              writeListener = term.onWriteParsed(() => { state.dirty = true; });
+              for (const final of ['J', 'K']) {
+                const listener = term.parser?.registerCsiHandler({final}, params => {
+                  state.dirty = true;
+                  const b = term.buffer.active; const cursor = b.baseY + b.cursorY;
+                  for (const rec of state.records) {
+                    const y = rec.marker.line;
+                    if (final === 'K' ? y === cursor : y >= b.baseY && (Number(params[0] || 0) === 2 || y >= cursor)) rec.cleared = true;
                   }
                   return false;
                 });
-                if(listener)clearListeners.push(listener);
+                if (listener) clearListeners.push(listener);
               }
             }
             void scan(state);
-          }, 4000);
-          state.stop = () => { disposed = true; clearInterval(timer); writeListener?.dispose();clearListeners.forEach(item=>item.dispose()); };
-          void scan(state);
-        });
+          };
+          const timer = setInterval(tick, 4000);
+          state.stop = () => {
+            disposed = true;
+            clearInterval(timer);
+            state.abort?.abort(); state.abort = null;
+            writeListener?.dispose();
+            clearListeners.forEach(item => item.dispose());
+            for (const record of state.records) record.marker.dispose();
+            state.records = [];
+            state.lastLine?.dispose(); state.lastLine = null;
+            try { delete frame.contentWindow.silingFileContextForRow; } catch (_) {}
+            state.frame = null;
+            state.stop = null;
+          };
+          tick();
+        };
+        frame.addEventListener('load', load);
+        bindings.set(id, () => frame.removeEventListener('load', load));
       };
       const openPath = async (id, path, contextId) => {
         if (!contextId) {
@@ -281,7 +318,7 @@
         dialog.showModal();
         void pollJobs();
       };
-      return {attach, openPath, configure, states};
+      return {attach, detach, openPath, configure, states};
     },
   };
 })();

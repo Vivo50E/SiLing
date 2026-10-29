@@ -9008,6 +9008,7 @@
   }
 
   function detachPaneSources(ctrl) {
+    terminalFileInstance?.detach(ctrl.runId);
     if (ctrl.es) { try { ctrl.es.close(); } catch {} ctrl.es = null; }
     if (ctrl.plainPoll) {
       try { clearTimeout(ctrl.plainPoll.delayTimer); } catch {}
