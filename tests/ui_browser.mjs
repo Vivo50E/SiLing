@@ -126,10 +126,11 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({items:jiraMode==='empty'?[]:[{url:'https://jira.example/browse/DEMO-12',key:'DEMO-12',title:'Ticket <img src=x>',source:'linked'}]}));return;
   }
   if (url.pathname.endsWith('/reviews')) {
+    requests[requests.length-1].search=url.search;
     res.setHeader('Content-Type','application/json');
     if(reviewMode==='error'){res.writeHead(503);res.end(JSON.stringify({detail:'Fixture unavailable'}));return;}
-    res.end(JSON.stringify({branch:'feature/demo',warning:'',history_pending:reviewMode==='history',items:reviewMode==='empty'?[]:[
-      {url:'https://github.com/demo/repo/pull/4',title:'Improve dashboard <img src=x>',project:'demo/repo',kind:'PR',number:4,state:reviewMode==='merged'?'merged':reviewMode==='closed'?'closed':reviewMode==='unknown'?'unknown':'open',source:'branch'},
+    res.end(JSON.stringify({branch:'feature/demo',warning:'',history_pending:reviewMode==='history',status_pending:reviewMode==='status-partial'?3:0,status_failed:reviewMode==='status-error'?1:0,items:reviewMode==='empty'?[]:[
+      {url:'https://github.com/demo/repo/pull/4',title:'Improve dashboard <img src=x>',project:'demo/repo',kind:'PR',number:4,status_error:reviewMode==='status-error'?'unavailable':'',status_checked_at:1730000000,state:reviewMode==='status-error'?'merged':reviewMode==='merged'?'merged':reviewMode==='closed'?'closed':reviewMode==='unknown'?'unknown':'open',source:'branch'},
       {url:'https://gitlab.example/team/repo/-/merge_requests/8',title:'Fix terminal layout',project:'team/repo',kind:'MR',number:8,state:'merged',source:'linked'}]}));return;
   }
   if (url.pathname === '/api/sessions/missing-native/stop') {

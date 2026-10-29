@@ -1,6 +1,15 @@
 /* Authored Dashboard copy only. Never translate terminal output or user data. */
 (() => {
   const zh = {
+    "Status is checked for saved PR/MR links across branches and repositories. Refresh updates statuses and continues scanning history.": "按每条 PR/MR 链接查询状态，覆盖历史分支和其他仓库；刷新可更新状态并继续扫描历史输出。",
+    "More review statuses remain. Refresh to continue.": "还有 PR/MR 状态未查询，请刷新继续。",
+    "Some statuses could not be refreshed. Previous known states are retained.": "部分状态未能刷新，已保留此前已知的状态。",
+    "Configure this host in gh/glab to query its status.": "请先在 gh/glab 中配置此主机，再查询状态。",
+    "Status lookup is not supported for this link.": "此链接暂不支持状态查询。",
+    "Install gh/glab on the session host to query status.": "请在会话主机上安装 gh/glab，以查询状态。",
+    "Status lookup timed out. Refresh to retry.": "状态查询超时，请刷新重试。",
+    "Status lookup failed. Check gh/glab login and repository access.": "状态查询失败，请检查 gh/glab 登录和仓库访问权限。",
+    "Last successful status check": "最近一次成功查询状态",
     "Update failure details": "更新失败详情",
     "No restart needed. Instructions are sent when the agent is idle and its input box is empty. Current work is not interrupted. The saved mode also loads on restart or resume. This is an agent instruction, not a sandbox.": "无需重启。Agent 空闲且输入框为空时自动发送规则，不打断当前任务。重启或恢复时也会加载已保存的模式。这是行为指令，不是沙箱限制。",
     "Sent to agent; this is not an acknowledgement.": "已发送给 Agent，不代表 Agent 已确认执行。",

@@ -10404,7 +10404,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         return text
 
     @app.get("/api/sessions/{run_id}/reviews")
-    def get_session_reviews(run_id: str, branch: bool = True):
+    def get_session_reviews(run_id: str, branch: bool = True, refresh: bool = False):
         run = _lookup_run_light(outputs_dir, run_id)
         if not run:
             raise HTTPException(404, "session not found")
@@ -10425,7 +10425,8 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         # A shell may have cd'ed or SSH'ed elsewhere; its launch cwd is not
         # evidence of the repository currently shown in the terminal.
         return reviews.discover(run, text, terminal_files.state_dir(outputs_dir, run_id),
-                                lookup=branch and _norm_agent(run.get("agent", "")) != "terminal")
+                                lookup=branch and _norm_agent(run.get("agent", "")) != "terminal",
+                                status_lookup=branch or refresh, force_status=refresh)
 
     @app.get("/api/sessions/{run_id}/jira")
     def get_session_jira(run_id: str):

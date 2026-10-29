@@ -67,3 +67,15 @@ staging file. Existing plaintext, OS memory copies and same-account/admin file
 access are outside this boundary. To keep the agent from reading the target,
 use separate OS privileges/hosts and withhold that file's access. This writer
 is not an encrypted vault or a substitute for the status-only operation broker.
+
+## Review status lookup
+
+On-demand PR/MR status queries use fixed gh/glab read-only commands with numeric
+review IDs and explicit repositories. Detail queries accept HTTPS URLs only and
+restrict hosts to github.com/gitlab.com, configured CLI host keys, or explicit
+GH_HOST/GITLAB_HOST values. CLI configuration is read locally to identify trusted
+hosts; credentials and provider error output are never returned or cached by the
+Dashboard. A matching response identity is required. Queries run outside the
+session index lock with bounded concurrency and duration. Badge-only requests do
+not run provider commands. Status failures retain previous observations and are
+reported separately; displayed colors are based on the latest known status.

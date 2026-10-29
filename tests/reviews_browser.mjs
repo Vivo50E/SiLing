@@ -41,6 +41,15 @@ export async function checkReviews({evaluate,waitFor,cdp,viewport,screenshot,con
       await evaluate(`{const select=document.querySelector('[data-appearance="theme"]');select.value='dark';select.dispatchEvent(new Event('change'));}`);
     }
   }
+  mode('status-partial');await evaluate(`document.querySelector('#pane-reviews [data-refresh]').click()`);
+  await waitFor(`document.querySelector('#pane-reviews [data-status]').textContent.includes('More review statuses remain')`);
+  mode('status-error');await evaluate(`document.querySelector('#pane-reviews [data-refresh]').click()`);
+  await waitFor(`document.querySelector('#pane-reviews small').textContent.includes('repository access')`);
+  assert.equal(await evaluate(`document.querySelector('${button}').dataset.reviewState`),'merged','Failed query retains last known merged status');
+  assert.ok(await evaluate(`document.querySelector('#pane-reviews small').title.includes('Last successful status check')`));
+  assert.ok(requests.some(request=>request.path.endsWith('/reviews') && request.search?.includes('branch=false') && request.search.includes('refresh=true')),'Manual links query status without relying on a branch');
+  assert.ok(requests.some(request=>request.path.endsWith('/reviews') && request.search?.includes('branch=true') && request.search.includes('refresh=true')),'Explicit refresh bypasses the status cache');
+  await screenshot('pane-reviews-status-retry');
   mode('error');await evaluate(`document.querySelector('#pane-reviews [data-refresh]').click()`);
   await waitFor(`document.querySelector('#pane-reviews [data-status]').textContent.includes('Retry')`);
   mode('empty');await evaluate(`document.querySelector('#pane-reviews [data-refresh]').click()`);

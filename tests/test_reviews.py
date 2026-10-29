@@ -8,6 +8,12 @@ from agent_orchestrator import reviews, dashboard
 
 
 class ReviewTests(unittest.TestCase):
+    def setUp(self):
+        for stub in [patch.object(reviews, 'lookup_review', return_value={'status_attempted_at':1, 'status_error':'unavailable'}),
+                     patch.object(reviews, 'provider_hosts', return_value={'gh':{'github.com'},'glab':{'gitlab.example'}})]:
+            stub.start()
+            self.addCleanup(stub.stop)
+
     def fixture_lookup(self, root, run):
         original = dashboard._lookup_run_light
         return patch.object(dashboard, '_lookup_run_light', side_effect=lambda outputs, run_id:
