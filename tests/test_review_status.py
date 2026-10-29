@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
@@ -22,6 +23,16 @@ class ReviewStatusTests(unittest.TestCase):
         for stub in [patch.object(reviews, 'provider_hosts', return_value=self.hosts),
                      patch.object(reviews, 'branch_reviews', return_value=([], 'feature', ''))]:
             stub.start(); self.addCleanup(stub.stop)
+
+    @contextmanager
+    def clock(self, *, now=None, ticks=None):
+        # Keep the real time module available to unrelated Dashboard workers.
+        with patch.object(reviews, 'time', wraps=time) as clock:
+            if now is not None:
+                clock.time.return_value = now
+            if ticks is not None:
+                clock.monotonic.side_effect = ticks
+            yield
 
     def item(self, number=10, kind='MR'):
         url = (f'https://gitlab.example/group/sub/repo/-/merge_requests/{number}' if kind == 'MR'
@@ -71,7 +82,7 @@ class ReviewStatusTests(unittest.TestCase):
         output = self.item()['url']
         manual = self.item(11, 'PR')['url']
         run = {'linked_folders':[{'path':manual, 'label':'Custom label'}]}
-        with patch.object(reviews, '_run', side_effect=self.response) as execute, patch.object(reviews.time, 'time', return_value=100):
+        with patch.object(reviews, '_run', side_effect=self.response) as execute, self.clock(now=100):
             first = reviews.discover(run, output, self.root, lookup=False, status_lookup=True)
             self.assertEqual({item['state'] for item in first['items']}, {'merged'})
             self.assertEqual(execute.call_count, 2)
@@ -93,9 +104,9 @@ class ReviewStatusTests(unittest.TestCase):
 
     def test_refresh_failure_retains_known_state_timestamp_and_reports_error(self):
         url = self.item()['url']
-        with patch.object(reviews, '_run', side_effect=self.response), patch.object(reviews.time,'time',return_value=100):
+        with patch.object(reviews, '_run', side_effect=self.response), self.clock(now=100):
             reviews.discover({}, url, self.root, lookup=False, status_lookup=True)
-        with patch.object(reviews, '_run', side_effect=ValueError('fixture-private-output')), patch.object(reviews.time,'time',return_value=110):
+        with patch.object(reviews, '_run', side_effect=ValueError('fixture-private-output')), self.clock(now=110):
             result = reviews.discover({}, '', self.root, lookup=False, status_lookup=True, force_status=True)
         self.assertEqual(result['items'][0]['state'], 'merged')
         self.assertEqual(result['items'][0]['status_checked_at'], 100)
@@ -147,7 +158,8 @@ class ReviewStatusTests(unittest.TestCase):
             updates, pending = reviews.refresh_statuses([self.item(i) for i in range(1,9)], None)
         self.assertEqual(len(updates),8);self.assertEqual(pending,0)
         self.assertGreater(peak,1);self.assertLessEqual(peak,4)
-        with patch.object(reviews.time, 'monotonic', side_effect=[0,1,13]), patch.object(reviews, '_run', side_effect=self.response) as run:
+        with self.clock(ticks=[0,1,13]), patch.object(reviews, '_run', side_effect=self.response) as run:
+            time.monotonic()  # A background clock read must not consume the query's budget fixture.
             updates,pending = reviews.refresh_statuses([self.item(i) for i in range(1,9)], None)
         self.assertEqual(run.call_count,4);self.assertEqual(pending,4)
 
