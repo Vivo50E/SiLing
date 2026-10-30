@@ -4022,7 +4022,12 @@
     }
   }
 
+  let selfUpdateStatusPolls = 0;
   async function pollSelfUpdateStatus(silent = true, refreshUpstream = false) {
+    // Slow Git discovery must not accumulate automatic requests. Explicit
+    // update actions still perform and await their own fresh check.
+    if (silent && selfUpdateStatusPolls) return;
+    selfUpdateStatusPolls += 1;
     try {
       selfUpdateStatus = refreshUpstream
         ? await api("/api/self-update/fetch", {
@@ -4057,6 +4062,8 @@
         selfUpdateError = "Update check failed: " + e.message;
         renderSelfUpdateStatus();
       }
+    } finally {
+      selfUpdateStatusPolls -= 1;
     }
   }
 
@@ -4272,11 +4279,16 @@
     }
   }
 
+  let syncStatusPolls = 0;
   async function pollSyncStatus(silent = true) {
+    if (silent && syncStatusPolls) return;
+    syncStatusPolls += 1;
     try {
       renderSyncStatus(await api("/api/sync/status"));
     } catch (e) {
       if (!silent) alert(ui.message("Sync status failed:\n") + e.message);
+    } finally {
+      syncStatusPolls -= 1;
     }
   }
 
@@ -14364,9 +14376,11 @@
       applyDashboardConfig(DEFAULT_DASHBOARD_CONFIG);
     }
     try { health = await api("/api/health"); } catch {}
-    await pollSyncStatus(true);
+    // Workspace rendering depends on config, health and the session inventory,
+    // not on Git/sync checks. Never hold saved or resumed panes behind these.
+    void pollSyncStatus(true);
     setInterval(() => pollSyncStatus(true), 30000);
-    await pollSelfUpdateStatus(true, true);
+    void pollSelfUpdateStatus(true, true);
     setInterval(() => pollSelfUpdateStatus(true), 30000);
     setInterval(() => pollSelfUpdateStatus(true, true), 300000);
     refreshPhoneUrl();

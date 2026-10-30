@@ -35,6 +35,7 @@ import { checkArchives } from './archives_browser.mjs';
 import { checkGroupOrder } from './group_order_browser.mjs';
 import { checkSessionOptions } from './session_options_browser.mjs';
 import { checkSessionHelp } from './session_help_browser.mjs';
+import { checkPaneStartup } from './pane_startup_browser.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const executable = process.env.UI_BROWSER;
@@ -56,6 +57,9 @@ const updateApplies = [];
 let lastVerification = null;
 const updateCandidate = () => ({eligible:true,branch:"agent/self-improve-fixture",head:updateHead,short_head:updateHead.slice(0,7),target_head:"a".repeat(40),ahead:1});
 const requests = [];
+let holdBootRequests = false;
+let bootRequestsFail = false;
+const heldBootRequests = [];
 let cwdMode='ok';
 let pickerMode='ok', pickerReply=null;
 const pickerRequests=[];
@@ -122,6 +126,14 @@ let bulkMode=false,bulkHold=null;const bulkBodies=[];
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   requests.push({ method: req.method, path: url.pathname });
+  if (holdBootRequests && ['/api/sync/status', '/api/self-update', '/api/self-update/fetch'].includes(url.pathname)) {
+    heldBootRequests.push({path:url.pathname, release:(fail=false)=>{
+      res.setHeader('Content-Type','application/json');
+      res.writeHead(fail ? 503 : 200);
+      res.end(JSON.stringify(fail ? {detail:'Fixture background check failed'} : {available:true,candidates:[updateCandidate()]}));
+    }});
+    return;
+  }
   if (url.pathname.startsWith('/api/jira/mcp')) {
     res.setHeader('Content-Type','application/json');
     if (req.method==='GET') return res.end(JSON.stringify(jiraConnection));
@@ -197,6 +209,7 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname.startsWith('/api/self-update')) {
     res.setHeader('Content-Type','application/json');
+    if (bootRequestsFail) {res.writeHead(503);res.end(JSON.stringify({detail:'Fixture background check failed'}));return;}
     if (url.pathname.endsWith('/verify')) {
       const candidate = updateCandidate();
       const reply = () => {lastVerification = {...candidate,candidate_head:candidate.head,ok:updateMode !== 'failed',output:updateMode === 'failed' ? 'Fixture tests failed\nDiagnostic <img src=x> detail' : 'Tests passed'};res.end(JSON.stringify({...lastVerification,...(lastVerification.ok ? {verification_token:'fixture-'+candidate.head,expires_in_seconds:600} : {})}));};
@@ -571,6 +584,18 @@ try {
   await viewport(baseline ? 1280 : 390, 800);
   if (!baseline) sessions[0].panel_state='blocked';
   await cdp('Page.addScriptToEvaluateOnNewDocument', { source: `if(!localStorage.getItem('orch_layout')){localStorage.setItem('orch_layout','cols-2x2');localStorage.setItem('orch_slots',JSON.stringify(['fixture-0','fixture-1','fixture-2','fixture-3']));localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'en',theme:'dark'}));}` });
+  const startupCheck=()=>checkPaneStartup({evaluate,waitFor,cdp,viewport,pause,screenshot,
+    url:`http://127.0.0.1:${server.address().port}/`, requests, frameLoads:()=>frameLoads,
+    hold:()=>{heldBootRequests.length=0;holdBootRequests=true;bootRequestsFail=false;}, held:heldBootRequests,
+    release:fail=>{holdBootRequests=false;bootRequestsFail=fail;heldBootRequests.splice(0).forEach(item=>item.release(fail));},
+  });
+  if (!baseline && !Object.entries(process.env).some(([key,value])=>/^UI_.*_ONLY$/.test(key)&&value==='1')) {
+    await startupCheck();
+    // The startup scenarios own their navigations and update verification.
+    // Begin the general suite with its original clean mobile-boot fixture.
+    requests.length=0;frameLoads=0;lastVerification=null;
+    await viewport(390,800);
+  }
   await cdp('Page.navigate', { url: `http://127.0.0.1:${server.address().port}/` });
   const renameCheck=()=>checkRename({evaluate,waitFor,viewport,screenshot,cdp,mode:value=>{renameMode=value;},submissions:renameSubmissions,release:()=>{renameReply();renameReply=null;},pending:()=>!!renameReply});
   const forkCheck=()=>{
@@ -619,7 +644,10 @@ try {
     groupFixture.groups=[{id:'jira-group',name:'Jira group',color:'teal'},{id:'other-group',name:'Other',color:'blue'}];
     groupFixture.members={'jira-on':'jira-group','jira-off':'other-group'};
   }});
-  if (process.env.UI_UPDATE_ONLY === '1') {
+  if (process.env.UI_BOOT_ONLY === '1') {
+    await startupCheck();
+    assert.deepEqual(errors, [], 'No uncaught startup errors');
+  } else if (process.env.UI_UPDATE_ONLY === '1') {
     await checkUpdateDiagnostics({evaluate,waitFor,cdp,viewport,screenshot,mode:value=>{updateMode=value;},applies:updateApplies});
   } else if (process.env.UI_ACTIVITY_BAR_ONLY === '1') {
     await checkPaneActivityBar({evaluate,waitFor,cdp,viewport,screenshot,configure:(state,color)=>{

@@ -181,6 +181,10 @@ intervene.
 - Group two-color styles support **Gradient** (default) and **Diagonal split**, which separates two solid colors at a sharp diagonal boundary. Choose the style in **Manage groups → Two colors** and save; previews, group tabs, pane badges and All-view outlines share the style. Existing groups keep their gradient.
 
 - Periodic update checks run Git candidate discovery off the terminal event loop, so slow repository checks do not pause all panes or their heartbeats.
+  At page startup, update and workspace-sync checks run in the background so
+  saved and resumed panes load even if either check stalls or fails. Automatic
+  polls wait for the previous check to finish rather than queueing duplicates;
+  explicit update checks and approval are unchanged.
 
 - Terminal display relays send idle WebSocket heartbeats and preserve abnormal close status, allowing ttyd to reconnect automatically without Enter after an upstream connection failure. A genuinely ended session remains closed.
 

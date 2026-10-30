@@ -64,7 +64,10 @@ export async function checkJira({evaluate,waitFor,cdp,viewport,screenshot,reques
   assert.equal(await evaluate(`document.querySelector('${on}').hidden`),false,'Group preference retained while master disabled');
   assert.equal(await evaluate(`[...document.querySelectorAll('#grid iframe')].every((f,i)=>f===jiraFrames[i])`),true);
   assert.equal(await evaluate(`document.querySelector('[data-run-id="jira-on"] textarea').value`),'jira draft');
-  await evaluate(`document.querySelector('#btn-settings').click();document.querySelector('#jira-mcp-settings [data-disconnect]').click()`);
+  // Opening Settings refreshes the connection asynchronously. Wait for that
+  // read before clicking Disconnect, so a late read cannot replace its result.
+  await evaluate(`new Promise(resolve=>{const status=document.querySelector('#jira-mcp-settings [data-status]');const observer=new MutationObserver(()=>{observer.disconnect();resolve();});observer.observe(status,{childList:true});document.querySelector('#btn-settings').click();})`);
+  await evaluate(`document.querySelector('#jira-mcp-settings [data-disconnect]').click()`);
   await waitFor(`document.querySelector('#jira-mcp-settings [data-status]').textContent.includes('disconnected')`);
   await evaluate(`document.querySelector('#settings-close').click()`);
   await evaluate(`localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'zh'}))`);await cdp('Page.reload');
