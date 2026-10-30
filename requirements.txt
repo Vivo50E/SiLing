@@ -18,3 +18,5 @@ Pillow>=10,<13
 watchdog>=4.0,<7
 # Read-only host resource collector (isolated from API handlers).
 psutil>=7.2.2,<8
+# Read-only Jira MCP transport; retain Python 3.10 support on the SDK 1.x line.
+mcp>=1.30,<2

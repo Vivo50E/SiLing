@@ -79,3 +79,27 @@ Dashboard. A matching response identity is required. Queries run outside the
 session index lock with bounded concurrency and duration. Badge-only requests do
 not run provider commands. Status failures retain previous observations and are
 reported separately; displayed colors are based on the latest known status.
+
+## Jira MCP boundary
+
+An explicit same-origin connection action selects an existing trusted JSON MCP
+configuration. The Dashboard persists its file/server reference and Jira base URL,
+not credentials; expanded environment/header values stay in the client worker's
+stdin and memory. Configuration fingerprints require reconnecting after changes.
+The SDK 1.x client runs in an isolated subprocess, suppressing provider logs and
+returning only bounded ticket keys, titles, statuses and fixed error codes.
+Only the fixed `jira_get_issue` tool can be called, with validated evidence keys
+and minimal fields. Server tool descriptions cannot select tools or commands;
+sampling, elicitation, writes, comments and attachment operations are not enabled.
+No transcript or prompt is sent to MCP. Only opted-in groups trigger lookups;
+requests and concurrency are bounded. Disconnect discards in-flight results.
+
+MCP configurations and their stdio executables must be trusted: a stdio server
+runs with the Dashboard user's OS privileges. Read-only tool selection is not an
+OS sandbox and cannot constrain a malicious server. HTTPS (or loopback HTTP) is
+required for configured network endpoints; the SDK restricts redirects to the
+same origin. Authentication must already be handled by server configuration or a
+trusted bridge. Provider-returned content is treated as display text, never as
+instructions, HTML or a URL to fetch. Ticket links are constructed from the
+explicitly configured Jira site and matching issue key. Existing administrator
+and same-account access remains outside this boundary.

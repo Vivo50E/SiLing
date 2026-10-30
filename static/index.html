@@ -1203,6 +1203,15 @@
     color: var(--text-dim); font-size: 11px; line-height: 1.45;
   }
   .settings-row input[type="checkbox"] { width: 18px; height: 18px; }
+  #jira-mcp-settings summary { cursor: pointer; padding: 12px 0; font-weight: 600; }
+  #jira-mcp-settings fieldset { border: 0; padding: 0; margin: 12px 0; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+  #jira-mcp-settings input, #jira-mcp-settings select { max-width: 100%; min-width: 0; }
+  #jira-mcp-settings [data-servers] { align-self: flex-start; }
+  #jira-mcp-settings [data-status] { overflow-wrap: anywhere; }
+  @media (max-width: 600px) {
+    #jira-mcp-settings .settings-row { grid-template-columns: minmax(0, 1fr); }
+    #jira-mcp-settings input, #jira-mcp-settings select { width: 100%; }
+  }
   .settings-range {
     display: grid; grid-template-columns: minmax(120px, 180px) 44px;
     gap: 10px; align-items: center;
@@ -2771,7 +2780,7 @@
   #working-directory-dialog .cwd-restart:not([hidden]) { display:flex; align-items:center; gap:8px; }
 </style>
 <link rel="stylesheet" href="/static/ui-foundation.css?v=9" />
-<script src="/static/ui-messages.js?v=28"></script>
+<script src="/static/ui-messages.js?v=29"></script>
 <script src="/static/ui-foundation.js?v=15"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=9" />
 <script src="/static/pane-group-outlines.js?v=3"></script>
@@ -2784,9 +2793,10 @@
 <script src="/static/session-help.js?v=1"></script>
 <script src="/static/terminal-files.js?v=3"></script>
 <link rel="stylesheet" href="/static/pane-reviews.css?v=3">
-<script src="/static/pane-link-counts.js?v=2"></script>
+<script src="/static/pane-link-counts.js?v=3"></script>
 <script src="/static/pane-reviews.js?v=4"></script>
-<script src="/static/pane-jira.js?v=2"></script>
+<script src="/static/pane-jira.js?v=3"></script>
+<script src="/static/jira-mcp.js?v=1"></script>
 <script src="/static/secret-operations.js?v=2"></script>
 <script src="/static/secret-config.js?v=1"></script>
 <script src="/static/terminal-keys.js?v=1"></script>
@@ -3038,7 +3048,7 @@
         </section>
         <section class="settings-section" id="settings-section-browsing" hidden>
           <h2 data-i18n="browsing">Browsing &amp; files</h2>
-          <p class="ui-secondary" data-i18n="scope">Saved in this browser only.</p>
+          <p class="ui-secondary" data-ui-message="Browser%20preferences%20are%20local.%20Jira%20MCP%20connections%20are%20shared%20by%20this%20Dashboard.">Browser preferences are local. Jira MCP connections are shared by this Dashboard.</p>
         <label class="settings-row" for="settings-open-links-internally"><span><span class="settings-row-title" data-ui-message="Default%20web%20link%20destination">Default web link destination</span><span class="settings-row-help" data-ui-message="Applies%20to%20web%20links%20in%20terminals%2C%20Markdown%20and%20Files.%20Desktop%20web%20panes%20use%20the%20native%20browser%3B%20web%20clients%20use%20an%20iframe.">Applies to web links in terminals, Markdown and Files. Desktop web panes use the native browser; web clients use an iframe.</span></span>
           <select id="settings-open-links-internally"><option value="iframe" data-ui-message="Internal%20iframe">Internal iframe</option><option value="pane" data-ui-message="New%20web%20pane">New web pane</option><option value="external" data-ui-message="External%20browser">External browser</option></select>
         </label>
@@ -3615,6 +3625,7 @@
 
   function openSettingsModal() {
     syncSettingsControls();
+    void jiraMCP.refresh();
     if ($("settings-section-picker").value === "about") refreshAboutVersion();
     if ($("settings-section-picker").value === "plugins") refreshPlugins();
     settingsModal.hidden = false;
@@ -4602,6 +4613,13 @@
     },
     beforeFilter: () => { if (paneZoomState) closePaneZoom(); },
   });
+  const jiraMCP = window.SilingJiraMCP({api, ui, changed: () => {
+    window.SilingPaneLinkCounts.invalidate('jira');
+    for (const card of document.querySelectorAll('.pane-card[data-run-id]')) {
+      const row = sessions.find(s => s.run_id === card.dataset.runId);
+      if (row) window.SilingPaneLinkCounts.update(card, row, api);
+    }
+  }});
 
   const SLOT_MARKS = [
     "①", "②", "③", "④", "⑤",

@@ -51,3 +51,9 @@ for (const [states, expected] of colorCases) {
 counts.loaded('pane-0','jira',[{url:'j',state:'open'}]);
 assert.equal(cards[0].jira.dataset.reviewState,undefined,'Jira does not inherit review colors');
 console.log('PASS: review status colors include drafts, require all merged, preserve neutral unknown/closed/empty and survive pane decoration');
+const beforeInvalidation=pending.length;
+counts.invalidate('jira');
+counts.update(cards[0],{run_id:'pane-0',linked_folders:[{type:'url',path:'new'}]},api);
+assert.equal(pending.length,beforeInvalidation+1,'Connecting Jira MCP invalidates only Jira counts');
+assert.ok(pending.at(-1).path.endsWith('/jira?lookup=true'));
+pending.at(-1).resolve({items:[{url:'j2'}]});await tick();

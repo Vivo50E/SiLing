@@ -889,7 +889,30 @@
     "yellow": "黄色",
     "red": "红色",
     "orange": "橙色",
-    "Use the system browser instead of the app's profile.": "使用系统浏览器，而不是应用的浏览器配置。"
+    "Use the system browser instead of the app's profile.": "使用系统浏览器，而不是应用的浏览器配置。",
+    "Jira MCP connection": "Jira MCP 连接",
+    "Browser preferences are local. Jira MCP connections are shared by this Dashboard.": "浏览器偏好仅本地保存。Jira MCP 连接由此 Dashboard 的客户端共享。",
+    "Reuse a trusted MCP JSON configuration. Only jira_get_issue is called; only ticket keys leave SiLing. OAuth login must already be handled by your MCP server or bridge.": "复用可信的 MCP JSON 配置。仅调用 jira_get_issue，只发送 ticket 编号。OAuth 登录需由已有 MCP 服务或桥接程序处理。",
+    "MCP configuration file": "MCP 配置文件",
+    "Read servers": "读取服务列表",
+    "MCP server": "MCP 服务",
+    "Jira site URL (optional if JIRA_URL is configured)": "Jira 站点地址（已配置 JIRA_URL 时可留空）",
+    "Test & connect": "测试并连接",
+    "Disconnect": "断开连接",
+    "Jira MCP connected. Tickets are identified when their list loads or refreshes.": "Jira MCP 已连接，加载或刷新列表时自动识别 ticket。",
+    "Jira MCP disconnected. Saved links remain available.": "Jira MCP 未连接，已保存的链接仍可查看。",
+    "Checking Jira MCP…": "正在检查 Jira MCP…",
+    "Could not connect. Check the configuration, server authentication and Jira URL.": "连接失败，请检查配置、服务认证和 Jira 地址。",
+    "Select the Jira MCP server, then test the connection.": "请选择 Jira MCP 服务，然后测试连接。",
+    "No MCP servers found in this file.": "该文件中未找到 MCP 服务。",
+    "This MCP must expose jira_get_issue with issue_key.": "该 MCP 需提供带 issue_key 参数的 jira_get_issue 工具。",
+    "Install the Dashboard requirements to enable the MCP client.": "请安装 Dashboard 依赖以启用 MCP 客户端。",
+    "Could not read Jira MCP connection status.": "无法读取 Jira MCP 连接状态。",
+    "Saved links and recent output. Connect Jira MCP in Settings to resolve ticket keys automatically; no background polling.": "显示已保存链接和最近输出。在设置中连接 Jira MCP 后自动识别 ticket 编号，不后台轮询。",
+    "MCP configuration changed. Reconnect in Settings.": "MCP 配置已变更，请在设置中重新连接。",
+    "Jira MCP unavailable. Saved links are still shown; retry or check Settings.": "Jira MCP 暂不可用，仍显示已保存链接。请重试或检查设置。",
+    "Some ticket keys could not be verified. Saved links are still shown.": "部分 ticket 编号未能查验，仍显示已保存链接。",
+    "More ticket keys remain. Refresh to continue.": "还有 ticket 编号待查验，请刷新以继续。"
   };
   const api = {zh};
   if (typeof module !== "undefined") module.exports = api;

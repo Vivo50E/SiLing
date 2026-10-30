@@ -24,6 +24,24 @@ export async function checkJira({evaluate,waitFor,cdp,viewport,screenshot,reques
   await waitFor(`document.querySelector('${on} .pane-link-count')?.textContent==='1'`);
   await evaluate(`document.querySelector('#pane-groups-dialog').close();document.querySelector('${on}').click()`);
   await waitFor(`document.querySelectorAll('#pane-jira li').length===1`);
+  // Configure a referenced MCP server without changing the terminal or exposing credentials.
+  await evaluate(`document.querySelector('#pane-jira').close();document.querySelector('#btn-settings').click();document.querySelector('[data-settings-section="browsing"]').click();document.querySelector('#jira-mcp-settings').open=true`);
+  await waitFor(`document.querySelector('#jira-mcp-settings [data-status]').textContent.includes('disconnected')`);
+  await evaluate(`document.querySelector('#jira-mcp-settings [data-file]').value='/fixture/mcp.json';document.querySelector('#jira-mcp-settings [data-servers]').click()`);
+  await waitFor(`document.querySelector('#jira-mcp-settings [data-server]').value==='jira-fixture'`);
+  await evaluate(`document.querySelector('#jira-mcp-settings [data-base]').value='https://jira.example';document.querySelector('#jira-mcp-settings [data-connect]').click()`);
+  await waitFor(`document.querySelector('#jira-mcp-settings [data-status]').textContent.includes('MCP connected')`);
+  await screenshot('jira-mcp-connection');
+  await evaluate(`document.querySelector('#settings-close').click();document.querySelector('${on}').click()`);
+  await waitFor(`document.querySelector('#pane-jira li small')?.textContent.includes('In Progress · MCP')`);
+  for (const [value, message] of [['mcp-error','unavailable'],['changed','Reconnect'],['partial','could not be verified'],['pending','remain']]) {
+    mode(value);await evaluate(`document.querySelector('#pane-jira [data-refresh]').click()`);
+    await waitFor(`document.querySelector('#pane-jira [data-status]').textContent.includes(${JSON.stringify(message)})`);
+    assert.equal(await evaluate(`document.querySelectorAll('#pane-jira li').length`),1,'Provider failures retain saved tickets');
+  }
+  assert.ok(requests.some(r=>r.path.endsWith('/jira')&&r.search==='?lookup=true&refresh=true'),'Explicit refresh bypasses lookup cache');
+  mode('ok');await evaluate(`document.querySelector('#pane-jira [data-refresh]').click()`);
+  await waitFor(`!document.querySelector('#pane-jira [data-refresh]').disabled`);
   assert.equal(await evaluate(`!!document.querySelector('#pane-jira img')`),false);
   await screenshot('jira-tickets');
   const count=requests.filter(r=>r.path.endsWith('/jira')).length;await pause(1100);
@@ -46,6 +64,9 @@ export async function checkJira({evaluate,waitFor,cdp,viewport,screenshot,reques
   assert.equal(await evaluate(`document.querySelector('${on}').hidden`),false,'Group preference retained while master disabled');
   assert.equal(await evaluate(`[...document.querySelectorAll('#grid iframe')].every((f,i)=>f===jiraFrames[i])`),true);
   assert.equal(await evaluate(`document.querySelector('[data-run-id="jira-on"] textarea').value`),'jira draft');
+  await evaluate(`document.querySelector('#btn-settings').click();document.querySelector('#jira-mcp-settings [data-disconnect]').click()`);
+  await waitFor(`document.querySelector('#jira-mcp-settings [data-status]').textContent.includes('disconnected')`);
+  await evaluate(`document.querySelector('#settings-close').click()`);
   await evaluate(`localStorage.setItem('siling_appearance_v1',JSON.stringify({language:'zh'}))`);await cdp('Page.reload');
   await waitFor(`document.querySelector('${on}') && !document.querySelector('${on}').hidden`);
   assert.equal(await evaluate(`document.querySelector('#jira-enabled').checked`),true);

@@ -117,14 +117,29 @@ const previewSource = '# Readable Markdown\n\nAn isolated preview fixture.';
 const completeSource = previewSource + '\n' + 'Full source line\n'.repeat(18000) + 'END OF FILE';
 let truncatePreview = false;
 let jiraMode='ok';
+let jiraConnection={enabled:false};
 let bulkMode=false,bulkHold=null;const bulkBodies=[];
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   requests.push({ method: req.method, path: url.pathname });
+  if (url.pathname.startsWith('/api/jira/mcp')) {
+    res.setHeader('Content-Type','application/json');
+    if (req.method==='GET') return res.end(JSON.stringify(jiraConnection));
+    assert.equal(req.headers['x-siling-jira-mcp'],'user-click');
+    let raw='';req.on('data',chunk=>raw+=chunk);req.on('end',()=>{
+      const body=JSON.parse(raw);
+      if (url.pathname.endsWith('/servers')) return res.end(JSON.stringify({servers:[{name:'jira-fixture'}]}));
+      if (url.pathname.endsWith('/disconnect')) jiraConnection={enabled:false};
+      else jiraConnection={enabled:true,...body};
+      res.end(JSON.stringify(jiraConnection));
+    });return;
+  }
   if (url.pathname.endsWith('/jira')) {
+    requests[requests.length-1].search=url.search;
     res.setHeader('Content-Type','application/json');
     if(jiraMode==='error'){res.writeHead(503);res.end(JSON.stringify({detail:'Fixture unavailable'}));return;}
-    res.end(JSON.stringify({items:jiraMode==='empty'?[]:[{url:'https://jira.example/browse/DEMO-12',key:'DEMO-12',title:'Ticket <img src=x>',source:'linked'}]}));return;
+    res.end(JSON.stringify({items:jiraMode==='empty'?[]:[{url:'https://jira.example/browse/DEMO-12',key:'DEMO-12',title:'Ticket <img src=x>',source:jiraConnection.enabled?'mcp':'linked',state:jiraConnection.enabled?'In Progress':''}],
+      ...(jiraMode==='mcp-error'?{mcp_error:'connection_failed'}:jiraMode==='changed'?{mcp_error:'config_changed'}:jiraMode==='partial'?{failed:1}:jiraMode==='pending'?{pending:3}:{})}));return;
   }
   if (url.pathname.endsWith('/reviews')) {
     requests[requests.length-1].search=url.search;
@@ -1720,8 +1735,12 @@ try {
   await evaluate(`window.switchAlerts=[];window.alert=text=>switchAlerts.push(text);window.confirm=()=>false;document.querySelector('${shellSelector} .btn-pane-more').click();document.querySelector('${shellSelector} .btn-disconnect-ssh').click()`);
   await pause(200);
   assert.equal(sshDisconnects,0,'Cancelled SSH disconnect does not send a signal');
+  // Session polling can replace this transient notice before the next CDP read.
+  // Observe the actual DOM mutation so the UI assertion does not race that poll.
+  await evaluate(`window.sshNotices=[];window.sshNoticeObserver=new MutationObserver(records=>{for(const record of records)for(const node of record.addedNodes)sshNotices.push(node.textContent)});sshNoticeObserver.observe(document.querySelector('#conn-status'),{childList:true})`);
   await evaluate(`window.confirm=()=>true;document.querySelector('${shellSelector} .btn-pane-more').click();document.querySelector('${shellSelector} .btn-disconnect-ssh').click()`);
-  await waitFor(`document.querySelector('#conn-status').textContent.includes('SSH disconnect requested')`);
+  await waitFor(`sshNotices.some(text=>text.includes('SSH disconnect requested'))`);
+  await evaluate(`sshNoticeObserver.disconnect()`);
   assert.equal(sshDisconnects,1);
   await evaluate(`document.querySelector('${shellSelector} .pane-input textarea').value='keep my shell draft';document.querySelector('${shellSelector} .btn-pane-more').click();document.querySelector('${shellSelector} .btn-switch-type').click()`);
   assert.equal(await evaluate(`document.querySelector('#new-agent').value`),'claude');

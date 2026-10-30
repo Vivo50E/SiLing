@@ -39,8 +39,9 @@
   function drain() {
     while (active < 2 && queue.length) {
       const {id, kind, entry} = queue.shift();
+      if (cache.get(key(id, kind)) !== entry) continue;
       active++;
-      request(`/api/sessions/${encodeURIComponent(id)}/${kind}${kind === 'reviews' ? '?branch=false' : ''}`)
+      request(`/api/sessions/${encodeURIComponent(id)}/${kind}${kind === 'reviews' ? '?branch=false' : '?lookup=true'}`)
         .then(data => {
           if (cache.get(key(id, kind)) !== entry) return;
           entry.value = new Set(data.items.map(item => item.url)).size;
@@ -54,6 +55,9 @@
     }
   }
   window.SilingPaneLinkCounts = {
+    invalidate(kind) {
+      for (const id of cache.keys()) if (JSON.parse(id)[1] === kind) cache.delete(id);
+    },
     update(card, row, api) {
       if (api) request = api;
       if (!request) return;

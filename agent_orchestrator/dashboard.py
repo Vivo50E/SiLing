@@ -77,7 +77,8 @@ from .local_settings import dashboard_token, require_dashboard_auth
 from .native_activity import NativeActivityService
 from .resources import ResourceMonitor
 from .pane_groups import PaneGroups
-from . import reviews, jira
+from . import reviews
+from .jira_mcp import JiraMCP, server_config as jira_mcp_servers
 from .model_catalog import ModelCatalog
 from .session_archives import SessionArchives, ArchiveConflict
 from .remote_nodes import (
@@ -8706,6 +8707,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
     # running-code update until the Dashboard has actually restarted.
     runtime_version = build_info(PROJECT_DIR)
     pane_groups = PaneGroups(outputs_dir)
+    jira_connection = JiraMCP(outputs_dir)
     model_catalog = ModelCatalog()
     session_archives = SessionArchives(outputs_dir)
 
@@ -8996,7 +8998,8 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                 content=await request.body(),
                 timeout=httpx.Timeout(
                     connect=node.connect_timeout_seconds,
-                    read=max(60.0 if path.endswith(("/restart", "/switch-type", "/fork")) else 30.0,
+                    read=max(60.0 if path.endswith(("/restart", "/switch-type", "/fork")) else
+                             40.0 if path.endswith('/jira') else 30.0,
                              node.request_timeout_seconds),
                     write=max(30.0, node.request_timeout_seconds),
                     pool=node.connect_timeout_seconds,
@@ -10432,8 +10435,39 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                                 lookup=branch and _norm_agent(run.get("agent", "")) != "terminal",
                                 status_lookup=branch or refresh, force_status=refresh)
 
+    @app.get("/api/jira/mcp")
+    def jira_mcp_status():
+        return JSONResponse(jira_connection.status(), headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/jira/mcp/{action}")
+    async def jira_mcp_change(action: str, request: Request):
+        if request.headers.get('x-siling-jira-mcp') != 'user-click':
+            raise HTTPException(403, 'Explicit MCP connection intent required')
+        origin = request.headers.get('origin')
+        if (origin and origin != str(request.base_url).rstrip('/')) or request.headers.get('sec-fetch-site') == 'cross-site':
+            raise HTTPException(403, 'Same-origin MCP request required')
+        if request.headers.get('content-type', '').split(';', 1)[0] != 'application/json':
+            raise HTTPException(415, 'MCP requests require JSON')
+        raw = await request.body()
+        if len(raw) > 8192:
+            raise HTTPException(413, 'MCP request too large')
+        try:
+            body = json.loads(raw)
+            if not isinstance(body, dict):
+                raise ValueError()
+            if action == 'servers' and set(body) == {'config_file'} and isinstance(body['config_file'], str):
+                return {'servers': await asyncio.to_thread(jira_mcp_servers, body['config_file'], None)}
+            if action == 'disconnect' and not body:
+                return jira_connection.disconnect()
+            if action == 'connect':
+                return await asyncio.to_thread(jira_connection.connect, body)
+        except (OSError, ValueError, TypeError):
+            # File/parser errors can contain paths and configuration values.
+            raise HTTPException(400, 'Invalid MCP configuration. Check the file, server and Jira URL.') from None
+        raise HTTPException(400, 'Invalid MCP action')
+
     @app.get("/api/sessions/{run_id}/jira")
-    def get_session_jira(run_id: str):
+    def get_session_jira(run_id: str, lookup: bool = False, refresh: bool = False):
         run = _lookup_run_light(outputs_dir, run_id)
         if not run:
             raise HTTPException(404, "session not found")
@@ -10451,7 +10485,10 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         session = run.get("tmux_session")
         if session and tmux_alive(session):
             text += "\n" + (tmux_capture_lines(session, 200, "tail") or "")
-        return jira.collect(run, text)
+        # UI requests lookup only for opted-in groups. Keep the explicit flag
+        # across Remote Node proxies: group metadata belongs to the hub, not the node.
+        return jira_connection.discover(run, text, terminal_files.state_dir(outputs_dir, run_id),
+                                        lookup=lookup, force=refresh)
 
     @app.get("/api/sessions/{run_id}/folders")
     def get_session_folders(run_id: str):

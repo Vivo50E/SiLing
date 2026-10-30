@@ -192,9 +192,38 @@ intervene.
   switches in **Manage groups**. Enable a group and save to show its panes’ ticket
   icon beside Files/PRs. It lists saved Jira `/browse/PROJECT-123` links and links
   in recent output, with manual link entry. Counts load initially and refresh when the list opens or refreshes;
-  it does not query Jira or fetch status/assignee data. The master switch is local
+  without a connected MCP it only collects URLs. The master switch is local
   to this browser; group preferences sync with this Dashboard and survive disabling
   the master switch. Links follow your configured web-opening preference.
+- **Settings → Browsing & files → Jira MCP connection** reuses an existing trusted
+  MCP server. Install the updated `requirements.txt` with the deployment Python
+  before running Dashboard update verification; this adds the MCP client SDK.
+  The connection reads an existing JSON `mcpServers` configuration (for example
+  `~/.claude.json`, `.mcp.json` or
+  `~/.cursor/mcp.json`). Enter its path, click **Read servers**, select the Jira
+  service and **Test & connect**. Set the Jira site URL unless the server's `env`
+  already defines `JIRA_URL`; context paths such as `/jira` are supported. SiLing
+  stores references only, never copies credentials into its settings or browser.
+  `${ENV_VAR}` references resolve in the Dashboard process environment.
+  Stdio starts in the configuration file's directory unless it specifies `cwd`.
+  Standard stdio, Streamable HTTP and SSE transports are supported. The server
+  must expose `jira_get_issue(issue_key, fields=...)` (`fields` may be omitted),
+  as mcp-atlassian does. OAuth must already be handled by your server or bridge;
+  this feature does not reuse a native CLI's private OAuth token cache or perform
+  browser OAuth login. Rovo-only tool names are not yet supported.
+  After connection, enabled groups automatically resolve explicit ticket keys
+  in recent output, session titles/prompts, agent Git branches and previously
+  discovered PR/MR titles when their ticket count/list loads. No semantic/project-wide
+  search or transcript upload is performed. Shell/SSH panes do not infer a branch
+  from their launch directory. Only verified matching keys are linked, with title
+  and status; associations persist across restarts and disconnects. Each request
+  resolves up to eight keys, with two workers Dashboard-wide and a 32-second worker
+  deadline (plus up to five seconds for cleanup); results, including individual
+  missing keys, are cached for one minute.
+  Open the list or **Refresh** to discover later output; there is no background
+  polling. **Refresh** bypasses the cache and processes remaining keys first.
+  Configuration changes require reconnecting. Remote sessions use their own node's
+  Jira configuration. Disconnect stops future lookups and discards in-flight results.
 - The pull-request icon beside **Files** opens related GitHub PRs / GitLab MRs.
   It combines linked URLs, recent pane output and the current Git branch, with
   titles and states when the provider returns them. Branch lookup uses the

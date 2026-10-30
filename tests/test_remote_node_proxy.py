@@ -103,6 +103,11 @@ def _fake_remote_node() -> FastAPI:
     def reviews(run_id: str, branch: bool = True):
         return {"run_id": run_id, "branch_lookup": branch, "items": [{"url": "https://gitlab.example/g/r/-/merge_requests/1"}]}
 
+    @app.get("/api/sessions/{run_id}/jira")
+    def jira(run_id: str, lookup: bool = False, refresh: bool = False):
+        return {'run_id': run_id, 'lookup': lookup, 'refresh': refresh,
+                'items': [{'url': 'https://jira.example/browse/DEMO-1', 'key': 'DEMO-1'}]}
+
     @app.get("/api/sessions/{run_id}/tty")
     def tty(run_id: str):
         assert run_id == "remote-run 1"
@@ -320,6 +325,11 @@ class RemoteNodeProxyTest(unittest.TestCase):
                     self.assertEqual(review.status_code, 200)
                     self.assertFalse(review.json()["branch_lookup"])
                     self.assertEqual(review.json()["items"][0]["url"], "https://gitlab.example/g/r/-/merge_requests/1")
+                    jira = client.get(f'/api/sessions/{run_id}/jira', params={'lookup': 'true', 'refresh': 'true'})
+                    self.assertEqual(jira.status_code, 200)
+                    self.assertTrue(jira.json()['lookup'])
+                    self.assertTrue(jira.json()['refresh'])
+                    self.assertEqual(jira.json()['items'][0]['key'], 'DEMO-1')
 
                     read = client.get(
                         f"/api/sessions/{run_id}/read",
