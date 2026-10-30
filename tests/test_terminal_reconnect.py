@@ -48,14 +48,18 @@ class TerminalReconnectTests(unittest.TestCase):
             async def send(self, message):
                 pass
             async def __aiter__(self):
+                yield b'0fixture idle ready'
                 await asyncio.Event().wait()
                 yield b''
         with patch.object(dashboard.TtydManager, '_sweep_orphans', return_value=0):
             app = dashboard.create_app(Path('/nonexistent/siling-reconnect-test'), ttyd_enabled=True, remote_nodes_enabled=False)
         with patch.object(dashboard.TtydManager, 'port_for', return_value=12345), patch.object(dashboard.websockets, 'connect', return_value=Upstream()), TestClient(app) as client:
-            with client.websocket_connect('/tty/fixture/ws'):
-                pass
-            self.assertTrue(released.wait(2), 'Idle relay must release its tmux client immediately after browser disconnect')
+            with client.websocket_connect('/tty/fixture/ws') as socket:
+                # Establish the upstream relay before disconnecting; otherwise
+                # TestClient teardown races the still-pending port/handshake task.
+                self.assertEqual(socket.receive_bytes(), b'0fixture idle ready')
+                socket.close()
+                self.assertTrue(released.wait(2), 'Idle relay must release its tmux client immediately after browser disconnect')
 
     def test_upstream_failure_requests_automatic_browser_reconnect(self):
         self._check_upstream_close(fail=True, expected=1011)
