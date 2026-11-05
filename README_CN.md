@@ -310,7 +310,11 @@ PR/MR 和 Jira 图标旁显示去重后的数量（含 0）。初次统计已关
 
 在 **设置 → 浏览与文件 → 启用 Jira tickets** 打开总开关，再到 **管理分组** 选择分组，勾选“在此分组显示 Jira tickets”并保存。该组 pane 的 Files/PR 旁会出现 ticket 图标，展示已关联及最近输出中的 Jira `/browse/PROJECT-123` 链接，也可手动添加。初次显示时统计，打开或刷新时重新识别；未连接 MCP 时只收集链接。链接沿用网页打开设置。总开关仅当前浏览器保存，分组开关跨客户端共享，关闭总开关不会清空分组选择。
 
-**设置 → 浏览与文件 → Jira MCP 连接** 可复用已有可信 MCP 服务。执行 Dashboard 更新验证前，先用部署环境的 Python 安装更新后的 `requirements.txt`，补齐新增的 MCP 客户端 SDK。连接读取 JSON `mcpServers` 配置，例如 `~/.claude.json`、`.mcp.json` 或 `~/.cursor/mcp.json`。输入路径，点击 **读取服务列表**，选择 Jira 服务，然后 **测试并连接**。服务 `env` 中已配置 `JIRA_URL` 时可省略站点地址，否则填写 Jira 站点，可带 `/jira` 等上下文路径。SiLing 只保存配置引用，不将凭据复制到设置或浏览器；`${ENV_VAR}` 从 Dashboard 进程环境解析。支持标准 stdio、Streamable HTTP 和 SSE；服务需提供 mcp-atlassian 风格的 `jira_get_issue(issue_key, fields=...)`，`fields` 参数可省略。OAuth 需由现有服务或桥接程序处理，此功能不读取原生 CLI 的私有 OAuth 缓存，也不执行浏览器 OAuth 登录；暂不支持仅提供 Rovo 工具名的服务。
+**设置 → 浏览与文件 → Jira MCP 连接** 可复用已有可信 MCP 服务。执行 Dashboard 更新验证前，先用部署环境的 Python 安装更新后的 `requirements.txt`，补齐 MCP 客户端 SDK。展开连接区会默认读取 **本地 Codex / Claude Code**：`~/.codex/config.toml`（或 `$CODEX_HOME/config.toml`）与 `~/.claude.json`。选择服务并 **测试并连接**，无需手填路径；同名服务按来源区分。仅自动发现用户级配置，不自动合并项目文件、插件或管理策略；项目配置可通过 **自定义配置文件** 手动选择，支持 JSON `mcpServers` 和 Codex TOML `mcp_servers`。
+
+服务 `env` 中已配置 `JIRA_URL` 时可省略站点地址，否则填写 Jira 站点，可带 `/jira` 等上下文路径。SiLing 只保存配置引用，不将凭据复制到设置或浏览器；`${ENV_VAR}` 和 `${ENV_VAR:-default}` 从 Dashboard 进程环境解析。支持 Codex 的 `http_headers`、`env_http_headers`、`bearer_token_env_var` 和本地 `env_vars`；尊重禁用的服务及 Jira 工具，不执行动态认证 helper，也不静默忽略它们。远程执行器环境变量不从本机代替读取。
+
+支持标准 stdio、Streamable HTTP 和 SSE；服务需提供 mcp-atlassian 风格的 `jira_get_issue(issue_key, fields=...)`，`fields` 参数可省略。OAuth 需由现有服务或桥接程序处理，此功能不读取原生 CLI 的私有 OAuth 缓存，也不执行浏览器 OAuth 登录；HTTP 401/403 会明确提示尚需认证，发现配置不等于已经登录。暂不支持仅提供 Rovo 工具名的服务。
 
 Stdio 服务默认在配置文件所在目录启动，也可在服务配置中指定 `cwd`。
 

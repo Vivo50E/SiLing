@@ -78,7 +78,7 @@ from .native_activity import NativeActivityService
 from .resources import ResourceMonitor
 from .pane_groups import PaneGroups
 from . import reviews
-from .jira_mcp import JiraMCP, server_config as jira_mcp_servers
+from .jira_mcp import JiraMCP, server_config as jira_mcp_servers, native_servers as jira_native_mcp_servers
 from .model_catalog import ModelCatalog
 from .session_archives import SessionArchives, ArchiveConflict
 from .remote_nodes import (
@@ -10457,6 +10457,8 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                 raise ValueError()
             if action == 'servers' and set(body) == {'config_file'} and isinstance(body['config_file'], str):
                 return {'servers': await asyncio.to_thread(jira_mcp_servers, body['config_file'], None)}
+            if action == 'local-servers' and not body:
+                return await asyncio.to_thread(jira_native_mcp_servers)
             if action == 'disconnect' and not body:
                 return jira_connection.disconnect()
             if action == 'connect':

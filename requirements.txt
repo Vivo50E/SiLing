@@ -20,3 +20,5 @@ watchdog>=4.0,<7
 psutil>=7.2.2,<8
 # Read-only Jira MCP transport; retain Python 3.10 support on the SDK 1.x line.
 mcp>=1.30,<2
+# Codex MCP configuration on Python 3.10 (3.11+ provides tomllib).
+tomli>=2,<3; python_version < "3.11"

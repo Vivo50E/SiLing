@@ -202,19 +202,29 @@ intervene.
 - **Settings → Browsing & files → Jira MCP connection** reuses an existing trusted
   MCP server. Install the updated `requirements.txt` with the deployment Python
   before running Dashboard update verification; this adds the MCP client SDK.
-  The connection reads an existing JSON `mcpServers` configuration (for example
-  `~/.claude.json`, `.mcp.json` or
-  `~/.cursor/mcp.json`). Enter its path, click **Read servers**, select the Jira
-  service and **Test & connect**. Set the Jira site URL unless the server's `env`
+  Opening the connection section reads **Local Codex / Claude Code** servers
+  from `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`) and `~/.claude.json`.
+  Select a server and **Test & connect**, without entering a configuration path.
+  Same-named servers retain their source. Only user-level files are discovered;
+  project files, plugin bundles and managed-policy merges are not auto-imported.
+  **Custom configuration file** still accepts JSON `mcpServers` and Codex TOML
+  `mcp_servers` files, including explicitly selected project files.
+  Set the Jira site URL unless the server's `env`
   already defines `JIRA_URL`; context paths such as `/jira` are supported. SiLing
   stores references only, never copies credentials into its settings or browser.
-  `${ENV_VAR}` references resolve in the Dashboard process environment.
+  `${ENV_VAR}` and `${ENV_VAR:-default}` references resolve in the Dashboard
+  process environment. Codex `http_headers`, `env_http_headers`,
+  `bearer_token_env_var` and local `env_vars` are supported. Disabled servers
+  and disabled Jira tools are respected. Remote executor environment and dynamic
+  authentication helpers are not executed or silently dropped.
   Stdio starts in the configuration file's directory unless it specifies `cwd`.
   Standard stdio, Streamable HTTP and SSE transports are supported. The server
   must expose `jira_get_issue(issue_key, fields=...)` (`fields` may be omitted),
   as mcp-atlassian does. OAuth must already be handled by your server or bridge;
   this feature does not reuse a native CLI's private OAuth token cache or perform
-  browser OAuth login. Rovo-only tool names are not yet supported.
+  browser OAuth login. HTTP 401/403 reports that authentication is still needed;
+  discovering a configuration does not claim an authenticated connection.
+  Rovo-only tool names are not yet supported.
   After connection, enabled groups automatically resolve explicit ticket keys
   in recent output, session titles/prompts, agent Git branches and previously
   discovered PR/MR titles when their ticket count/list loads. No semantic/project-wide

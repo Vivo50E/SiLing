@@ -71,6 +71,11 @@ class JiraMCPTests(unittest.TestCase):
             def log_message(self, *args):
                 pass
             def do_POST(self):
+                if self.path == '/auth':
+                    self.send_response(401)
+                    self.send_header('WWW-Authenticate', 'Bearer')
+                    self.end_headers()
+                    return
                 request = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
                 seen.append((self.path, self.headers.get('Authorization'), request))
                 if self.path == '/redirect':
@@ -113,6 +118,7 @@ class JiraMCPTests(unittest.TestCase):
             self.assertEqual(redirect, {'error': 'connection_failed'})
             self.assertNotIn('fixture-credential', json.dumps(redirect))
             self.assertEqual(len([row for row in seen if row[0] == '/redirect']), 1)
+            self.assertEqual(jira_mcp.call_worker({**server, 'url': base + '/auth'}, []), {'error': 'auth_required'})
             self.assertFalse(any(row[0] == '/never-send-credentials' for row in seen))
         finally:
             http.shutdown()

@@ -93,9 +93,17 @@ def main():
         result = asyncio.run(query(json.loads(sys.stdin.read(1048576))))
     except ImportError:
         result = {'error': 'sdk_missing'}
-    except BaseException:
+    except BaseException as exc:
         # Never send provider messages, headers, stderr or credentials to the parent.
         result = {'error': 'connection_failed'}
+        pending = [exc]
+        while pending:
+            error = pending.pop()
+            pending.extend(getattr(error, 'exceptions', ()))
+            response = getattr(error, 'response', None)
+            if getattr(response, 'status_code', None) in (401, 403):
+                result = {'error': 'auth_required'}
+                break
     print(json.dumps(result))
 
 

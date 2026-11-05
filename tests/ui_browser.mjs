@@ -122,6 +122,7 @@ const completeSource = previewSource + '\n' + 'Full source line\n'.repeat(18000)
 let truncatePreview = false;
 let jiraMode='ok';
 let jiraConnection={enabled:false};
+const jiraConnections=[];
 let bulkMode=false,bulkHold=null;const bulkBodies=[];
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -140,9 +141,16 @@ const server = http.createServer((req, res) => {
     assert.equal(req.headers['x-siling-jira-mcp'],'user-click');
     let raw='';req.on('data',chunk=>raw+=chunk);req.on('end',()=>{
       const body=JSON.parse(raw);
+      if (url.pathname.endsWith('/local-servers')) return res.end(JSON.stringify({servers:[
+        {source:'codex',config_file:'/fixture/codex/config.toml',name:'jira-fixture'},
+        {source:'claude',config_file:'/fixture/.claude.json',name:'jira-fixture'}],sources:[]}));
       if (url.pathname.endsWith('/servers')) return res.end(JSON.stringify({servers:[{name:'jira-fixture'}]}));
       if (url.pathname.endsWith('/disconnect')) jiraConnection={enabled:false};
-      else jiraConnection={enabled:true,...body};
+      else {
+        jiraConnections.push(body);
+        if(jiraMode==='native-auth')return res.end(JSON.stringify({error:'auth_required'}));
+        jiraConnection={enabled:true,...body,config_source:body.config_file==='/fixture/.claude.json'?'claude':body.config_file.endsWith('config.toml')?'codex':'custom'};
+      }
       res.end(JSON.stringify(jiraConnection));
     });return;
   }
@@ -638,7 +646,7 @@ try {
     ready:()=>!!bulkHold,release:()=>{bulkHold();bulkHold=null;},
     activate:id=>{sessions.find(s=>s.run_id===id).alive=true;}
   });
-  const jiraCheck=()=>checkJira({evaluate,waitFor,cdp,viewport,screenshot,requests,pause,mode:value=>{jiraMode=value;},configure:()=>{
+  const jiraCheck=()=>checkJira({evaluate,waitFor,cdp,viewport,screenshot,requests,pause,connections:jiraConnections,mode:value=>{jiraMode=value;},configure:()=>{
     systemBrowserAvailable=false;failBrowserOpen=false;archiveMode='ok';bulkMode=false;
     sessions.splice(0,sessions.length,...['jira-on','jira-off'].map(run_id=>({run_id,kind:'run',agent:'terminal',alive:true,display_name:run_id})));
     groupFixture.groups=[{id:'jira-group',name:'Jira group',color:'teal'},{id:'other-group',name:'Other',color:'blue'}];

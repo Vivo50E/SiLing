@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-export async function checkJira({evaluate,waitFor,cdp,viewport,screenshot,requests,pause,mode,configure}) {
+export async function checkJira({evaluate,waitFor,cdp,viewport,screenshot,requests,pause,connections,mode,configure}) {
   await waitFor(`!!document.querySelector('#session-list .session-item')`);await viewport(1280,900);
   // Stop the preceding Dashboard before replacing shared fixture sessions:
   // its polling/rendering can otherwise rewrite the next case's saved slots.
@@ -26,7 +26,24 @@ export async function checkJira({evaluate,waitFor,cdp,viewport,screenshot,reques
   await waitFor(`document.querySelectorAll('#pane-jira li').length===1`);
   // Configure a referenced MCP server without changing the terminal or exposing credentials.
   await evaluate(`document.querySelector('#pane-jira').close();document.querySelector('#btn-settings').click();document.querySelector('[data-settings-section="browsing"]').click();document.querySelector('#jira-mcp-settings').open=true`);
-  await waitFor(`document.querySelector('#jira-mcp-settings [data-status]').textContent.includes('disconnected')`);
+  await waitFor(`document.querySelector('#jira-mcp-settings [data-server]').options.length===2 && !document.querySelector('#jira-mcp-settings fieldset').disabled`);
+  assert.equal(await evaluate(`document.querySelector('#jira-mcp-settings [data-custom]').hidden`),true,'Local discovery needs no configuration path');
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('#jira-mcp-settings [data-custom]')).display`),'none');
+  assert.deepEqual(await evaluate(`[...document.querySelector('#jira-mcp-settings [data-server]').options].map(o=>o.textContent)`),['Codex · jira-fixture','Claude Code · jira-fixture']);
+  mode('native-auth');
+  await evaluate(`document.querySelector('#jira-mcp-settings [data-base]').value='https://jira.example';document.querySelector('#jira-mcp-settings [data-connect]').click()`);
+  await waitFor(`document.querySelector('#jira-mcp-settings [data-status]').textContent.includes('authentication cannot be inherited')`);
+  assert.equal(connections.at(-1).config_file,'/fixture/codex/config.toml');
+  assert.equal(await evaluate(`[...document.querySelectorAll('#grid iframe')].every((f,i)=>f===jiraFrames[i])`),true);
+  mode('ok');
+  await evaluate(`document.querySelector('#jira-mcp-settings [data-server]').value='1';document.querySelector('#jira-mcp-settings [data-connect]').click()`);
+  await waitFor(`document.querySelector('#jira-mcp-settings [data-status]').textContent.includes('MCP connected')`);
+  assert.equal(connections.at(-1).config_file,'/fixture/.claude.json','Duplicate server names retain their selected source');
+  await screenshot('jira-native-mcp');
+  await evaluate(`document.querySelector('#jira-mcp-settings [data-disconnect]').click()`);
+  await waitFor(`document.querySelector('#jira-mcp-settings [data-status]').textContent.includes('disconnected') && !document.querySelector('#jira-mcp-settings fieldset').disabled`);
+  await evaluate(`document.querySelector('#jira-mcp-settings [data-source]').value='custom';document.querySelector('#jira-mcp-settings [data-source]').dispatchEvent(new Event('change'))`);
+  assert.notEqual(await evaluate(`getComputedStyle(document.querySelector('#jira-mcp-settings [data-custom]')).display`),'none');
   await evaluate(`document.querySelector('#jira-mcp-settings [data-file]').value='/fixture/mcp.json';document.querySelector('#jira-mcp-settings [data-servers]').click()`);
   await waitFor(`document.querySelector('#jira-mcp-settings [data-server]').value==='jira-fixture'`);
   await evaluate(`document.querySelector('#jira-mcp-settings [data-base]').value='https://jira.example';document.querySelector('#jira-mcp-settings [data-connect]').click()`);

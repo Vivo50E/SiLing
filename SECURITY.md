@@ -82,8 +82,10 @@ reported separately; displayed colors are based on the latest known status.
 
 ## Jira MCP boundary
 
-An explicit same-origin connection action selects an existing trusted JSON MCP
-configuration. The Dashboard persists its file/server reference and Jira base URL,
+An explicit same-origin connection action selects an existing trusted JSON or
+Codex TOML MCP configuration. Local discovery reads only user-level server names,
+sources and file references; it never starts servers or returns commands,
+endpoints, headers or environment values. The Dashboard persists its file/server reference and Jira base URL,
 not credentials; expanded environment/header values stay in the client worker's
 stdin and memory. Configuration fingerprints require reconnecting after changes.
 The SDK 1.x client runs in an isolated subprocess, suppressing provider logs and
@@ -99,7 +101,10 @@ runs with the Dashboard user's OS privileges. Read-only tool selection is not an
 OS sandbox and cannot constrain a malicious server. HTTPS (or loopback HTTP) is
 required for configured network endpoints; the SDK restricts redirects to the
 same origin. Authentication must already be handled by server configuration or a
-trusted bridge. Provider-returned content is treated as display text, never as
+trusted bridge. Native private OAuth caches and keychains are not read or copied.
+Dynamic credential helpers and remote-executor environment are rejected rather
+than silently falling back to an unauthenticated or different local identity.
+Provider-returned content is treated as display text, never as
 instructions, HTML or a URL to fetch. Ticket links are constructed from the
 explicitly configured Jira site and matching issue key. Existing administrator
 and same-account access remains outside this boundary.
