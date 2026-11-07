@@ -16,7 +16,7 @@
     document.body.append(dialog);
     const translations={'Close':'关闭','Refresh':'刷新','Add':'添加','Add a Jira link':'添加 Jira 链接','Related Jira tickets':'相关 Jira tickets','Saved links and recent output; no Jira API calls or background polling.':'来自已关联链接和最近输出；不调用 Jira API，不后台轮询。','No related Jira tickets found. Add a link below.':'未找到相关 Jira ticket，可在下方添加链接。','Loading Jira tickets…':'正在加载 Jira tickets…','Could not load Jira tickets. Retry.':'加载失败，请重试。','Enter a Jira ticket URL ending in /browse/PROJECT-123.':'请输入以 /browse/PROJECT-123 结尾的 Jira ticket 链接。','linked':'已关联','output':'输出'};
     const t=value=>document.documentElement.lang.startsWith('zh')?(translations[value]||ui.message(value)):value;
-    const labels={close:'Close',refresh:'Refresh',label:'Add a Jira link',add:'Add',help:'Saved links and recent output. Connect Jira MCP in Settings to resolve ticket keys automatically; no background polling.'};
+    const labels={close:'Close',refresh:'Refresh',label:'Add a Jira link',add:'Add',help:'Works with every pane agent. Connected Jira MCP verifies ticket keys and searches task-name keywords; no background polling or transcript upload.'};
     for (const [name,label] of Object.entries(labels)) el(name).textContent=t(label);
     dialog.querySelector('h2').textContent=t('Related Jira tickets');
     el('session').textContent=title;
@@ -28,6 +28,7 @@
       el('branch').textContent='';
       el('help').textContent=ui.message(labels.help);
       el('status').textContent=data.mcp_error ? ui.message(data.mcp_error==='config_changed' ? 'MCP configuration changed. Reconnect in Settings.' : 'Jira MCP unavailable. Saved links are still shown; retry or check Settings.') :
+        data.search_error ? ui.message(data.search_error==='unsupported_search' ? 'This MCP cannot search task names. Enable jira_search with jql, fields and limit; ticket-key lookup still works.' : 'Task-name search failed. Saved links are still shown; refresh to retry.') :
         data.failed ? ui.message('Some ticket keys could not be verified. Saved links are still shown.') :
         data.pending ? ui.message('More ticket keys remain. Refresh to continue.') : data.warning ? t(data.warning) : data.items.length ? '' : t('No related Jira tickets found. Add a link below.');
       for (const item of data.items) {

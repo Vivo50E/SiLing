@@ -57,3 +57,11 @@ counts.update(cards[0],{run_id:'pane-0',linked_folders:[{type:'url',path:'new'}]
 assert.equal(pending.length,beforeInvalidation+1,'Connecting Jira MCP invalidates only Jira counts');
 assert.ok(pending.at(-1).path.endsWith('/jira?lookup=true'));
 pending.at(-1).resolve({items:[{url:'j2'}]});await tick();
+const beforeRename=pending.length;
+const renamed={run_id:'pane-0',display_name:'SRAM Vmin Vmax',linked_folders:[{type:'url',path:'new'}]};
+counts.update(cards[0],renamed,api);
+assert.equal(pending.length,beforeRename+1,'Renaming the current task invalidates only its Jira count');
+assert.ok(pending.at(-1).path.endsWith('/jira?lookup=true'));
+pending.at(-1).resolve({items:[]});await tick();
+counts.update(cards[0],renamed,api);
+assert.equal(pending.length,beforeRename+1,'Unchanged task names do not poll');

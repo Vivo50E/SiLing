@@ -148,6 +148,7 @@ const server = http.createServer((req, res) => {
       if (url.pathname.endsWith('/disconnect')) jiraConnection={enabled:false};
       else {
         jiraConnections.push(body);
+        if(!body.base_url)return res.end(JSON.stringify({error:'jira_url_required'}));
         if(jiraMode==='native-auth')return res.end(JSON.stringify({error:'auth_required'}));
         jiraConnection={enabled:true,...body,config_source:body.config_file==='/fixture/.claude.json'?'claude':body.config_file.endsWith('config.toml')?'codex':'custom'};
       }

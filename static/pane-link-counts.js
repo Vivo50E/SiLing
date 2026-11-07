@@ -64,7 +64,8 @@
       for (const kind of ['reviews', 'jira']) {
         const button = card.querySelector(`.btn-${kind}`);
         if (!button || button.hidden || button.disabled) continue;
-        const fingerprint = JSON.stringify(row.linked_folders || []);
+        const fingerprint = JSON.stringify(kind === 'jira' ?
+          [row.linked_folders || [], row.display_name, row.label, row.task] : row.linked_folders || []);
         const id = key(row.run_id, kind);
         let entry = cache.get(id);
         if (!entry || entry.fingerprint !== fingerprint) {

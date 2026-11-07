@@ -6,6 +6,35 @@ import json
 import os
 import signal
 import sys
+import re
+
+from . import jira
+
+
+def result_data(result):
+    if result.isError:
+        return None
+    data = result.structuredContent
+    if data is None:
+        data = next((json.loads(c.text) for c in result.content
+                     if c.type == 'text' and len(c.text) <= 65536), None)
+    if isinstance(data, dict) and 'result' in data:
+        data = data['result']
+        if isinstance(data, str) and len(data) <= 65536:
+            data = json.loads(data)
+    return data
+
+
+def issue_row(data):
+    if not isinstance(data, dict) or not re.fullmatch(r'[A-Z][A-Z0-9_]{0,31}-[1-9][0-9]{0,10}', str(data.get('key', ''))):
+        return None
+    fields = data.get('fields') if isinstance(data.get('fields'), dict) else data
+    state = fields.get('status', '')
+    if isinstance(state, dict):
+        state = state.get('name', '')
+    title = fields.get('summary')
+    return {'key': data['key'], 'title': title[:500] if isinstance(title, str) and title else data['key'],
+            'state': state[:100] if isinstance(state, str) else ''}
 
 
 async def query(payload):
@@ -39,11 +68,12 @@ async def query(payload):
                                                                      read_timeout_seconds=timedelta(seconds=8)))
             await session.initialize()
             # Tool descriptions/annotations are untrusted. Never let the server choose a command.
-            tool, cursor = None, None
+            tool, search, cursor = None, None, None
             for _ in range(5):
                 tools = await session.list_tools(params=PaginatedRequestParams(cursor=cursor) if cursor else None)
-                tool = next((t for t in tools.tools if t.name == 'jira_get_issue'), None)
-                if tool is not None or not tools.nextCursor:
+                tool = next((t for t in tools.tools if t.name == 'jira_get_issue'), tool)
+                search = next((t for t in tools.tools if t.name == 'jira_search'), search)
+                if (tool is not None and search is not None) or not tools.nextCursor:
                     break
                 cursor = tools.nextCursor
             if tool is None:
@@ -59,30 +89,39 @@ async def query(payload):
                     args['fields'] = 'summary,status'
                 try:
                     result = await session.call_tool('jira_get_issue', args)
-                    if result.isError:
+                    row = issue_row(result_data(result))
+                    if row is None or row['key'] != key:
                         failed.append(key)
                         continue
-                    data = result.structuredContent
-                    if data is None:
-                        data = next((json.loads(c.text) for c in result.content
-                                     if c.type == 'text' and len(c.text) <= 65536), None)
-                    if isinstance(data, dict) and 'result' in data:
-                        data = data['result']
-                        if isinstance(data, str) and len(data) <= 65536:
-                            data = json.loads(data)
-                    if not isinstance(data, dict) or data.get('key') != key:
-                        failed.append(key)
-                        continue
-                    fields = data.get('fields') if isinstance(data.get('fields'), dict) else data
-                    state = fields.get('status', '')
-                    if isinstance(state, dict):
-                        state = state.get('name', '')
-                    title = fields.get('summary')
-                    items.append({'key': key, 'title': (title[:500] if isinstance(title, str) and title else key),
-                                  'state': state[:100] if isinstance(state, str) else ''})
+                    items.append(row)
                 except Exception:
                     failed.append(key)
-            return {'items': items, 'failed': failed}
+            supported = bool(search and not server.get('search_disabled')
+                             and {'jql', 'fields', 'limit'} <= set(search.inputSchema.get('properties', {}))
+                             and set(search.inputSchema.get('required', [])) <= {'jql', 'fields', 'limit'})
+            response = {'items': items, 'failed': failed, 'search_supported': supported}
+            terms = payload.get('terms', [])
+            if terms:
+                if (not isinstance(terms, list) or not 1 <= len(terms) <= 5
+                        or any(not isinstance(t, str) or not re.fullmatch(r'[a-z][a-z0-9]{2,23}|[\u3400-\u9fff]{2,12}', t) for t in terms)):
+                    response['search_error'] = 'invalid_terms'
+                elif not supported:
+                    response['search_error'] = 'unsupported_search'
+                else:
+                    try:
+                        jql = ' AND '.join('summary ~ "' + term + '"' for term in terms) + ' ORDER BY updated DESC'
+                        data = result_data(await session.call_tool('jira_search', {
+                            'jql': jql, 'fields': 'summary,status', 'limit': 8}))
+                        rows = data.get('issues') if isinstance(data, dict) else data
+                        if not isinstance(rows, list):
+                            raise ValueError('Invalid search response')
+                        for data in rows[:8]:
+                            row = issue_row(data)
+                            if row and jira.matches_task(row['title'], terms):
+                                items.append({**row, 'match': 'task'})
+                    except Exception:
+                        response['search_error'] = 'search_failed'
+            return response
 
 
 def main():
@@ -104,6 +143,12 @@ def main():
             if getattr(response, 'status_code', None) in (401, 403):
                 result = {'error': 'auth_required'}
                 break
+            if isinstance(error, TimeoutError) or type(error).__name__ in {'ConnectTimeout', 'ReadTimeout', 'WriteTimeout', 'PoolTimeout'}:
+                result = {'error': 'timeout'}
+            elif type(error).__name__ in {'ConnectError', 'ProxyError'}:
+                result = {'error': 'network_error'}
+            elif getattr(response, 'status_code', 0) >= 500:
+                result = {'error': 'server_error'}
     print(json.dumps(result))
 
 

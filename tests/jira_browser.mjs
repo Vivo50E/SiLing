@@ -30,9 +30,11 @@ export async function checkJira({evaluate,waitFor,cdp,viewport,screenshot,reques
   assert.equal(await evaluate(`document.querySelector('#jira-mcp-settings [data-custom]').hidden`),true,'Local discovery needs no configuration path');
   assert.equal(await evaluate(`getComputedStyle(document.querySelector('#jira-mcp-settings [data-custom]')).display`),'none');
   assert.deepEqual(await evaluate(`[...document.querySelector('#jira-mcp-settings [data-server]').options].map(o=>o.textContent)`),['Codex · jira-fixture','Claude Code · jira-fixture']);
+  await evaluate(`document.querySelector('#jira-mcp-settings [data-connect]').click()`);
+  await waitFor(`document.querySelector('#jira-mcp-settings [data-status]').textContent.includes('Enter the Jira site URL')`);
   mode('native-auth');
   await evaluate(`document.querySelector('#jira-mcp-settings [data-base]').value='https://jira.example';document.querySelector('#jira-mcp-settings [data-connect]').click()`);
-  await waitFor(`document.querySelector('#jira-mcp-settings [data-status]').textContent.includes('authentication cannot be inherited')`);
+  await waitFor(`document.querySelector('#jira-mcp-settings [data-status]').textContent.includes('requires authentication (401/403)')`);
   assert.equal(connections.at(-1).config_file,'/fixture/codex/config.toml');
   assert.equal(await evaluate(`[...document.querySelectorAll('#grid iframe')].every((f,i)=>f===jiraFrames[i])`),true);
   mode('ok');

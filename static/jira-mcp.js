@@ -16,7 +16,7 @@
     document.querySelector('#settings-section-browsing').append(box);
     const el = key => box.querySelector(`[data-${key}]`);
     for (const [key, message] of Object.entries({title:'Jira MCP connection',
-      help:'Read existing Codex or Claude Code MCP configuration. Only jira_get_issue is called. Private CLI OAuth sessions are not copied; servers that require them need a supported authentication bridge.',
+      help:'One Dashboard Jira connection serves every pane, regardless of its agent. Reads ticket keys and searches task-name keywords. CLI OAuth sessions are separate; importing configuration does not sign in.',
       'source-label':'Configuration source', 'local-option':'Local Codex / Claude Code', 'custom-option':'Custom configuration file',
       'file-label':'MCP configuration file', servers:'Read servers', 'server-label':'MCP server',
       'base-label':'Jira site URL (optional if JIRA_URL is configured)', connect:'Test & connect', disconnect:'Disconnect'})) ui.setMessage(el(key), message);
@@ -53,7 +53,7 @@
       revision++;
       setBusy(true); ui.setMessage(el('status'), 'Checking Jira MCP…');
       try {await task();}
-      catch {ui.setMessage(el('status'), 'Could not connect. Check the configuration, server authentication and Jira URL.');}
+      catch {ui.setMessage(el('status'), 'Could not read the MCP configuration or reach the Dashboard. Check the selected file, server and Dashboard connection.');}
       finally {setBusy(false);}
     };
     const readServers = () => run(async () => {
@@ -76,11 +76,19 @@
       }
       const result = await request('connect', {config_file:native?.config_file || el('file').value.trim(), server_name:native?.name || el('server').value, base_url:el('base').value.trim()});
       if (result.error) {
-        ui.setMessage(el('status'), ['auth_required','native_auth_required'].includes(result.error) ?
-          'MCP configuration was read, but its authentication cannot be inherited. Use a supported OAuth bridge or configured credentials.' :
+        const errors = {
+          jira_url_required:'Enter the Jira site URL (for example https://your-team.atlassian.net). This is the Jira website, not the MCP endpoint.',
+          invalid_jira_url:'Invalid Jira site URL. Use HTTPS without credentials, query parameters or a fragment.',
+          auth_required:'The MCP server requires authentication (401/403). Its CLI login is not shared with Dashboard. Configure credentials or an authenticated MCP bridge.',
+          native_auth_required:'This MCP uses CLI-specific authentication. Configure a supported authenticated MCP connection for Dashboard.',
+          timeout:'The MCP server did not respond within the time limit. Check its availability and retry.',
+          network_error:'Could not reach the MCP server. Check VPN, DNS, TLS certificates and proxy settings.',
+          server_error:'The MCP server returned a server error. Check the service and retry.'
+        };
+        ui.setMessage(el('status'), errors[result.error] || (
           result.error === 'unsupported_tool' ? 'This MCP must expose jira_get_issue with issue_key.' :
           result.error === 'sdk_missing' ? 'Install the Dashboard requirements to enable the MCP client.' :
-          'Could not connect. Check the configuration, server authentication and Jira URL.');
+          'The MCP handshake failed. Check the service transport and protocol configuration.'));
       } else {show(result); changed?.();}
     });
     el('disconnect').onclick = () => run(async () => {show(await request('disconnect', {})); changed?.();});

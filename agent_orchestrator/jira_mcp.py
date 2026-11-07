@@ -15,12 +15,12 @@ try:
 except ImportError:
     import tomli as tomllib
 
-from . import jira
+from . import jira, terminal_files
 from .json_store import edit_json, write_json
 
 KEY = re.compile(r'(?<![A-Za-z0-9_])([A-Z][A-Z0-9_]{0,31}-[1-9][0-9]{0,10})(?![A-Za-z0-9_])')
 ERRORS = {'sdk_missing', 'unsupported_tool', 'connection_failed', 'config_changed', 'busy',
-          'auth_required', 'native_auth_required'}
+          'auth_required', 'native_auth_required', 'timeout', 'network_error', 'server_error'}
 
 
 class NativeMCPAuthRequired(ValueError):
@@ -162,6 +162,9 @@ def server_config(path, name):
                   'type': server.get('type', 'http')}
     else:
         raise ValueError('Expected stdio, HTTP or SSE MCP configuration.')
+    if codex and (('enabled_tools' in server and 'jira_search' not in server['enabled_tools'])
+                  or 'jira_search' in server.get('disabled_tools', [])):
+        result['search_disabled'] = True
     return result
 
 
@@ -169,13 +172,16 @@ def fingerprint(server):
     return hashlib.sha256(json.dumps(server, sort_keys=True).encode()).hexdigest()
 
 
-def call_worker(server, keys):
+def call_worker(server, keys, *, terms=None):
     try:
         with subprocess.Popen([sys.executable, '-m', 'agent_orchestrator.jira_mcp_worker'],
                               stdin=subprocess.PIPE, cwd=Path(__file__).resolve().parent.parent,
                               text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as process:
             try:
-                stdout, _ = process.communicate(json.dumps({'server': server, 'keys': keys}), timeout=32)
+                payload = {'server': server, 'keys': keys}
+                if terms:
+                    payload['terms'] = terms
+                stdout, _ = process.communicate(json.dumps(payload), timeout=32)
             except subprocess.TimeoutExpired:
                 process.terminate()
                 try:
@@ -204,7 +210,7 @@ class JiraMCP:
 
     def status(self):
         cfg = read_json(self.path)
-        result = {k: cfg[k] for k in ('enabled', 'config_file', 'server_name', 'base_url') if k in cfg}
+        result = {k: cfg[k] for k in ('enabled', 'config_file', 'server_name', 'base_url', 'search_supported') if k in cfg}
         if cfg.get('config_file'):
             result['config_source'] = next((source for source, path in native_config_paths()
                                            if str(path) == cfg['config_file']), 'custom')
@@ -220,7 +226,13 @@ class JiraMCP:
             server = server_config(path, name)
         except NativeMCPAuthRequired:
             return {'error': 'native_auth_required'}
-        base = web_base(body['base_url'] or server.get('env', {}).get('JIRA_URL', ''))
+        value = body['base_url'] or server.get('env', {}).get('JIRA_URL', '')
+        if not value:
+            return {'error': 'jira_url_required'}
+        try:
+            base = web_base(value)
+        except (ValueError, TypeError):
+            return {'error': 'invalid_jira_url'}
         with self.config_lock:
             before = read_json(self.path)
         if not self.slots.acquire(blocking=False):
@@ -237,6 +249,7 @@ class JiraMCP:
                 return {'error': 'config_changed'}
             write_json(self.path, {'enabled': True, 'config_file': str(Path(path).expanduser()),
                                   'server_name': name, 'base_url': base, 'fingerprint': fingerprint(server),
+                                  'search_supported': result.get('search_supported', False),
                                   'connection_id': uuid.uuid4().hex})
         return self.status()
 
@@ -261,11 +274,19 @@ class JiraMCP:
             # Full URLs from other sites are not evidence for this Jira instance.
             clean = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', text[-262144:])
             evidence = '\n'.join(str(run.get(k) or '') for k in ('task', 'display_name', 'initial_prompt'))[-32768:]
-            # Agent cwd is stable repository evidence. A shell/SSH pane may have cd'ed elsewhere.
-            if run.get('agent') in {'claude', 'codex', 'cursor'} and run.get('cwd'):
+            # Inspect the live pane for every agent. Never treat a shell's launch
+            # directory as its current local repository (it may now be over SSH).
+            cwd = ''
+            if run.get('tmux_session'):
+                detected = terminal_files.detect_environment(run['tmux_session'])
+                if not detected.get('host') and not detected.get('unresolved'):
+                    cwd = detected.get('cwd', '')
+            elif run.get('agent') in {'claude', 'codex', 'cursor'}:
+                cwd = run.get('cwd', '')
+            if cwd:
                 try:
                     branch = subprocess.run(['git', 'symbolic-ref', '--quiet', '--short', 'HEAD'],
-                                            cwd=run['cwd'], capture_output=True, text=True, timeout=2)
+                                            cwd=cwd, capture_output=True, text=True, timeout=2)
                     if branch.returncode == 0:
                         evidence += '\n' + branch.stdout[:4096]
                 except (OSError, subprocess.TimeoutExpired):
@@ -278,14 +299,20 @@ class JiraMCP:
             context = re.sub(r'https?://[^\s<>"\x00-\x20]+', '', context)
             candidates = list(dict.fromkeys(KEY.findall(context)))[:100]
             candidates += [i['key'] for i in context_links if i['url'] == cfg['base_url'] + '/browse/' + i['key']]
+            terms = jira.task_terms(run) if not candidates else []
             candidates += [i['key'] for i in items.values() if i['url'] == cfg['base_url'] + '/browse/' + i['key']]
             connection = fingerprint({'server': cfg.get('fingerprint'), 'base_url': cfg['base_url']})
             attempts = saved.get('attempts', {}) if saved.get('connection') == connection else {}
             due = [key for key in dict.fromkeys(candidates) if force or time.time() - attempts.get(key, 0) >= 60]
             due.sort(key=lambda key: attempts.get(key, 0))
             keys = due[:8]
+            search_id = fingerprint({'terms': terms, 'connection': connection})
+            search_due = bool(terms) and (force or saved.get('search_id') != search_id
+                                         or time.time() - saved.get('searched_at', 0) >= 300)
+            if terms and not search_due and saved.get('search_error'):
+                result['search_error'] = saved['search_error']
             result['pending'] = max(0, len(due) - len(keys))
-            if keys:
+            if keys or search_due:
                 started = time.time()
                 if not self.slots.acquire(blocking=False):
                     result['mcp_error'] = 'busy'
@@ -295,7 +322,7 @@ class JiraMCP:
                         if fingerprint(server) != cfg.get('fingerprint'):
                             response = {'error': 'config_changed'}
                         else:
-                            response = call_worker(server, keys)
+                            response = call_worker(server, keys, terms=terms) if search_due else call_worker(server, keys)
                         # Disconnect/reconfigure while a query runs must not save its response.
                         with self.config_lock:
                             if read_json(self.path) != cfg:
@@ -306,13 +333,19 @@ class JiraMCP:
                                 now = started
                                 updates = []
                                 for row in response.get('items', []):
-                                    if not isinstance(row, dict) or row.get('key') not in keys:
+                                    if not isinstance(row, dict):
                                         continue
-                                    key = row['key']
+                                    key = row.get('key')
+                                    if not isinstance(key, str) or not KEY.fullmatch(key):
+                                        continue
+                                    searched = (search_due and row.get('match') == 'task'
+                                                and jira.matches_task(str(row.get('title', '')), terms))
+                                    if key not in keys and not searched:
+                                        continue
                                     updates.append({'url': cfg['base_url'] + '/browse/' + key, 'key': key,
                                                     'title': str(row.get('title') or key)[:500],
                                                     'state': str(row.get('state') or '')[:100], 'source': 'mcp',
-                                                    'checked_at': now})
+                                                    'checked_at': now, 'match': 'task' if searched else 'key'})
                                 directory.mkdir(parents=True, exist_ok=True)
                                 with edit_json(path, create=True) as state:
                                     previous = {i['url']: i for i in state.get('items', [])}
@@ -323,12 +356,18 @@ class JiraMCP:
                                     old_attempts.update({key: max(now, old_attempts.get(key, 0)) for key in keys})
                                     state['attempts'] = dict(sorted(old_attempts.items(), key=lambda kv: kv[1])[-1000:])
                                     state['connection'] = connection
+                                    if search_due:
+                                        state['search_id'] = search_id
+                                        state['searched_at'] = now
+                                        state['search_error'] = response.get('search_error', '')
                                 items.update(previous)
                                 # Manual labels take precedence over a provider title.
                                 for item in result['items']:
                                     if item['source'] == 'linked':
                                         items[item['url']].update(title=item['title'], source='linked')
                                 result['failed'] = len(response.get('failed', []))
+                                if response.get('search_error'):
+                                    result['search_error'] = response['search_error']
                     except (OSError, ValueError, KeyError, TypeError):
                         result['mcp_error'] = 'connection_failed'
                     finally:

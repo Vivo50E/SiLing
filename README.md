@@ -225,13 +225,26 @@ intervene.
   browser OAuth login. HTTP 401/403 reports that authentication is still needed;
   discovering a configuration does not claim an authenticated connection.
   Rovo-only tool names are not yet supported.
-  After connection, enabled groups automatically resolve explicit ticket keys
-  in recent output, session titles/prompts, agent Git branches and previously
-  discovered PR/MR titles when their ticket count/list loads. No semantic/project-wide
-  search or transcript upload is performed. Shell/SSH panes do not infer a branch
-  from their launch directory. Only verified matching keys are linked, with title
+  Connection errors distinguish a missing/invalid Jira website URL, OAuth
+  authentication, network availability and protocol handshake failures. A blank
+  site URL is not inferred from a gateway MCP endpoint.
+  One Dashboard connection serves **every pane agent**, including Terminal and
+  custom CLIs. Enabled groups resolve explicit ticket keys in recent output,
+  session titles/prompts, live local Git branches and saved PR/MR titles when
+  their count/list loads. Live shell cwd is inspected; SSH and unavailable
+  contexts never fall back to a local launch directory.
+  Without an explicit current ticket key, task names with at least two useful
+  keywords (or a Chinese phrase) also use the fixed read-only `jira_search` tool.
+  It must support `jql`, `fields` and `limit`; missing search support is shown
+  separately and does not disable key lookup. Search sends at most five task-name
+  words, requests summary/status for at most eight issues, and only associates
+  titles matching every keyword. This is keyword matching, not semantic AI search.
+  No full transcript or prompt is uploaded. Generic/credential-like names are
+  skipped. Renaming a pane invalidates its initial count; searches cache for five
+  minutes, and **Refresh** bypasses the cache. Only verified matching keys are linked, with title
   and status; associations persist across restarts and disconnects. Each request
-  resolves up to eight keys, with two workers Dashboard-wide and a 32-second worker
+  resolves up to eight keys plus one bounded task-name search, with two workers
+  Dashboard-wide and a 32-second worker
   deadline (plus up to five seconds for cleanup); results, including individual
   missing keys, are cached for one minute.
   Open the list or **Refresh** to discover later output; there is no background

@@ -90,10 +90,16 @@ not credentials; expanded environment/header values stay in the client worker's
 stdin and memory. Configuration fingerprints require reconnecting after changes.
 The SDK 1.x client runs in an isolated subprocess, suppressing provider logs and
 returning only bounded ticket keys, titles, statuses and fixed error codes.
-Only the fixed `jira_get_issue` tool can be called, with validated evidence keys
-and minimal fields. Server tool descriptions cannot select tools or commands;
+Only the fixed `jira_get_issue` and `jira_search` tools can be called, with
+validated evidence keys or a generated summary-only JQL query and minimal fields.
+Search arguments are restricted to jql, fields and limit; at most five sanitized
+task-name words and eight results are used. Every search title must match all
+words locally before association. Server tool descriptions cannot select tools
+or commands;
 sampling, elicitation, writes, comments and attachment operations are not enabled.
-No transcript or prompt is sent to MCP. Only opted-in groups trigger lookups;
+No full transcript or prompt is sent to MCP; task-name keywords are sent for
+searches. Generic and credential-like names are skipped. Only opted-in groups
+trigger lookups;
 requests and concurrency are bounded. Disconnect discards in-flight results.
 
 MCP configurations and their stdio executables must be trusted: a stdio server

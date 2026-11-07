@@ -3,6 +3,26 @@ import re
 from urllib.parse import urlsplit, urlunsplit
 
 
+def task_terms(run):
+    """Bounded words from the pane's user-visible task name, never its transcript."""
+    stop = set('the and for with from this that fix update implement add task session interactive terminal codex claude cursor agent resume new test'.split())
+    for field in ('display_name', 'label', 'task'):
+        title = str(run.get(field) or '')[:300]
+        if re.search(r'(?i)https?://|bearer\s|password|secret|token|api.?key|xox[baprs]-|sk-', title):
+            return []
+        title = re.sub(r'\b[A-Z][A-Z0-9_]*-[1-9][0-9]*\b', '', title)
+        words = re.findall(r'[A-Za-z][A-Za-z0-9]{2,}|[\u3400-\u9fff]{2,12}', title)
+        terms = list(dict.fromkeys(word.lower() for word in words if len(word) <= 24 and word.lower() not in stop))[:5]
+        if len(terms) >= 2 or (len(terms) == 1 and re.fullmatch(r'[\u3400-\u9fff]{4,12}', terms[0])):
+            return terms
+    return []
+
+
+def matches_task(title, terms):
+    words = set(re.findall(r'[a-z][a-z0-9]*', title.lower()))
+    return bool(terms) and all(term in words if term.isascii() else term in title for term in terms)
+
+
 def ticket_url(value):
     try:
         value = str(value).strip()
