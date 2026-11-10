@@ -15,6 +15,8 @@ import threading
 import time
 from typing import Any, Optional
 
+from .update_ci import LOCAL_SMOKE, github_repository, verified_ci
+
 
 SELF_IMPROVEMENT_BRANCH_PREFIX = "agent/self-improve-"
 VERIFY_TTL_SECONDS = 15 * 60
@@ -348,11 +350,11 @@ class SelfUpdateManager:
         env["PATH"] = runtime_bin + os.pathsep + env.get("PATH", os.defpath)
         return env
 
-    def verify(self, branch: str, *, timeout: float = VERIFY_TIMEOUT_SECONDS) -> dict[str, Any]:
+    def verify(self, branch: str, *, timeout: float = VERIFY_TIMEOUT_SECONDS, full: bool = False) -> dict[str, Any]:
         if not self._verify_lock.acquire(blocking=False):
             raise SelfUpdateError("Update verification is already running; wait for it to finish")
         try:
-            result = self._verify(branch, timeout=timeout)
+            result = self._verify(branch, timeout=timeout, full=full)
             # Keep diagnostics across page reloads, never expose an approval token
             # through the read-only status endpoint.
             self._last_verification = {key: value for key, value in result.items()
@@ -361,15 +363,39 @@ class SelfUpdateManager:
         finally:
             self._verify_lock.release()
 
-    def _verify(self, branch: str, *, timeout: float) -> dict[str, Any]:
+    def _ci_evidence(self, candidate: dict[str, Any]) -> dict[str, Any] | None:
+        if candidate.get('kind') != 'upstream':
+            return None
+        remote, _, branch = candidate.get('source', '').partition('/')
+        if not remote or branch != 'main':
+            return None
+        try:
+            repository = github_repository(self._git('remote', 'get-url', remote).stdout)
+            if not repository:
+                return None
+            # Workflow/dependency changes always require a full local suite.
+            for path in ('.github/workflows/ci.yml', '.github/actions/setup-tmux/action.yml',
+                         'requirements.txt', 'Makefile', 'tools/check.py', 'workspace.json'):
+                before = self._git('show', f"{candidate['target_head']}:{path}", check=False)
+                after = self._git('show', f"{candidate['head']}:{path}", check=False)
+                if before.returncode or after.returncode or not before.stdout or before.stdout != after.stdout:
+                    return None
+            return verified_ci(repository, candidate['head'], branch)
+        except SelfUpdateError:
+            return None
+
+    def _verify(self, branch: str, *, timeout: float, full: bool = False) -> dict[str, Any]:
         candidate = self._candidate(branch)
         if not candidate["eligible"]:
             raise SelfUpdateError(candidate["blocked_reason"])
+        started = time.monotonic()
+        evidence = None if full else self._ci_evidence(candidate)
         command = [
             self.python, "-m", "unittest", "discover",
             "-s", "tests", "-p", "test_*.py", "-v",
         ]
-        started = time.monotonic()
+        if evidence:
+            command = [self.python, '-W', 'error', '-c', LOCAL_SMOKE, candidate['head']]
         test_dir = Path(candidate["worktree"])
         temporary_root: Optional[Path] = None
         temporary_worktree: Optional[Path] = None
@@ -382,13 +408,12 @@ class SelfUpdateManager:
                     candidate["head"], timeout=60,
                 )
                 test_dir = temporary_worktree
-            result = subprocess.run(
-                command, cwd=str(test_dir), capture_output=True,
-                text=True, timeout=timeout, env=self._verification_environment(),
-            )
+            result = self._run_checks(command, test_dir, timeout)
             output = "\n".join(
                 part.strip() for part in (result.stdout, result.stderr) if part.strip()
             )
+            if evidence:
+                output = f"Full CI passed for {candidate['head']}: {evidence['url']}\nLocal startup and regression checks:\n" + output
             count_match = re.search(r"Ran\s+([0-9,]+)\s+tests?", output)
             test_count = int(count_match.group(1).replace(",", "")) if count_match else 0
             passed = result.returncode == 0 and test_count > 0
@@ -422,6 +447,8 @@ class SelfUpdateManager:
             "candidate_head": candidate["head"],
             "duration_seconds": duration,
             "test_count": test_count,
+            "verification_mode": 'ci_and_local' if evidence else 'full_local',
+            "ci_evidence": evidence,
             "output": output[-MAX_OUTPUT_CHARS:],
         }
         if passed:
@@ -437,6 +464,10 @@ class SelfUpdateManager:
                 "expires_in_seconds": VERIFY_TTL_SECONDS,
             })
         return response
+
+    def _run_checks(self, command: list[str], directory: Path, timeout: float):
+        return subprocess.run(command, cwd=str(directory), capture_output=True,
+                              text=True, timeout=timeout, env=self._verification_environment())
 
     def apply(self, branch: str, token: str, confirmation: str) -> dict[str, Any]:
         if confirmation != "APPROVE":

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 export async function checkUpdateDiagnostics({evaluate,waitFor,cdp,viewport,screenshot,mode,applies}) {
+  await waitFor(`!!document.querySelector('#session-list .session-item')`);
   await viewport(1280,900);
+  await evaluate(`document.querySelector('#self-update-full').checked=false;document.querySelector('#self-update-full').dispatchEvent(new Event('change'))`);
   mode('failed');
   await evaluate(`document.querySelector('#btn-settings').click();document.querySelector('[data-settings-section=connections]').click();document.querySelector('#btn-self-update').click()`);
   await waitFor(`document.querySelector('#self-update-error') && !document.querySelector('#self-update-error').hidden`);
@@ -21,6 +23,16 @@ export async function checkUpdateDiagnostics({evaluate,waitFor,cdp,viewport,scre
   await waitFor(`document.querySelector('#self-update-reminder').open`);
   assert.equal(await evaluate(`document.querySelector('#self-update-error').hidden`),true,'Retry clears stale error');
   assert.equal(applies.length,0,'No automatic application');
+  assert.ok(await evaluate(`document.querySelector('#self-update-reminder-checks').textContent.includes('Full CI passed')`));
+  await screenshot('update-verified-smart');
+  await evaluate(`document.querySelector('#self-update-later').click()`);
+  await evaluate(`document.querySelector('#self-update-full').checked=true;document.querySelector('#self-update-full').dispatchEvent(new Event('change'))`);
+  assert.equal(await evaluate(`document.querySelector('#btn-self-update').classList.contains('verified')`),false,'Requesting full tests invalidates a quick approval');
+  await evaluate(`document.querySelector('#btn-self-update').click()`);
+  await waitFor(`document.querySelector('#self-update-reminder').open`);
+  assert.ok(await evaluate(`document.querySelector('#self-update-reminder-checks').textContent.includes('Full local test suite passed')`));
+  assert.equal(applies.length,0);
+  await screenshot('update-verified-full');
   await evaluate(`document.querySelector('#self-update-later').click()`);
   console.log('PASS: visible update error, safe text, reload persistence, retry clearing and explicit approval');
 }

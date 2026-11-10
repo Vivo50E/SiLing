@@ -937,13 +937,24 @@ commits on the current branch's Git upstream. If no tracking branch is set, it
 falls back to `origin/<current-branch>` and then `origin/main`. Remote refs are
 refreshed on startup, every five minutes, and whenever the button is clicked.
 
-Verification runs one full test suite at a time, with a 15-minute hard limit. Failed checks appear directly
+Verification uses **smart checks** by default. For an upstream GitHub `main`
+commit, it can reuse that exact commit's latest successful `CI` push run only
+when Python 3.10, Python 3.13 and desktop jobs all completed successfully,
+including both full-suite steps. The workflow, setup action, dependency list
+and verification runner files must match the current trusted revision. It then
+checks local dependencies, authenticated Dashboard startup, build identity and
+version/terminal regression tests with the deployment Python. No matching CI,
+missing/unavailable `gh`, non-GitHub/agent branches or changed runner/dependencies
+fall back to the complete local suite. **Run full local tests** explicitly
+requests that full suite. The approval reminder shows which checks passed.
+
+Only one verification runs at a time; local tests have a 15-minute hard limit. Failed checks appear directly
 under **Update failure details** in Settings and remain available after a page
 reload until the service restarts. Timeout details include the last test output;
 failed or incomplete tests never enable approval.
 
 Updates require a clean working tree and a fast-forward path. The first click
-runs the complete suite against the exact candidate—upstream code is tested in
+verifies the exact candidate—upstream code is tested in
 a temporary detached worktree without changing local files. After tests pass,
 an approval reminder opens even if Settings was closed, showing the verified
 branch and commit. Choose **Approve and restart** to apply it, or **Later**

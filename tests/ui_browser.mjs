@@ -54,6 +54,7 @@ const sessions = ['claude', 'codex', 'terminal', 'cursor', 'custom-agent'].map((
 let plainText='',plainFailure=false,plainReads=0;
 let updateHead = "b".repeat(40), updateMode = "ok", updateReply;
 const updateApplies = [];
+const updateVerifications = [];
 let lastVerification = null;
 const updateCandidate = () => ({eligible:true,branch:"agent/self-improve-fixture",head:updateHead,short_head:updateHead.slice(0,7),target_head:"a".repeat(40),ahead:1});
 const requests = [];
@@ -221,9 +222,12 @@ const server = http.createServer((req, res) => {
     if (bootRequestsFail) {res.writeHead(503);res.end(JSON.stringify({detail:'Fixture background check failed'}));return;}
     if (url.pathname.endsWith('/verify')) {
       const candidate = updateCandidate();
-      const reply = () => {lastVerification = {...candidate,candidate_head:candidate.head,ok:updateMode !== 'failed',output:updateMode === 'failed' ? 'Fixture tests failed\nDiagnostic <img src=x> detail' : 'Tests passed'};res.end(JSON.stringify({...lastVerification,...(lastVerification.ok ? {verification_token:'fixture-'+candidate.head,expires_in_seconds:600} : {})}));};
-      if (updateMode === 'delay') {updateReply=reply;return;}
-      reply();return;
+      let raw='';req.on('data',chunk=>raw+=chunk);req.on('end',()=>{
+        const body=JSON.parse(raw);updateVerifications.push(body);
+        const reply = () => {lastVerification = {...candidate,candidate_head:candidate.head,verification_mode:body.full?'full_local':'ci_and_local',ok:updateMode !== 'failed',output:updateMode === 'failed' ? 'Fixture tests failed\nDiagnostic <img src=x> detail' : 'Tests passed'};res.end(JSON.stringify({...lastVerification,...(lastVerification.ok ? {verification_token:'fixture-'+candidate.head,expires_in_seconds:600} : {})}));};
+        if (updateMode === 'delay') {updateReply=reply;return;}
+        reply();
+      });return;
     }
     if (url.pathname.endsWith('/apply')) {
       let raw='';req.on('data',c=>raw+=c);req.on('end',()=>{updateApplies.push(JSON.parse(raw));res.end('{"ok":true}');});return;
@@ -1257,6 +1261,8 @@ try {
   await waitFor(`document.querySelector('#self-update-reminder').open`);
   assert.equal(requests.filter(r=>r.path==='/api/self-update/verify').length,1,'Repeated clicks do not duplicate verification');
   assert.ok(await evaluate(`document.querySelector('#self-update-reminder-candidate').textContent.includes('bbbbbbb')`));
+  assert.equal(updateVerifications.at(-1).full,false);
+  assert.ok(await evaluate(`document.querySelector('#self-update-reminder-checks').textContent.includes('Full CI passed')`));
   assert.equal(await evaluate(`document.activeElement.id`),'self-update-later','Completion focuses the safe dismissal');
   assert.equal(updateApplies.length,0,'Completion never auto-applies');
   await screenshot('update-reminder-desktop');
@@ -1264,9 +1270,10 @@ try {
   await pause(200);
   assert.equal(await evaluate(`document.querySelector('#self-update-reminder').open`),false,'Later dismisses the reminder');
   assert.ok(await evaluate(`document.querySelector('#btn-self-update').classList.contains('verified')`),'Later preserves approval in Settings');
-  updateHead='c'.repeat(40);
-  await evaluate(`document.querySelector('#btn-self-update').click()`);
+  await evaluate(`document.querySelector('#self-update-full').checked=true;document.querySelector('#btn-self-update').click()`);
   await waitFor(`document.querySelector('#self-update-reminder').open`);
+  assert.equal(updateVerifications.at(-1).full,true);
+  assert.ok(await evaluate(`document.querySelector('#self-update-reminder-checks').textContent.includes('Full local test suite passed')`));
   updateHead='d'.repeat(40);
   await evaluate(`document.querySelector('#self-update-approve').click()`);
   await waitFor(`!document.querySelector('#self-update-reminder').open`);

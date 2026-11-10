@@ -9260,11 +9260,16 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             body = await request.json()
         except Exception:
             body = {}
+        if not isinstance(body, dict):
+            raise HTTPException(400, "JSON object is required")
         branch = str(body.get("branch") or "").strip()
         if not branch:
             raise HTTPException(400, "branch is required")
+        full = body.get('full', False)
+        if not isinstance(full, bool):
+            raise HTTPException(400, "full must be a boolean")
         try:
-            return await asyncio.to_thread(self_updates.verify, branch)
+            return await asyncio.to_thread(self_updates.verify, branch, full=full)
         except SelfUpdateError as exc:
             raise HTTPException(409, str(exc)) from exc
 

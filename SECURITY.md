@@ -114,3 +114,17 @@ Provider-returned content is treated as display text, never as
 instructions, HTML or a URL to fetch. Ticket links are constructed from the
 explicitly configured Jira site and matching issue key. Existing administrator
 and same-account access remains outside this boundary.
+
+## Update verification evidence
+
+Smart verification reuses only the latest completed successful GitHub CI push
+run for the exact upstream main commit and configured GitHub repository. Both
+Python full-suite jobs and the desktop job must succeed, with no skipped jobs
+or full-suite steps. The run attempt is checked again after fetching its jobs.
+Workflow, setup action, requirements and runner changes force full local tests.
+Unavailable or malformed evidence also falls back to the full local suite.
+Local dependency imports, authenticated startup, exact build identity and a
+nonempty passing regression suite remain mandatory when CI is reused.
+Neither path changes clean-tree, fast-forward, exact commit binding, approval
+token expiry or explicit approval requirements. Provider tokens and raw CLI
+errors are not exposed. Full local tests can always be requested explicitly.

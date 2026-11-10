@@ -94,6 +94,35 @@ class SelfUpdateManagerTests(unittest.TestCase):
             result["candidate_head"], _git(self.candidate, "rev-parse", "HEAD")
         )
 
+    def test_ci_reuse_requires_nonempty_passing_local_checks_and_keeps_commit_binding(self):
+        evidence = {'url': 'https://github.com/example/repo/actions/runs/12'}
+        with patch.object(self.manager, '_ci_evidence', return_value=evidence), \
+                patch.object(self.manager, '_run_checks') as checks:
+            for code, output in ((1, 'Ran 1 test\nFAILED'), (0, 'Ran 0 tests\nOK')):
+                checks.return_value = subprocess.CompletedProcess([], code, output, '')
+                result = self.manager.verify('agent/self-improve-test')
+                self.assertFalse(result['ok'])
+                self.assertNotIn('verification_token', result)
+            checks.return_value = subprocess.CompletedProcess([], 0, 'Ran 2 tests\nOK', '')
+            result = self.manager.verify('agent/self-improve-test')
+            self.assertTrue(result['ok'])
+            self.assertEqual(result['verification_mode'], 'ci_and_local')
+            self.assertIn('Local startup', result['output'])
+            self.assertIn('from mcp import ClientSession', checks.call_args.args[0][4])
+        (self.candidate / 'app.txt').write_text('changed after quick verification\n')
+        _git(self.candidate, 'add', 'app.txt')
+        _git(self.candidate, 'commit', '-m', 'move quick-verified candidate')
+        with self.assertRaisesRegex(SelfUpdateError, 'changed after verification'):
+            self.manager.apply('agent/self-improve-test', result['verification_token'], 'APPROVE')
+
+    def test_explicit_full_mode_never_reuses_ci(self):
+        with patch.object(self.manager, '_ci_evidence') as evidence:
+            result = self.manager.verify('agent/self-improve-test', full=True)
+        evidence.assert_not_called()
+        self.assertTrue(result['ok'])
+        self.assertEqual(result['verification_mode'], 'full_local')
+        self.assertEqual(result['test_count'], 1)
+
     def test_verification_children_use_runtime_venv_not_system_python(self):
         # A detached checkout has no .venv. Its executable Python scripts must
         # still inherit the verifier's dependencies rather than the host PATH.
