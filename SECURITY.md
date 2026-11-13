@@ -98,7 +98,19 @@ words locally before association. Server tool descriptions cannot select tools
 or commands;
 sampling, elicitation, writes, comments and attachment operations are not enabled.
 No full transcript or prompt is sent to MCP; task-name keywords are sent for
-searches. Generic and credential-like names are skipped. Only opted-in groups
+ordinary searches. Opt-in AI topic search sends the task name (300 characters)
+and saved initial description (2,000 characters) to the local Claude CLI's configured model service, never terminal output or native transcripts. It uses
+a temporary non-project working directory, disables tools, MCP, hooks, slash
+commands and session persistence, with a $0.10 budget and 25-second timeout.
+Metadata with common credential markers is skipped; this heuristic cannot
+guarantee arbitrary metadata is secret-free. Model output is untrusted: only
+up to three sets of two or three validated keywords are accepted. The model
+cannot supply JQL, tools, issue IDs or ticket URLs. SiLing constructs a fixed
+summary-only OR query and validates returned titles against a whole keyword set.
+Only metadata hashes and topic keywords are cached, not raw input or CLI errors.
+Topic plans are reused across restarts; failures cool down for ten minutes.
+Opt-in visible active panes refresh at most once per ten minutes in each client;
+server search caching and model serialization bound repeated client requests. Generic and credential-like names are skipped. Only opted-in groups
 trigger lookups;
 requests and concurrency are bounded. Disconnect discards in-flight results.
 

@@ -12,7 +12,8 @@
       <label class="settings-row"><span data-server-label></span><select data-server></select></label>
       <label class="settings-row"><span data-base-label></span><input data-base type="url" placeholder="https://your-team.atlassian.net" autocomplete="off"></label>
       <div class="settings-inline-actions"><button type="button" data-connect></button><button type="button" data-disconnect></button></div></fieldset>
-      <p role="status" data-status></p>`;
+      <label class="settings-row"><span data-topic-label></span><input type="checkbox" data-topic></label>
+      <p class="ui-secondary" data-topic-help></p><p role="status" data-status></p>`;
     document.querySelector('#settings-section-browsing').append(box);
     const el = key => box.querySelector(`[data-${key}]`);
     for (const [key, message] of Object.entries({title:'Jira MCP connection',
@@ -20,6 +21,17 @@
       'source-label':'Configuration source', 'local-option':'Local Codex / Claude Code', 'custom-option':'Custom configuration file',
       'file-label':'MCP configuration file', servers:'Read servers', 'server-label':'MCP server',
       'base-label':'Jira site URL (optional if JIRA_URL is configured)', connect:'Test & connect', disconnect:'Disconnect'})) ui.setMessage(el(key), message);
+    const topicKey = 'siling_jira_topics_v1';
+    window.SilingJiraTopics = {enabled() {
+      try {return localStorage.getItem(topicKey) === 'true';} catch {return false;}
+    }};
+    ui.setMessage(el('topic-label'), 'Automatically search Jira by task topic');
+    ui.setMessage(el('topic-help'), 'Uses your local Claude CLI’s configured model to understand the task name and up to 2,000 characters of saved initial description. No conversation upload or tools. Up to $0.10 and 25 seconds per analysis; results are cached. Visible active panes check Jira every 10 minutes.');
+    el('topic').checked = window.SilingJiraTopics.enabled();
+    el('topic').onchange = () => {
+      try {localStorage.setItem(topicKey, String(el('topic').checked));} catch {el('topic').checked=false;}
+      changed?.();
+    };
     let busy = false, connected = false, revision = 0, localLoaded = false, localServers = [];
     const setBusy = value => {busy = value; box.querySelector('fieldset').disabled = value;};
     const updateSource = () => {

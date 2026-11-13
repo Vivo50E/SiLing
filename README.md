@@ -190,7 +190,7 @@ intervene.
 
 - Clicks and selections in native browser scrollback no longer send mouse reports to the live terminal or jump to the latest output. Typing still resumes live output. Transient tmux inventory failures preserve the last session snapshot and terminal connections. Cached panes reuse their terminal across layout and window-size changes, retaining browser history and drafts instead of reconnecting solely to resize. Hidden-pane cache limits still apply (15 panes / 30 minutes). Terminal relay disconnect logs include the session, timestamp and connection side; disconnected idle relays are cleaned up promptly.
 
-- PR/MR and Jira icons show deduplicated counts (including zero). Initial counts use saved links, previously discovered PR/MR associations and output, fetched once with at most two requests at a time; opening or refreshing a list updates its count, and PR branch lookup runs only in the list. `…` means loading and `?` means initial discovery failed. Discovered PR/MR associations persist across output scrolling, branch switches and Dashboard restarts. PR discovery also scans logs incrementally (up to 4 MiB per request); if history remains, the list prompts you to refresh. Branch lookup checks both origin and upstream, including closed/merged reviews. Up to 1000 related reviews are retained per session. The PR/MR button is green when any known review is open (including drafts), and purple only when every review is known to be merged. Other combinations and empty lists keep the default color. Opening the list also resolves statuses by each review URL, including output/manual links, historical branches and other repositories. Results are cached for one minute; **Refresh** bypasses that cache. Each request queries up to 24 links with four workers and a 12-second detail-lookup budget; remaining links prompt another refresh. Failures retain the last known state and show a per-link reason; hover its details for the last successful check. Self-hosted hosts must be configured in gh/glab (or GH_HOST/GITLAB_HOST); plain HTTP and unconfigured hosts are not queried. Terminal sessions support URL status lookup without assuming their launch branch. Colors reflect the latest known statuses. Counts are snapshots, not live Jira or repository totals; there is no periodic count polling.
+- PR/MR and Jira icons show deduplicated counts (including zero). Initial counts use saved links, previously discovered PR/MR associations and output, fetched once with at most two requests at a time; opening or refreshing a list updates its count, and PR branch lookup runs only in the list. `…` means loading and `?` means initial discovery failed. Discovered PR/MR associations persist across output scrolling, branch switches and Dashboard restarts. PR discovery also scans logs incrementally (up to 4 MiB per request); if history remains, the list prompts you to refresh. Branch lookup checks both origin and upstream, including closed/merged reviews. Up to 1000 related reviews are retained per session. The PR/MR button is green when any known review is open (including drafts), and purple only when every review is known to be merged. Other combinations and empty lists keep the default color. Opening the list also resolves statuses by each review URL, including output/manual links, historical branches and other repositories. Results are cached for one minute; **Refresh** bypasses that cache. Each request queries up to 24 links with four workers and a 12-second detail-lookup budget; remaining links prompt another refresh. Failures retain the last known state and show a per-link reason; hover its details for the last successful check. Self-hosted hosts must be configured in gh/glab (or GH_HOST/GITLAB_HOST); plain HTTP and unconfigured hosts are not queried. Terminal sessions support URL status lookup without assuming their launch branch. Colors reflect the latest known statuses. Counts are snapshots, not live Jira or repository totals; periodic Jira checks require the optional topic-search switch described below.
 
 - **Settings → Browsing & files → Enable Jira tickets** enables per-group Jira
   switches in **Manage groups**. Enable a group and save to show its panes’ ticket
@@ -233,7 +233,7 @@ intervene.
   session titles/prompts, live local Git branches and saved PR/MR titles when
   their count/list loads. Live shell cwd is inspected; SSH and unavailable
   contexts never fall back to a local launch directory.
-  Without an explicit current ticket key, task names with at least two useful
+  Independently of explicit ticket keys, task names with at least two useful
   keywords (or a Chinese phrase) also use the fixed read-only `jira_search` tool.
   It must support `jql`, `fields` and `limit`; missing search support is shown
   separately and does not disable key lookup. Search sends at most five task-name
@@ -247,10 +247,34 @@ intervene.
   Dashboard-wide and a 32-second worker
   deadline (plus up to five seconds for cleanup); results, including individual
   missing keys, are cached for one minute.
-  Open the list or **Refresh** to discover later output; there is no background
-  polling. **Refresh** bypasses the cache and processes remaining keys first.
+  Open the list or **Refresh** to discover later output; ordinary keyword lookup does not poll. **Refresh** bypasses the cache and processes remaining keys first.
   Configuration changes require reconnecting. Remote sessions use their own node's
   Jira configuration. Disconnect stops future lookups and discards in-flight results.
+- **Jira MCP connection → Automatically search Jira by task topic** adds opt-in
+  AI topic discovery for every enabled pane group and every agent type. It uses
+  the Dashboard user's local Claude CLI login and configured model, even when the
+  pane itself uses Codex or another CLI. The model receives only the task name
+  (up to 300 characters) and saved `initial_prompt` metadata (up to 2,000 characters),
+  when available; otherwise only the name is used. Native conversation history,
+  terminal output and project files are never sent to the model. Suspected
+  credential-bearing metadata is skipped; this check is not a complete secret detector.
+  The tool-free model proposes up to three alternative sets of two or three
+  domain keywords, including English equivalents of Chinese topics. SiLing
+  generates one bounded read-only Jira query, reads at most eight summaries/statuses,
+  and locally requires a returned title to match an entire keyword set. Matches
+  show their topic keywords; they are suggestions, not proof of task identity.
+  No ticket number or manual list opening is required, and existing keys do not
+  suppress topic search. Visible active panes automatically check every ten
+  minutes while the Dashboard is open; ended sessions do not repeat checks.
+  Panes waiting for the single model worker retry after 30 seconds.
+  Task renames trigger a new check. Topic plans are cached by task metadata across
+  restarts, including when **Refresh** is clicked; model failures cool down for
+  ten minutes. Each changed task permits one model call at a time Dashboard-wide,
+  with a $0.10 budget and 25-second timeout. The switch is off by default and saved
+  in this browser. Turn it off to stop future topic discovery. Existing links and
+  key lookup remain available. A working authenticated MCP with `jira_search` and
+  a separately authenticated local Claude CLI are both required; importing native
+  MCP configuration does not inherit native OAuth login.
 - The pull-request icon beside **Files** opens related GitHub PRs / GitLab MRs.
   It combines linked URLs, recent pane output and the current Git branch, with
   titles and states when the provider returns them. Branch lookup uses the

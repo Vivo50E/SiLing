@@ -63,6 +63,21 @@ export async function checkJira({evaluate,waitFor,cdp,viewport,screenshot,reques
   await waitFor(`!document.querySelector('#pane-jira [data-refresh]').disabled`);
   assert.equal(await evaluate(`!!document.querySelector('#pane-jira img')`),false);
   await screenshot('jira-tickets');
+  // Topic discovery starts from Settings; no ticket dialog action is necessary.
+  await evaluate(`document.querySelector('#pane-jira').close();document.querySelector('#btn-settings').click();document.querySelector('[data-settings-section="browsing"]').click();document.querySelector('#jira-mcp-settings').open=true`);
+  assert.equal(await evaluate(`document.querySelector('#jira-mcp-settings [data-topic]').checked`),false);
+  const beforeTopic=requests.length;
+  await evaluate(`document.querySelector('#jira-mcp-settings [data-topic]').click()`);
+  await waitFor(`localStorage.getItem('siling_jira_topics_v1')==='true'`);
+  for(let i=0;i<100 && !requests.slice(beforeTopic).some(r=>r.path.endsWith('/jira')&&r.search.includes('topic=true'));i++)await pause(100);
+  assert.ok(requests.slice(beforeTopic).some(r=>r.path.endsWith('/jira')&&r.search.includes('topic=true')),'Enabling topics proactively queries Jira');
+  assert.equal(await evaluate(`[...document.querySelectorAll('#grid iframe')].every((f,i)=>f===jiraFrames[i])`),true);
+  assert.equal(await evaluate(`document.querySelector('[data-run-id="jira-on"] textarea').value`),'jira draft');
+  await evaluate(`document.querySelector('#jira-mcp-settings [data-topic]').scrollIntoView({block:'center'})`);
+  await screenshot('jira-topic-settings');
+  await evaluate(`document.querySelector('#jira-mcp-settings [data-topic]').click();document.querySelector('#settings-close').click();document.querySelector('${on}').click()`);
+  await waitFor(`document.querySelectorAll('#pane-jira li').length===1`);
+
   const count=requests.filter(r=>r.path.endsWith('/jira')).length;await pause(1100);
   assert.equal(requests.filter(r=>r.path.endsWith('/jira')).length,count,'No background polling');
   await evaluate(`document.querySelector('#pane-jira-url').value='https://jira.example/browse/DEMO-13';document.querySelector('#pane-jira form').requestSubmit()`);

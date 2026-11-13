@@ -10474,7 +10474,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         raise HTTPException(400, 'Invalid MCP action')
 
     @app.get("/api/sessions/{run_id}/jira")
-    def get_session_jira(run_id: str, lookup: bool = False, refresh: bool = False):
+    def get_session_jira(run_id: str, lookup: bool = False, refresh: bool = False, topic: bool = False):
         run = _lookup_run_light(outputs_dir, run_id)
         if not run:
             raise HTTPException(404, "session not found")
@@ -10492,10 +10492,17 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         session = run.get("tmux_session")
         if session and tmux_alive(session):
             text += "\n" + (tmux_capture_lines(session, 200, "tail") or "")
+        # Read only saved task metadata; never infer a description from a transcript.
+        if topic and lookup and run.get('run_dir') and run.get('kind') in {'task', 'run'}:
+            metadata = _safe_read_json(Path(run['run_dir']) / ('state.json' if run['kind'] == 'task' else 'session.json')) or {}
+            if run['kind'] == 'task':
+                metadata = metadata.get(run.get('task'), {}) if isinstance(metadata, dict) else {}
+            if isinstance(metadata, dict):
+                run = {**run, 'initial_prompt': str(metadata.get('initial_prompt') or '')[:2000]}
         # UI requests lookup only for opted-in groups. Keep the explicit flag
         # across Remote Node proxies: group metadata belongs to the hub, not the node.
         return jira_connection.discover(run, text, terminal_files.state_dir(outputs_dir, run_id),
-                                        lookup=lookup, force=refresh)
+                                        lookup=lookup, force=refresh, topic=topic)
 
     @app.get("/api/sessions/{run_id}/folders")
     def get_session_folders(run_id: str):

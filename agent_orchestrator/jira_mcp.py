@@ -15,7 +15,7 @@ try:
 except ImportError:
     import tomli as tomllib
 
-from . import jira, terminal_files
+from . import jira, jira_topics, terminal_files
 from .json_store import edit_json, write_json
 
 KEY = re.compile(r'(?<![A-Za-z0-9_])([A-Z][A-Z0-9_]{0,31}-[1-9][0-9]{0,10})(?![A-Za-z0-9_])')
@@ -172,7 +172,7 @@ def fingerprint(server):
     return hashlib.sha256(json.dumps(server, sort_keys=True).encode()).hexdigest()
 
 
-def call_worker(server, keys, *, terms=None):
+def call_worker(server, keys, *, terms=None, topics=None):
     try:
         with subprocess.Popen([sys.executable, '-m', 'agent_orchestrator.jira_mcp_worker'],
                               stdin=subprocess.PIPE, cwd=Path(__file__).resolve().parent.parent,
@@ -181,6 +181,8 @@ def call_worker(server, keys, *, terms=None):
                 payload = {'server': server, 'keys': keys}
                 if terms:
                     payload['terms'] = terms
+                if topics:
+                    payload['topics'] = topics
                 stdout, _ = process.communicate(json.dumps(payload), timeout=32)
             except subprocess.TimeoutExpired:
                 process.terminate()
@@ -207,6 +209,7 @@ class JiraMCP:
         self.path = Path(outputs) / '.jira-mcp.json'
         self.slots = threading.BoundedSemaphore(2)
         self.config_lock = threading.Lock()
+        self.topic_slot = threading.Lock()
 
     def status(self):
         cfg = read_json(self.path)
@@ -259,7 +262,37 @@ class JiraMCP:
             write_json(self.path, {'enabled': False, 'connection_id': uuid.uuid4().hex})
         return {'enabled': False}
 
-    def discover(self, run, text, directory, *, lookup=True, force=False):
+    def topic_plan(self, run, directory):
+        text = jira_topics.context(run)
+        if not text:
+            return [], 'topic_context_unavailable'
+        identity = fingerprint({'context': text, 'version': 1})
+        path = Path(directory) / 'jira-topics.json'
+        saved = read_json(path)
+        if saved.get('identity') == identity and (
+                not saved.get('error') or time.time() - saved.get('at', 0) < 600):
+            topics = saved.get('topics', [])
+            if jira_topics.valid_topics(topics):
+                return topics, saved.get('error', '')
+        if not self.topic_slot.acquire(blocking=False):
+            return [], 'topic_busy'
+        try:
+            # Another request may have completed while this request was queued.
+            saved = read_json(path)
+            if (saved.get('identity') == identity and jira_topics.valid_topics(saved.get('topics'))
+                    and (not saved.get('error') or time.time() - saved.get('at', 0) < 600)):
+                return saved['topics'], saved.get('error', '')
+            try:
+                topics, error = jira_topics.plan(text), ''
+            except (OSError, ValueError, TypeError, AttributeError, subprocess.TimeoutExpired):
+                topics, error = [], 'topic_model_failed'
+            path.parent.mkdir(parents=True, exist_ok=True)
+            write_json(path, {'identity': identity, 'topics': topics, 'error': error, 'at': time.time()})
+            return topics, error
+        finally:
+            self.topic_slot.release()
+
+    def discover(self, run, text, directory, *, lookup=True, force=False, topic=False):
         result = jira.collect(run, text)
         directory = Path(directory)
         path = directory / 'jira.json'
@@ -299,17 +332,30 @@ class JiraMCP:
             context = re.sub(r'https?://[^\s<>"\x00-\x20]+', '', context)
             candidates = list(dict.fromkeys(KEY.findall(context)))[:100]
             candidates += [i['key'] for i in context_links if i['url'] == cfg['base_url'] + '/browse/' + i['key']]
-            terms = jira.task_terms(run) if not candidates else []
+            terms = jira.task_terms(run)
+            topics = []
+            if topic:
+                if cfg.get('search_supported'):
+                    topics, topic_error = self.topic_plan(run, directory)
+                    if topic_error:
+                        result['topic_error'] = topic_error
+                else:
+                    result['search_error'] = 'unsupported_search'
+            # Topic inference can outlive disconnect/reconfiguration. Do not start
+            # a new provider request after that action has completed.
+            with self.config_lock:
+                if read_json(self.path) != cfg:
+                    return {**result, 'items': list(items.values())[:1000], 'mcp_error': 'config_changed'}
             candidates += [i['key'] for i in items.values() if i['url'] == cfg['base_url'] + '/browse/' + i['key']]
             connection = fingerprint({'server': cfg.get('fingerprint'), 'base_url': cfg['base_url']})
             attempts = saved.get('attempts', {}) if saved.get('connection') == connection else {}
             due = [key for key in dict.fromkeys(candidates) if force or time.time() - attempts.get(key, 0) >= 60]
             due.sort(key=lambda key: attempts.get(key, 0))
             keys = due[:8]
-            search_id = fingerprint({'terms': terms, 'connection': connection})
-            search_due = bool(terms) and (force or saved.get('search_id') != search_id
+            search_id = fingerprint({'terms': terms, 'topics': topics, 'connection': connection})
+            search_due = bool(terms or topics) and (force or saved.get('search_id') != search_id
                                          or time.time() - saved.get('searched_at', 0) >= 300)
-            if terms and not search_due and saved.get('search_error'):
+            if (terms or topics) and not search_due and saved.get('search_error'):
                 result['search_error'] = saved['search_error']
             result['pending'] = max(0, len(due) - len(keys))
             if keys or search_due:
@@ -322,7 +368,10 @@ class JiraMCP:
                         if fingerprint(server) != cfg.get('fingerprint'):
                             response = {'error': 'config_changed'}
                         else:
-                            response = call_worker(server, keys, terms=terms) if search_due else call_worker(server, keys)
+                            if search_due:
+                                response = call_worker(server, keys, terms=terms, topics=topics) if topics else call_worker(server, keys, terms=terms)
+                            else:
+                                response = call_worker(server, keys)
                         # Disconnect/reconfigure while a query runs must not save its response.
                         with self.config_lock:
                             if read_json(self.path) != cfg:
@@ -340,12 +389,24 @@ class JiraMCP:
                                         continue
                                     searched = (search_due and row.get('match') == 'task'
                                                 and jira.matches_task(str(row.get('title', '')), terms))
-                                    if key not in keys and not searched:
+                                    topic_match = next((words for words in topics if search_due
+                                                        and row.get('match') == 'topic'
+                                                        and jira.matches_task(str(row.get('title', '')), words)), None)
+                                    if key not in keys and not searched and not topic_match:
                                         continue
+                                    # A later key-only status refresh must preserve a still-valid
+                                    # topic explanation, even when the search itself is cached.
+                                    prior = items.get(cfg['base_url'] + '/browse/' + key, {})
+                                    prior_words = prior.get('topic_terms', [])
+                                    if (not topic_match and prior.get('match') == 'topic'
+                                            and jira_topics.valid_topics([prior_words])
+                                            and jira.matches_task(str(row.get('title', '')), prior_words)):
+                                        topic_match = prior_words
                                     updates.append({'url': cfg['base_url'] + '/browse/' + key, 'key': key,
                                                     'title': str(row.get('title') or key)[:500],
                                                     'state': str(row.get('state') or '')[:100], 'source': 'mcp',
-                                                    'checked_at': now, 'match': 'task' if searched else 'key'})
+                                                    'checked_at': now, 'match': 'topic' if topic_match else 'task' if searched else 'key',
+                                                    'topic_terms': topic_match or []})
                                 directory.mkdir(parents=True, exist_ok=True)
                                 with edit_json(path, create=True) as state:
                                     previous = {i['url']: i for i in state.get('items', [])}

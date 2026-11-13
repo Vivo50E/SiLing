@@ -8,7 +8,7 @@ import signal
 import sys
 import re
 
-from . import jira
+from . import jira, jira_topics
 
 
 def result_data(result):
@@ -101,15 +101,19 @@ async def query(payload):
                              and set(search.inputSchema.get('required', [])) <= {'jql', 'fields', 'limit'})
             response = {'items': items, 'failed': failed, 'search_supported': supported}
             terms = payload.get('terms', [])
-            if terms:
-                if (not isinstance(terms, list) or not 1 <= len(terms) <= 5
+            topics = payload.get('topics', [])
+            if terms or topics:
+                if (not jira_topics.valid_topics(topics)
+                        or not isinstance(terms, list) or len(terms) > 5
                         or any(not isinstance(t, str) or not re.fullmatch(r'[a-z][a-z0-9]{2,23}|[\u3400-\u9fff]{2,12}', t) for t in terms)):
                     response['search_error'] = 'invalid_terms'
                 elif not supported:
                     response['search_error'] = 'unsupported_search'
                 else:
                     try:
-                        jql = ' AND '.join('summary ~ "' + term + '"' for term in terms) + ' ORDER BY updated DESC'
+                        groups = ([terms] if terms else []) + topics
+                        clauses = [' AND '.join('summary ~ "' + term + '"' for term in group) for group in groups]
+                        jql = (clauses[0] if len(clauses) == 1 else ' OR '.join('(' + clause + ')' for clause in clauses)) + ' ORDER BY updated DESC'
                         data = result_data(await session.call_tool('jira_search', {
                             'jql': jql, 'fields': 'summary,status', 'limit': 8}))
                         rows = data.get('issues') if isinstance(data, dict) else data
@@ -117,8 +121,10 @@ async def query(payload):
                             raise ValueError('Invalid search response')
                         for data in rows[:8]:
                             row = issue_row(data)
-                            if row and jira.matches_task(row['title'], terms):
-                                items.append({**row, 'match': 'task'})
+                            if row:
+                                topic_match = any(jira.matches_task(row['title'], words) for words in topics)
+                                if topic_match or jira.matches_task(row['title'], terms):
+                                    items.append({**row, 'match': 'topic' if topic_match else 'task'})
                     except Exception:
                         response['search_error'] = 'search_failed'
             return response

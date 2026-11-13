@@ -1,4 +1,4 @@
-/* Bounded, once-per-pane discovery; never poll logs or provider CLIs. */
+/* Bounded discovery; opt-in topic searches refresh visible active panes. */
 (() => {
   'use strict';
   const cache = new Map(), queue = [];
@@ -40,10 +40,18 @@
     while (active < 2 && queue.length) {
       const {id, kind, entry} = queue.shift();
       if (cache.get(key(id, kind)) !== entry) continue;
+      if (entry.topic && (!window.SilingJiraTopics?.enabled()
+          || ![...document.querySelectorAll('.pane-card[data-run-id]')].some(card => card.dataset.runId === id
+            && !card.querySelector('.btn-jira')?.hidden && !card.querySelector('.btn-jira')?.disabled))) {
+        cache.delete(key(id, kind));
+        continue;
+      }
       active++;
-      request(`/api/sessions/${encodeURIComponent(id)}/${kind}${kind === 'reviews' ? '?branch=false' : '?lookup=true'}`)
+      entry.pending = true;
+      request(`/api/sessions/${encodeURIComponent(id)}/${kind}${kind === 'reviews' ? '?branch=false' : '?lookup=true' + (entry.topic ? '&topic=true' : '')}`)
         .then(data => {
           if (cache.get(key(id, kind)) !== entry) return;
+          entry.retryAt = data.topic_error === 'topic_busy' ? Date.now() + 30000 : null;
           entry.value = new Set(data.items.map(item => item.url)).size;
           entry.state = kind === 'reviews' ? reviewState(data.items) : '';
           display(id, kind, entry.value, entry.state);
@@ -51,7 +59,7 @@
           if (cache.get(key(id, kind)) !== entry) return;
           entry.value = '?';
           display(id, kind, '?');
-        }).finally(() => { active--; drain(); });
+        }).finally(() => { entry.pending=false; entry.checkedAt=Date.now(); active--; drain(); });
     }
   }
   window.SilingPaneLinkCounts = {
@@ -64,14 +72,21 @@
       for (const kind of ['reviews', 'jira']) {
         const button = card.querySelector(`.btn-${kind}`);
         if (!button || button.hidden || button.disabled) continue;
+        const topic = kind === 'jira' && !!window.SilingJiraTopics?.enabled();
+        if (topic && document.visibilityState === 'hidden') continue;
         const fingerprint = JSON.stringify(kind === 'jira' ?
-          [row.linked_folders || [], row.display_name, row.label, row.task] : row.linked_folders || []);
+          [row.linked_folders || [], row.display_name, row.label, row.task, topic] : row.linked_folders || []);
         const id = key(row.run_id, kind);
         let entry = cache.get(id);
         if (!entry || entry.fingerprint !== fingerprint) {
-          entry = {fingerprint, value: '…'};
+          entry = {fingerprint, value: '…', topic, pending:true};
           cache.set(id, entry);
           queue.push({id: row.run_id, kind, entry});
+        }
+        if (topic && row.alive && !entry.pending && Date.now() >= (entry.retryAt ?? entry.checkedAt + 600000)
+            && document.visibilityState !== 'hidden') {
+          entry.pending = true;
+          queue.push({id:row.run_id, kind, entry});
         }
         paint(button, entry.value, entry.state);
       }
@@ -82,7 +97,7 @@
       const value = new Set(items.map(item => item.url)).size;
       const state = kind === 'reviews' ? reviewState(items) : '';
       // Replace the entry so a slower initial request cannot overwrite a refresh.
-      cache.set(key(id, kind), {...previous, value, state});
+      cache.set(key(id, kind), {...previous, value, state, pending:false, retryAt:null, checkedAt:Date.now()});
       display(id, kind, value, state);
     }
   };

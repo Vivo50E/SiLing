@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -52,3 +53,23 @@ class JiraTests(unittest.TestCase):
                 response=client.get('/api/sessions/fixture/jira',headers={'Authorization':'Bearer fixture'})
                 self.assertEqual(response.status_code,200)
                 self.assertEqual([i['key'] for i in response.json()['items']],['LOG-1','SSH-2'])
+
+
+class JiraTopicAPITests(unittest.TestCase):
+    def test_topic_intent_and_saved_description_are_forwarded_without_exposing_metadata(self):
+        from agent_orchestrator.jira_mcp import JiraMCP
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'session.json').write_text(json.dumps({'initial_prompt': 'fixture topic description'}))
+            run = {'agent':'terminal', 'kind':'run', 'run_dir':tmp, 'task':'shell'}
+            app = dashboard.create_app(root/'outputs', token='fixture', ttyd_enabled=False, remote_nodes_enabled=False)
+            with TestClient(app) as client, patch.object(dashboard, '_lookup_run_light', return_value=run), \
+                    patch.object(JiraMCP, 'discover', return_value={'items':[]}) as discover:
+                response = client.get('/api/sessions/fixture/jira?lookup=true&topic=true', headers={'Authorization':'Bearer fixture'})
+                self.assertEqual(response.status_code, 200)
+                self.assertTrue(discover.call_args.kwargs['topic'])
+                self.assertEqual(discover.call_args.args[0]['initial_prompt'], 'fixture topic description')
+                self.assertNotIn('description', response.text)
+                client.get('/api/sessions/fixture/jira?lookup=true', headers={'Authorization':'Bearer fixture'})
+                self.assertFalse(discover.call_args.kwargs['topic'])
+                self.assertNotIn('initial_prompt', discover.call_args.args[0])
