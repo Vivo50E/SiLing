@@ -118,8 +118,8 @@ MCP configurations and their stdio executables must be trusted: a stdio server
 runs with the Dashboard user's OS privileges. Read-only tool selection is not an
 OS sandbox and cannot constrain a malicious server. HTTPS (or loopback HTTP) is
 required for configured network endpoints; the SDK restricts redirects to the
-same origin. Authentication must already be handled by server configuration or a
-trusted bridge. Native private OAuth caches and keychains are not read or copied.
+same origin. Header/stdio authentication must already be handled by server configuration or a
+trusted bridge. The optional macOS browser flow below manages its own OAuth credentials. Native private OAuth caches and keychains are not read or copied.
 Dynamic credential helpers and remote-executor environment are rejected rather
 than silently falling back to an unauthenticated or different local identity.
 Provider-returned content is treated as display text, never as
@@ -140,3 +140,44 @@ nonempty passing regression suite remain mandatory when CI is reused.
 Neither path changes clean-tree, fast-forward, exact commit binding, approval
 token expiry or explicit approval requirements. Provider tokens and raw CLI
 errors are not exposed. Full local tests can always be requested explicitly.
+
+
+## Dashboard Jira OAuth login
+
+Browser login requires an authenticated, same-origin POST with explicit user-click
+intent from a direct client on the Dashboard Mac. Native OAuth caches are never
+read. One subprocess performs registration, PKCE S256 authorization and token
+exchange. The callback binds only to an ephemeral IPv4 loopback port, checks the
+exact Host, path and unpredictable state, accepts only one code/error, suppresses
+request logs and sends no-store/referrer/CSP headers. It expires after four
+minutes; a hard worker deadline, cancellation and shutdown close the listener.
+No authorization URL, code or token is returned by the Dashboard API. The system
+browser receives the authorization URL through the existing macOS URL opener;
+it contains client ID, state and the public PKCE challenge, never the verifier
+or a client secret. Only the user's official identity-provider pages handle login.
+
+Discovery begins at the selected trusted MCP's 401 resource-metadata challenge.
+Protected-resource metadata must share its origin and identify the exact resource;
+the issuer must match authorization metadata. Production issuers/endpoints require
+HTTPS, endpoints must share the issuer origin, and HTTP redirects are not followed.
+No legacy endpoint guessing, native-client impersonation or secret-copy fallback is
+used. Read-named resource scopes are preferred; explicit write/admin scopes are
+excluded from the fallback. OAuth consent may still grant gateway-level access;
+fixed read-only MCP tool selection remains the application boundary.
+
+A dedicated macOS Keychain service stores client secrets and tokens through
+Security.framework memory APIs, never CLI arguments, browser storage or plaintext
+files. Records are bound to the exact MCP resource and pinned issuer endpoints.
+Only an opaque random account reference is saved in connection configuration.
+Per-user private lock files contain no credentials; cross-process locking serializes
+refresh-token rotation and deletion. Expiry is absolute across subprocess restarts.
+Background refresh cannot register a client or open a browser. Failures report
+fixed error codes without provider content. Keychain being locked/denied fails
+closed; same-user/admin process access remains outside this boundary.
+
+Explicit login cancellation invalidates pending connection verification and kills
+the worker; late responses cannot replace a newer/disconnected configuration.
+Failed login entries are deleted. Disconnect disables the saved connection before
+deleting its owned Keychain entry and reports deletion failure. It does not revoke
+remote grants or remove native credentials. Remote client registrations can remain
+after cancellation; revoke unneeded grants with the provider when appropriate.

@@ -100,6 +100,25 @@ export async function checkJira({evaluate,waitFor,cdp,viewport,screenshot,reques
   assert.equal(await evaluate(`document.querySelector('[data-run-id="jira-on"] textarea').value`),'jira draft');
   // Opening Settings refreshes the connection asynchronously. Wait for that
   // read before clicking Disconnect, so a late read cannot replace its result.
+  await evaluate(`document.querySelector('#btn-settings').click();document.querySelector('[data-settings-section="browsing"]').click();document.querySelector('#jira-mcp-settings').open=true`);
+  mode('oauth-wait');await evaluate(`document.querySelector('#jira-mcp-settings [data-login]').click()`);
+  await waitFor(`document.querySelector('#jira-mcp-settings [data-status]').textContent.includes('system browser')`);
+  assert.equal(await evaluate(`document.querySelector('#jira-mcp-settings fieldset').disabled`),true);
+  await evaluate(`document.querySelector('#jira-mcp-settings [data-cancel-login]').click()`);
+  await waitFor(`document.querySelector('#jira-mcp-settings [data-status]').textContent.includes('cancelled')`);
+  await waitFor(`!document.querySelector('#jira-mcp-settings fieldset').disabled`);
+  mode('oauth-denied');await evaluate(`document.querySelector('#jira-mcp-settings [data-login]').click()`);
+  await waitFor(`document.querySelector('#jira-mcp-settings [data-status]').textContent.includes('declined')`);
+  await waitFor(`!document.querySelector('#jira-mcp-settings fieldset').disabled`);
+  mode('ok');await evaluate(`document.querySelector('#jira-mcp-settings [data-login]').click()`);
+  await waitFor(`document.querySelector('#jira-mcp-settings [data-status]').textContent.includes('system browser')`);
+  await evaluate(`document.querySelector('#jira-mcp-settings [data-login]').scrollIntoView({block:'center'})`);
+  await screenshot('jira-browser-login');
+  await waitFor(`document.querySelector('#jira-mcp-settings [data-status]').textContent.includes('MCP connected')`);
+  await waitFor(`!document.querySelector('#jira-mcp-settings fieldset').disabled`);
+  assert.equal(await evaluate(`[...document.querySelectorAll('#grid iframe')].every((f,i)=>f===jiraFrames[i])`),true);
+  assert.equal(await evaluate(`document.querySelector('[data-run-id="jira-on"] textarea').value`),'jira draft');
+  await evaluate(`document.querySelector('#settings-close').click()`);
   await evaluate(`new Promise(resolve=>{const status=document.querySelector('#jira-mcp-settings [data-status]');const observer=new MutationObserver(()=>{observer.disconnect();resolve();});observer.observe(status,{childList:true});document.querySelector('#btn-settings').click();})`);
   await evaluate(`document.querySelector('#jira-mcp-settings [data-disconnect]').click()`);
   await waitFor(`document.querySelector('#jira-mcp-settings [data-status]').textContent.includes('disconnected')`);

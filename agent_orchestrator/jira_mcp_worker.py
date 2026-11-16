@@ -9,6 +9,7 @@ import sys
 import re
 
 from . import jira, jira_topics
+from .jira_oauth import OAuthAuth
 
 
 def result_data(result):
@@ -61,7 +62,9 @@ async def query(payload):
                     transport = sse_client(server['url'], headers=server.get('headers', {}), sse_read_timeout=8)
                 else:
                     client = await stack.enter_async_context(httpx.AsyncClient(
-                        headers=server.get('headers', {}), timeout=8, follow_redirects=False))
+                        headers=server.get('headers', {}), timeout=8, follow_redirects=False,
+                        auth=OAuthAuth(
+                            server['url'], server['oauth_account']) if server.get('oauth_account') else None))
                     transport = streamable_http_client(server['url'], http_client=client)
                 streams = await stack.enter_async_context(transport)
             session = await stack.enter_async_context(ClientSession(streams[0], streams[1],
@@ -145,6 +148,9 @@ def main():
         while pending:
             error = pending.pop()
             pending.extend(getattr(error, 'exceptions', ()))
+            if type(error).__name__ in {'OAuthError', 'KeychainError'} and str(error) in {'auth_required', 'keychain_unavailable', 'oauth_busy'}:
+                result = {'error': str(error)}
+                break
             response = getattr(error, 'response', None)
             if getattr(response, 'status_code', None) in (401, 403):
                 result = {'error': 'auth_required'}

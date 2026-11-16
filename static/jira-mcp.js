@@ -11,7 +11,8 @@
       <button type="button" data-servers></button>
       <label class="settings-row"><span data-server-label></span><select data-server></select></label>
       <label class="settings-row"><span data-base-label></span><input data-base type="url" placeholder="https://your-team.atlassian.net" autocomplete="off"></label>
-      <div class="settings-inline-actions"><button type="button" data-connect></button><button type="button" data-disconnect></button></div></fieldset>
+      <div class="settings-inline-actions"><button type="button" data-connect></button><button type="button" data-login></button><button type="button" data-disconnect></button></div></fieldset>
+      <button type="button" data-cancel-login hidden></button>
       <label class="settings-row"><span data-topic-label></span><input type="checkbox" data-topic></label>
       <p class="ui-secondary" data-topic-help></p><p role="status" data-status></p>`;
     document.querySelector('#settings-section-browsing').append(box);
@@ -20,7 +21,7 @@
       help:'One Dashboard Jira connection serves every pane, regardless of its agent. Reads ticket keys and searches task-name keywords. CLI OAuth sessions are separate; importing configuration does not sign in.',
       'source-label':'Configuration source', 'local-option':'Local Codex / Claude Code', 'custom-option':'Custom configuration file',
       'file-label':'MCP configuration file', servers:'Read servers', 'server-label':'MCP server',
-      'base-label':'Jira site URL (optional if JIRA_URL is configured)', connect:'Test & connect', disconnect:'Disconnect'})) ui.setMessage(el(key), message);
+      'base-label':'Jira site URL (optional if JIRA_URL is configured)', connect:'Test & connect', login:'Log in with browser', 'cancel-login':'Cancel login', disconnect:'Disconnect'})) ui.setMessage(el(key), message);
     const topicKey = 'siling_jira_topics_v1';
     window.SilingJiraTopics = {enabled() {
       try {return localStorage.getItem(topicKey) === 'true';} catch {return false;}
@@ -91,7 +92,7 @@
         const errors = {
           jira_url_required:'Enter the Jira site URL (for example https://your-team.atlassian.net). This is the Jira website, not the MCP endpoint.',
           invalid_jira_url:'Invalid Jira site URL. Use HTTPS without credentials, query parameters or a fragment.',
-          auth_required:'The MCP server requires authentication (401/403). Its CLI login is not shared with Dashboard. Configure credentials or an authenticated MCP bridge.',
+          auth_required:'The MCP server requires authentication (401/403). Use Log in with browser on this Mac to authorize Dashboard separately.',
           native_auth_required:'This MCP uses CLI-specific authentication. Configure a supported authenticated MCP connection for Dashboard.',
           timeout:'The MCP server did not respond within the time limit. Check its availability and retry.',
           network_error:'Could not reach the MCP server. Check VPN, DNS, TLS certificates and proxy settings.',
@@ -103,7 +104,53 @@
           'The MCP handshake failed. Check the service transport and protocol configuration.'));
       } else {show(result); changed?.();}
     });
-    el('disconnect').onclick = () => run(async () => {show(await request('disconnect', {})); changed?.();});
+    const loginErrors = {
+      oauth_local_mac_required:'Open Dashboard directly on this Mac to use browser login.',
+      keychain_unavailable:'macOS Keychain is unavailable or locked. No plaintext credentials were saved.',
+      oauth_not_supported:'Browser login requires an HTTP MCP with supported OAuth discovery and no configured auth headers.',
+      oauth_metadata_invalid:'The server OAuth metadata failed validation. Check the MCP service configuration.',
+      oauth_registration_denied:'The OAuth server rejected client registration. Your administrator may need to allow SiLing.',
+      oauth_scope_unsupported:'The MCP server does not advertise a supported read scope.',
+      oauth_token_failed:'OAuth token exchange failed. Check the server policy and retry login.',
+      oauth_denied:'Browser authorization was declined. You can retry login.',
+      oauth_timeout:'Browser login timed out. Retry and complete authorization within four minutes.',
+      unsupported_tool:'Login succeeded, but this MCP must expose jira_get_issue with issue_key.',
+      config_changed:'MCP configuration changed during login. Select the server and retry.',
+      oauth_busy:'Another Jira login is already running.',
+      oauth_failed:'Browser login failed. Check Keychain, the system browser and MCP availability.'
+    };
+    el('login').onclick = () => run(async () => {
+      const native = el('source').value === 'local' ? localServers[Number(el('server').value)] : null;
+      if (el('source').value === 'local' && !native) {
+        ui.setMessage(el('status'), 'No local MCP servers found. Use a custom configuration file if needed.');return;
+      }
+      let state=await request('oauth-start',{config_file:native?.config_file || el('file').value.trim(),
+        server_name:native?.name || el('server').value,base_url:el('base').value.trim()});
+      if(state.error) {ui.setMessage(el('status'),loginErrors[state.error] || loginErrors.oauth_failed);return;}
+      const id=state.id;
+      el('cancel-login').hidden=false;
+      try {
+        const deadline=Date.now()+300000;
+        while (['starting','waiting','verifying'].includes(state.state) && Date.now()<deadline) {
+          ui.setMessage(el('status'),state.state==='verifying' ? 'Authorization received. Verifying Jira tools…' :
+            'Complete Jira authorization in the system browser. Closing Settings does not cancel login.');
+          await new Promise(resolve=>setTimeout(resolve,1000));
+          state=await request('oauth-status',{});
+          if(state.id!==id)break;
+        }
+        if(state.id===id && state.state==='connected') {
+          show(await api('/api/jira/mcp'));changed?.();
+        } else ui.setMessage(el('status'),state.state==='cancelled' ? 'Jira browser login cancelled.' :
+          loginErrors[state.error] || 'Browser login failed. Check Keychain, the system browser and MCP availability.');
+      } finally {el('cancel-login').hidden=true;}
+    });
+    el('cancel-login').onclick=async()=>{
+      el('cancel-login').disabled=true;
+      try {await request('oauth-cancel',{});}
+      catch {ui.setMessage(el('status'),'Could not cancel Jira login. Keep Settings open and retry.');}
+      finally {el('cancel-login').disabled=false;}
+    };
+    el('disconnect').onclick = () => run(async () => {const cfg=await request('disconnect', {});show(cfg);if(cfg.error)ui.setMessage(el('status'),loginErrors[cfg.error] || loginErrors.oauth_failed);changed?.();});
     show({});
     return {async refresh() {
       if (busy) return;

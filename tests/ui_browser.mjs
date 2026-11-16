@@ -123,6 +123,7 @@ const completeSource = previewSource + '\n' + 'Full source line\n'.repeat(18000)
 let truncatePreview = false;
 let jiraMode='ok';
 let jiraConnection={enabled:false};
+let jiraOAuth={state:'idle'},jiraOAuthBody={},jiraOAuthPolls=0;
 const jiraConnections=[];
 let bulkMode=false,bulkHold=null;const bulkBodies=[];
 const server = http.createServer((req, res) => {
@@ -146,6 +147,18 @@ const server = http.createServer((req, res) => {
         {source:'codex',config_file:'/fixture/codex/config.toml',name:'jira-fixture'},
         {source:'claude',config_file:'/fixture/.claude.json',name:'jira-fixture'}],sources:[]}));
       if (url.pathname.endsWith('/servers')) return res.end(JSON.stringify({servers:[{name:'jira-fixture'}]}));
+      if(url.pathname.endsWith('/oauth-start')) {
+        jiraOAuthBody=body;jiraOAuthPolls=0;
+        jiraOAuth=jiraMode==='oauth-denied'?{id:'fixture-login',state:'failed',error:'oauth_denied'}:{id:'fixture-login',state:'waiting'};
+        return res.end(JSON.stringify(jiraOAuth));
+      }
+      if(url.pathname.endsWith('/oauth-cancel')) {jiraOAuth={...jiraOAuth,state:'cancelled'};return res.end(JSON.stringify(jiraOAuth));}
+      if(url.pathname.endsWith('/oauth-status')) {
+        if(jiraOAuth.state==='waiting' && jiraMode!=='oauth-wait' && ++jiraOAuthPolls>=2) {
+          jiraOAuth.state='connected';jiraConnection={enabled:true,...jiraOAuthBody,config_source:'custom',oauth_connected:true};
+        }
+        return res.end(JSON.stringify(jiraOAuth));
+      }
       if (url.pathname.endsWith('/disconnect')) jiraConnection={enabled:false};
       else {
         jiraConnections.push(body);

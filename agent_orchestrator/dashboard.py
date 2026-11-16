@@ -8834,6 +8834,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                 thread.join(timeout=2)
             app.state.active_snapshot_autosave_stop = None
             app.state.active_snapshot_autosave_thread = None
+            jira_connection.oauth.cancel()
             secret_broker.close()
             link_jobs.close()
             proxy_sender.stop()
@@ -10464,8 +10465,17 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                 return {'servers': await asyncio.to_thread(jira_mcp_servers, body['config_file'], None)}
             if action == 'local-servers' and not body:
                 return await asyncio.to_thread(jira_native_mcp_servers)
+            if action == 'oauth-status' and not body:
+                return jira_connection.oauth.status()
+            if action == 'oauth-cancel' and not body:
+                await asyncio.to_thread(jira_connection.oauth.cancel)
+                return jira_connection.oauth.status()
+            if action == 'oauth-start':
+                if not system_browser_available(request):
+                    return {'state':'failed', 'error':'oauth_local_mac_required'}
+                return await asyncio.to_thread(jira_connection.oauth.start, body)
             if action == 'disconnect' and not body:
-                return jira_connection.disconnect()
+                return await asyncio.to_thread(jira_connection.disconnect)
             if action == 'connect':
                 return await asyncio.to_thread(jira_connection.connect, body)
         except (OSError, ValueError, TypeError):

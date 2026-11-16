@@ -220,9 +220,10 @@ intervene.
   Stdio starts in the configuration file's directory unless it specifies `cwd`.
   Standard stdio, Streamable HTTP and SSE transports are supported. The server
   must expose `jira_get_issue(issue_key, fields=...)` (`fields` may be omitted),
-  as mcp-atlassian does. OAuth must already be handled by your server or bridge;
-  this feature does not reuse a native CLI's private OAuth token cache or perform
-  browser OAuth login. HTTP 401/403 reports that authentication is still needed;
+  as mcp-atlassian does. **Test & connect** uses configured credentials or an
+  existing authenticated bridge; **Log in with browser** can create a separate
+  Dashboard OAuth login on macOS. Native CLI private token caches are never reused.
+  HTTP 401/403 reports that authentication is still needed;
   discovering a configuration does not claim an authenticated connection.
   Rovo-only tool names are not yet supported.
   Connection errors distinguish a missing/invalid Jira website URL, OAuth
@@ -250,6 +251,30 @@ intervene.
   Open the list or **Refresh** to discover later output; ordinary keyword lookup does not poll. **Refresh** bypasses the cache and processes remaining keys first.
   Configuration changes require reconnecting. Remote sessions use their own node's
   Jira configuration. Disconnect stops future lookups and discards in-flight results.
+- **Jira MCP connection → Log in with browser** gives Dashboard its own OAuth
+  login on macOS. Select **MaaS-Jira**, set the Jira site URL (for example,
+  `https://your-team.atlassian.net`, not a project page), and click the login
+  button directly from the Mac running Dashboard. The system browser opens the
+  server's consent flow; complete it within four minutes. Closing Settings keeps
+  the login running; **Cancel login** stops it. Phone, remote and proxied clients
+  cannot initiate a loopback browser login on the server Mac.
+  Supported HTTP MCP servers must advertise protected-resource and authorization
+  metadata, PKCE S256 and dynamic client registration; authorization, registration
+  and token endpoints must share the advertised issuer origin. Custom-header,
+  stdio and legacy SSE configurations retain **Test & connect**, not this OAuth
+  flow. Company policy may reject registration or require allowing the loopback
+  redirect. Rovo's different tool names still need an adapter before Jira linking.
+  Dashboard verifies the fixed Jira read tool before enabling the connection.
+  OAuth client secrets, access tokens and refresh tokens are stored only in
+  macOS Keychain under a dedicated SiLing service; the project configuration
+  stores an opaque account reference. Keychain failures have no plaintext
+  fallback. Background requests silently refresh expired/rejected access tokens
+  and retain rotated refresh tokens; they never open a browser. If refresh fails,
+  log in again from Settings. **Disconnect** disables discovery and removes this
+  connection's local Keychain entry; it does not revoke upstream grants or touch
+  native CLI credentials. Replacing a login also removes the old local entry
+  when Keychain is available. Failed/cancelled logins clean their temporary
+  Keychain entry. Cancelled registrations may remain at the authorization server.
 - **Jira MCP connection → Automatically search Jira by task topic** adds opt-in
   AI topic discovery for every enabled pane group and every agent type. It uses
   the Dashboard user's local Claude CLI login and configured model, even when the

@@ -20,7 +20,8 @@ from .json_store import edit_json, write_json
 
 KEY = re.compile(r'(?<![A-Za-z0-9_])([A-Z][A-Z0-9_]{0,31}-[1-9][0-9]{0,10})(?![A-Za-z0-9_])')
 ERRORS = {'sdk_missing', 'unsupported_tool', 'connection_failed', 'config_changed', 'busy',
-          'auth_required', 'native_auth_required', 'timeout', 'network_error', 'server_error'}
+          'auth_required', 'native_auth_required', 'timeout', 'network_error', 'server_error',
+          'keychain_unavailable', 'oauth_busy'}
 
 
 class NativeMCPAuthRequired(ValueError):
@@ -210,6 +211,8 @@ class JiraMCP:
         self.slots = threading.BoundedSemaphore(2)
         self.config_lock = threading.Lock()
         self.topic_slot = threading.Lock()
+        from .jira_oauth_jobs import JiraOAuthJobs
+        self.oauth = JiraOAuthJobs(self)
 
     def status(self):
         cfg = read_json(self.path)
@@ -217,9 +220,10 @@ class JiraMCP:
         if cfg.get('config_file'):
             result['config_source'] = next((source for source, path in native_config_paths()
                                            if str(path) == cfg['config_file']), 'custom')
+        result['oauth_connected'] = bool(cfg.get('oauth_account'))
         return result
 
-    def connect(self, body):
+    def connect(self, body, *, _oauth_account=None, _expected=None):
         if set(body) != {'config_file', 'server_name', 'base_url'}:
             raise ValueError('Specify config_file, server_name and base_url only.')
         path, name = body['config_file'], body['server_name']
@@ -238,10 +242,14 @@ class JiraMCP:
             return {'error': 'invalid_jira_url'}
         with self.config_lock:
             before = read_json(self.path)
+            if _expected is not None and before != _expected:
+                return {'error': 'config_changed'}
+        account = _oauth_account or (before.get('oauth_account') if before.get('fingerprint') == fingerprint(server) else None)
+        worker_server = {**server, 'oauth_account': account} if account else server
         if not self.slots.acquire(blocking=False):
             return {'error': 'busy'}
         try:
-            result = call_worker(server, [])
+            result = call_worker(worker_server, [])
         finally:
             self.slots.release()
         if result.get('error'):
@@ -253,13 +261,24 @@ class JiraMCP:
             write_json(self.path, {'enabled': True, 'config_file': str(Path(path).expanduser()),
                                   'server_name': name, 'base_url': base, 'fingerprint': fingerprint(server),
                                   'search_supported': result.get('search_supported', False),
-                                  'connection_id': uuid.uuid4().hex})
+                                  'connection_id': uuid.uuid4().hex, **({'oauth_account': account} if account else {})})
+        old = before.get('oauth_account')
+        if old and old != account:
+            from .jira_oauth_jobs import forget
+            try:forget(old)
+            except (OSError, ValueError):pass
         return self.status()
 
     def disconnect(self):
+        self.oauth.cancel()
         with self.config_lock:
+            before = read_json(self.path)
             self.path.parent.mkdir(parents=True, exist_ok=True)
             write_json(self.path, {'enabled': False, 'connection_id': uuid.uuid4().hex})
+        if before.get('oauth_account'):
+            from .jira_oauth_jobs import forget
+            try:forget(before['oauth_account'])
+            except (OSError, ValueError):return {'enabled':False, 'error':'keychain_unavailable'}
         return {'enabled': False}
 
     def topic_plan(self, run, directory):
@@ -368,6 +387,8 @@ class JiraMCP:
                         if fingerprint(server) != cfg.get('fingerprint'):
                             response = {'error': 'config_changed'}
                         else:
+                            if cfg.get('oauth_account'):
+                                server = {**server, 'oauth_account': cfg['oauth_account']}
                             if search_due:
                                 response = call_worker(server, keys, terms=terms, topics=topics) if topics else call_worker(server, keys, terms=terms)
                             else:
