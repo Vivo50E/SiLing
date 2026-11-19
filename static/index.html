@@ -4429,6 +4429,7 @@
 
   // ---------- Global state ----------
   let sessions = [];
+  const pendingSleepingSessions = new Map();
   // A session-list poll can start before a panel-state POST and finish after
   // it. Keep the user's newest choice authoritative until a later snapshot
   // explicitly acknowledges it; otherwise the stale poll makes P0/Flag look
@@ -6519,6 +6520,12 @@
         const firstSnapshot = !sessionSnapshotReady;
         sessionSnapshotReady = true;
         sessions = mergePendingPanelStates(data.sessions || []);
+        for (const row of sessions) {
+          const pending = pendingSleepingSessions.get(row.run_id);
+          if (!pending) continue;
+          if (!row.alive || Date.now() > pending.expiresAt) pendingSleepingSessions.delete(row.run_id);
+          else Object.assign(row, pending.row);
+        }
         const archiveChanged = sessionArchives.receive(data.session_archives);
         const archiveClosed = reconcileArchivedPanes();
         paneGroups.receive(data.pane_groups);
@@ -6983,8 +6990,18 @@
       endSession.disabled = !!(s.remote && s.node_online === false);
     }
     card.classList.toggle("ended-session", !s.alive);
+    const sleeping = !s.alive && s.status === "sleeping";
+    card.classList.toggle("sleeping-session", sleeping);
+    const sleepButton = card.querySelector(".btn-sleep-session");
+    if (sleepButton) {
+      sleepButton.hidden = !s.alive;
+      sleepButton.disabled = !!(s.remote && s.node_online === false);
+    }
     const endedNotice = card.querySelector(".pane-ended-notice");
-    if (endedNotice) endedNotice.hidden = !!s.alive;
+    if (endedNotice) {
+      endedNotice.hidden = !!s.alive;
+      ui.setMessage(endedNotice, sleeping ? "Sleeping — resources released" : "Session ended — history log (read-only)");
+    }
     const resumeEnded = card.querySelector(".btn-resume-ended");
     if (resumeEnded) {
       ui.setMessage(resumeEnded, sessionIsTerminal(s) ? "Reopen terminal" : "Resume session");
@@ -7032,7 +7049,8 @@
     } else {
       ctrl.inputEl.disabled = disable;
     }
-    if (wasAlive && !s.alive && ctrl.usingTty && !restartingSessions.has(s.run_id)) {
+    if (!s.alive && !restartingSessions.has(s.run_id) &&
+        ((wasAlive && ctrl.usingTty) || (s.status === "sleeping" && !ctrl.sleepingView && !isMobileView()))) {
       void attachPaneView(ctrl, { priority: true });
     }
     if (wasRemoteOffline && s.remote && s.node_online !== false) {
@@ -7110,6 +7128,7 @@
       return;
     }
     const base = conversationSessions(sessions).filter(s => (sessionArchives.listed(s)
+      || (s.status === "sleeping" && !sessionArchives.isArchived(s.run_id))
       || (searchQuery.trim() && !sessionArchives.isArchived(s.run_id))) && paneGroups.matches(s));
     renderSidebarPriorityFilter(base);
     const activityFiltered = sidebarWorkingOnly
@@ -8372,6 +8391,7 @@
               <p class="ui-secondary" data-i18n="restartHelp" ${terminalSession || s.agent_exited === true ? "hidden" : ""}></p>
               <button class="btn-recover-session" ${s.agent_exited === true ? "" : "hidden"} data-dialog-close><span data-ui-message=Resume%20exited%20agent>Resume exited agent</span></button>
               <button class="btn-end-session" ${s.agent_exited === true ? "" : "hidden"} data-dialog-close><span data-ui-message=End%20exited%20session>End exited session</span></button>
+              <button class="btn-sleep-session" data-dialog-close data-ui-message="Sleep%20session">Sleep session</button>
               <button class="btn-terminate danger" ${s.agent_exited === true ? "hidden" : ""} data-dialog-close><span data-ui-message=Terminate%20session>Terminate session</span></button>
               <p class="ui-secondary" data-i18n="terminateHelp"></p>
             </div>
@@ -8752,6 +8772,7 @@
       runId, btnRecoverSession, btnEndSession
     ));
     btnEndSession.addEventListener("click", () => endExitedSession(runId, btnEndSession));
+    card.querySelector(".btn-sleep-session").addEventListener("click", event => sleepSession(runId, event.currentTarget));
     btnTerminate.addEventListener("click", () => stopSession(runId, btnTerminate));
     btnUnpin.addEventListener("click", () => {
       if (paneZoomState && paneZoomState.card === card) {
@@ -9130,6 +9151,7 @@
     const attachToken = ctrl.attachToken;
 
     detachPaneSources(ctrl);
+    ctrl.sleepingView = false;
     paneEl.classList.remove("pane-tty");
     applyPaneTerminalTheme(ctrl, s);
     paneEl.innerHTML = "";
@@ -9138,6 +9160,13 @@
       paneEl.textContent = `${s.node_label || s.node_id || "Remote node"} offline` +
         (s.node_error ? `\n\n${s.node_error}` : "") +
         "\n\nThe remote tmux session is unchanged. This pane will reconnect when the node returns.";
+      paneEl.classList.add("empty");
+      return;
+    }
+
+    if (!s.alive && s.status === "sleeping") {
+      ctrl.sleepingView = true;
+      ui.setMessage(paneEl, "Sleeping — agent stopped. Resume below when needed.");
       paneEl.classList.add("empty");
       return;
     }
@@ -9673,6 +9702,33 @@
     const close = () => overlay.remove();
     overlay.querySelector("#orch-copy-close").addEventListener("click", close);
     overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  }
+
+  async function sleepSession(runId, button) {
+    const s = sessions.find(row => row.run_id === runId);
+    if (!s?.alive || button.disabled) return;
+    const name = sessionTitle(s);
+    const message = sessionIsTerminal(s)
+      ? 'Sleep "{name}"? Running commands and SSH connections will close. The pane stays here; restoring opens a new shell, not the previous shell or SSH session.'
+      : 'Sleep "{name}"? Current work will be interrupted and the agent will exit. The pane stays here and can resume the saved conversation.';
+    if (!confirm(ui.message(message, {name}))) return;
+    button.disabled = true;
+    try {
+      const result = await api(`/api/sessions/${encodeURIComponent(runId)}/sleep`, {method:"POST"});
+      if (!result.ok) throw new Error(result.reason || "Session did not stop");
+      if (result.resume?.id) s.resume_id = result.resume.id;
+      Object.assign(s, {alive:false, busy:false, screen_busy:false, background_active:false, status:"sleeping"});
+      pendingSleepingSessions.set(runId, {expiresAt:Date.now()+30000,
+        row:{alive:false,busy:false,screen_busy:false,background_active:false,status:"sleeping",resume_id:s.resume_id}});
+      const ctrl = paneCtrls.get(runId);
+      if (ctrl) {
+        await attachPaneView(ctrl);
+        updatePaneHeader(ctrl, s);
+      }
+      renderList(); saveSlots();
+      void refreshList();
+    } catch (error) { alert(ui.message("Could not put session to sleep: ") + error.message); }
+    finally { if (button.isConnected) button.disabled = false; }
   }
 
   async function stopSession(runId, button) {

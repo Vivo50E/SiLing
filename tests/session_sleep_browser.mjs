@@ -1,0 +1,35 @@
+import assert from 'node:assert/strict';
+export async function checkSessionSleep({evaluate,waitFor,cdp,viewport,pause,screenshot,configure,fail,count,pending,finish,requests}) {
+  await viewport(1280,900);
+  configure();
+  await evaluate(`localStorage.setItem('orch_layout','1');localStorage.setItem('orch_slots',JSON.stringify(['fixture-1']))`);
+  await cdp('Page.reload');
+  const card='.pane-card[data-run-id="fixture-1"]';
+  await waitFor(`!!document.querySelector('${card} iframe')?.contentDocument?.querySelector('textarea')`);
+  await evaluate(`window.sleepAlerts=[];window.confirm=()=>false;window.alert=t=>sleepAlerts.push(t);document.querySelector('${card} .btn-sleep-session').click()`);
+  assert.equal(count(),0,'Cancel leaves process alone');
+  fail(true);
+  await evaluate(`window.beforeSleepFrame=document.querySelector('${card} iframe');window.confirm=()=>true;document.querySelector('${card} .btn-sleep-session').click()`);
+  await waitFor(`sleepAlerts.length===1 && !document.querySelector('${card} .btn-sleep-session').disabled`);
+  assert.equal(await evaluate(`document.querySelector('${card} iframe')===beforeSleepFrame`),true,'Failed stop preserves iframe');
+  fail(false);
+  await evaluate(`document.querySelector('${card} .pane-input textarea').value='draft stays';document.querySelector('${card} .btn-sleep-session').click()`);
+  await waitFor(`document.querySelector('${card}')?.classList.contains('sleeping-session')`);
+  assert.equal(await evaluate(`!!document.querySelector('${card} iframe')`),false,'Sleeping pane releases terminal');
+  assert.equal(await evaluate(`JSON.parse(localStorage.getItem('orch_slots'))[0]`),'fixture-1');
+  assert.equal(await evaluate(`document.querySelector('${card} .pane-input textarea').value`),'draft stays');
+  const logReads=()=>requests.filter(r=>r.path==='/api/sessions/fixture-1/pane').length;
+  const before=logReads();await pause(5500);assert.equal(logReads(),before,'Sleeping pane never polls history');
+  await screenshot('sleeping-session');
+  await cdp('Page.reload');
+  await waitFor(`document.querySelector('${card}')?.classList.contains('sleeping-session')`);
+  assert.equal(await evaluate(`!!document.querySelector('${card} iframe')`),false);
+  assert.equal(await evaluate(`!!document.querySelector('.session-item[data-id="fixture-1"]')`),true,'Sleeping session remains in sidebar');
+  await evaluate(`document.querySelector('${card} .pane-input textarea').value='restore draft';document.querySelector('${card} .btn-resume-ended').click()`);
+  for(let i=0;i<100&&!pending();i++)await pause(50);
+  assert.equal(pending()?.run_id,'fixture-1');finish();
+  await waitFor(`JSON.parse(localStorage.getItem('orch_slots'))[0]==='sleep-resumed'`);
+  await waitFor(`!!document.querySelector('.pane-card[data-run-id="sleep-resumed"] iframe')`);
+  assert.equal(await evaluate(`document.querySelector('.pane-card[data-run-id="sleep-resumed"] .pane-input textarea').value`),'restore draft');
+  console.log('PASS: sleep cancel/failure, released iframe, no log polling, persisted slot/sidebar, same-slot resume and draft preservation');
+}

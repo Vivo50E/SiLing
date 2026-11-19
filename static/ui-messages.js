@@ -1,6 +1,13 @@
 /* Authored Dashboard copy only. Never translate terminal output or user data. */
 (() => {
   const zh = {
+    "Sleep session": "休眠会话",
+    "Sleeping — resources released": "已休眠 · 已释放资源",
+    "Sleeping — agent stopped. Resume below when needed.": "已休眠，Agent 已停止。需要时点击下方按钮恢复。",
+    "Sleep \"{name}\"? Current work will be interrupted and the agent will exit. The pane stays here and can resume the saved conversation.": "休眠“{name}”？当前任务将被中断，Agent 将退出。面板保留，可恢复已保存的对话。",
+    "Sleep \"{name}\"? Running commands and SSH connections will close. The pane stays here; restoring opens a new shell, not the previous shell or SSH session.": "休眠“{name}”？运行中的命令和 SSH 连接将关闭。面板保留；恢复会新开 shell，无法接续原 shell 或 SSH 会话。",
+    "Could not put session to sleep: ": "无法休眠会话：",
+
     "Status is checked for saved PR/MR links across branches and repositories. Refresh updates statuses and continues scanning history.": "按每条 PR/MR 链接查询状态，覆盖历史分支和其他仓库；刷新可更新状态并继续扫描历史输出。",
     "More review statuses remain. Refresh to continue.": "还有 PR/MR 状态未查询，请刷新继续。",
     "Some statuses could not be refreshed. Previous known states are retained.": "部分状态未能刷新，已保留此前已知的状态。",

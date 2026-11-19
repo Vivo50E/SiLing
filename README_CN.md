@@ -30,6 +30,7 @@ SiLing 的版权声明。
 以下是 [Vivo50E/SiLing](https://github.com/Vivo50E/SiLing) 维护的新增功能和改进，
 与继承自上游的核心能力分开列出：
 
+- **休眠会话：** 更多 → 休眠会话，停止 Agent 并释放终端界面，同时保留面板位置；点击恢复可在原位置继续已保存的对话。当前工作会被中断；普通 Terminal/SSH 恢复时新开 shell，不恢复原 shell 进程或 SSH 连接。
 - **更多会话入口**：增加用于手动执行命令的 Terminal-only 会话、导入已有原生
   Agent 对话、可配置的默认 Working dir，以及点击空 pane 直接创建会话。
 - **单独重启 Agent**：支持使用已保存的原生对话标识重启会话，先检查工作目录和

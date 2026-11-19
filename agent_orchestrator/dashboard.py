@@ -13249,6 +13249,37 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             "resume_persisted": persisted,
         }
 
+    @app.post("/api/sessions/{run_id}/sleep")
+    def post_sleep(run_id: str):
+        """Release the session process while retaining its recoverable pane."""
+        r = _lookup_run(outputs_dir, run_id)
+        if not r:
+            raise HTTPException(404, "run not found")
+        if r.get("kind") not in {"run", "task"} or not r.get("run_dir"):
+            raise HTTPException(409, "Import this session before putting it to sleep")
+        session = r.get("tmux_session", "")
+        if not session:
+            raise HTTPException(409, "no tmux session associated")
+        if r.get("status") == "sleeping" and not tmux_alive(session):
+            return {"ok": True, "status": "sleeping"}
+        if _norm_agent(r.get("agent", "")) != "terminal":
+            if _norm_agent(r.get("agent", "")) not in {"claude", "codex", "cursor"}:
+                raise HTTPException(409, "This agent does not support conversation recovery")
+            text = tmux_capture(session) if tmux_alive(session) else ""
+            resume = _discover_resume_metadata(r, text)
+            if not resume or not resume.get("resume_id") or not _persist_resume_metadata(r, resume):
+                raise HTTPException(409, "No saved conversation identity; session was not stopped")
+        result = post_stop(run_id, timeout=12.0)
+        if not result.get("ok") or tmux_alive(session):
+            raise HTTPException(409, "Session did not stop; pane retained. " + str(result.get("reason", "")))
+        path = Path(r["run_dir"]) / ("state.json" if r["kind"] == "task" else "session.json")
+        with edit_json(path) as data:
+            record = data[r["task"]] if r["kind"] == "task" else data
+            record["status"] = "sleeping"
+        ttyd.reap_dead(min_interval_s=0)
+        session_snapshots.request_refresh()
+        return {**result, "ok": True, "status": "sleeping"}
+
     @app.post("/api/sessions/{run_id}/kill")
     def post_kill(run_id: str):
         r = _lookup_run(outputs_dir, run_id)

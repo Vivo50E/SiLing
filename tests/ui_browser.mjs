@@ -1,3 +1,4 @@
+import { checkSessionSleep } from './session_sleep_browser.mjs';
 // Opt-in full-page browser checks. No dependencies or running Dashboard needed.
 // UI_BROWSER=/path/to/chromium node tests/ui_browser.mjs [screenshot-directory]
 import './pane_link_counts.mjs';
@@ -58,6 +59,7 @@ const updateVerifications = [];
 let lastVerification = null;
 const updateCandidate = () => ({eligible:true,branch:"agent/self-improve-fixture",head:updateHead,short_head:updateHead.slice(0,7),target_head:"a".repeat(40),ahead:1});
 const requests = [];
+let sleepFailure=false, sleepCalls=0;
 let holdBootRequests = false;
 let bootRequestsFail = false;
 const heldBootRequests = [];
@@ -514,6 +516,13 @@ const server = http.createServer((req, res) => {
         if(body.run_id==='bulk-first'){bulkHold=reply;return;}reply();
       });return;
     }
+    if (url.pathname.endsWith('/sleep')) {
+      sleepCalls++;
+      if(sleepFailure){res.writeHead(409);res.end(JSON.stringify({detail:'Still working'}));return;}
+      const row=sessions.find(s=>s.run_id===decodeURIComponent(url.pathname.split('/')[3]));
+      Object.assign(row,{alive:false,status:'sleeping',busy:false});
+      res.end(JSON.stringify({ok:true,status:'sleeping',resume:{id:row.resume_id}}));return;
+    }
     if (url.pathname === '/api/resume') {
       let body='';req.on('data',c=>body+=c);req.on('end',()=>{resumeBody=JSON.parse(body);pendingResume=res;});return;
     }
@@ -682,6 +691,13 @@ try {
       sessions[0].native_activity={state,updated_at:Date.now()/1000};
     }});
     assert.deepEqual(errors, [], 'No uncaught activity bar errors');
+  } else if (process.env.UI_SLEEP_ONLY === '1') {
+    await checkSessionSleep({evaluate,waitFor,cdp,viewport,pause,screenshot,requests,
+      configure:()=>{sessions[1].resume_id='sleep-native';},fail:value=>{sleepFailure=value;},count:()=>sleepCalls,
+      pending:()=>pendingResume&&resumeBody,
+      finish:()=>{sessions.push({...sessions[1],run_id:'sleep-resumed',alive:true,status:'running'});pendingResume.end(JSON.stringify({ok:true,run_id:'sleep-resumed'}));pendingResume=null;},
+    });
+    assert.deepEqual(errors, [], 'No uncaught sleep errors');
   } else if (process.env.UI_PANE_CACHE_ONLY === '1') {
     await checkPaneCache({evaluate,waitFor,cdp,viewport,pause});
     await checkTerminalFileResources({evaluate});

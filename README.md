@@ -28,6 +28,7 @@ retains both the original project's copyright notice and SiLing's notice.
 The following are additions and improvements maintained in
 [Vivo50E/SiLing](https://github.com/Vivo50E/SiLing), not a list of upstream features:
 
+- **Sleep a session:** More → Sleep session stops the agent and releases its terminal display while keeping the pane in place. Resume returns the saved conversation to the same slot. Current work is interrupted; Terminal/SSH recovery opens a fresh shell and does not restore shell processes or SSH connections.
 - **More ways to start work:** managed Terminal-only sessions for manual commands,
   import of existing native agent conversations, a configurable default Working
   dir, and session creation directly from empty panes.
