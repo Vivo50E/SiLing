@@ -8,7 +8,7 @@ import signal
 import sys
 import re
 
-from . import jira, jira_topics
+from . import jira, jira_topics, jira_tools
 from .jira_oauth import OAuthAuth
 
 
@@ -19,10 +19,19 @@ def result_data(result):
     if data is None:
         data = next((json.loads(c.text) for c in result.content
                      if c.type == 'text' and len(c.text) <= 65536), None)
-    if isinstance(data, dict) and 'result' in data:
-        data = data['result']
-        if isinstance(data, str) and len(data) <= 65536:
-            data = json.loads(data)
+    for _ in range(3):
+        if isinstance(data, dict) and 'success' in data:
+            if data.get('success') is not True:
+                return None
+            data = data.get('data')
+        elif isinstance(data, dict) and 'result' in data:
+            data = data['result']
+            if isinstance(data, str):
+                if len(data) > 65536:
+                    return None
+                data = json.loads(data)
+        else:
+            break
     return data
 
 
@@ -81,15 +90,11 @@ async def query(payload):
                 cursor = tools.nextCursor
             if tool is None:
                 return {'error': 'unsupported_tool'}
-            schema = tool.inputSchema
-            if 'issue_key' not in schema.get('properties', {}) or any(
-                    key not in {'issue_key', 'fields'} for key in schema.get('required', [])):
+            if jira_tools.issue_arguments(tool, 'CHECK-1') is None:
                 return {'error': 'unsupported_tool'}
             items, failed = [], []
             for key in payload.get('keys', [])[:8]:
-                args = {'issue_key': key}
-                if 'fields' in schema.get('properties', {}):
-                    args['fields'] = 'summary,status'
+                args = jira_tools.issue_arguments(tool, key)
                 try:
                     result = await session.call_tool('jira_get_issue', args)
                     row = issue_row(result_data(result))
@@ -99,10 +104,10 @@ async def query(payload):
                     items.append(row)
                 except Exception:
                     failed.append(key)
-            supported = bool(search and not server.get('search_disabled')
-                             and {'jql', 'fields', 'limit'} <= set(search.inputSchema.get('properties', {}))
-                             and set(search.inputSchema.get('required', [])) <= {'jql', 'fields', 'limit'})
-            response = {'items': items, 'failed': failed, 'search_supported': supported}
+            profile = jira_tools.search_profile(search) if search and not server.get('search_disabled') else None
+            supported = profile is not None
+            response = {'items': items, 'failed': failed, 'search_supported': supported,
+                        'search_project_required': bool(profile and profile['project_required'])}
             terms = payload.get('terms', [])
             topics = payload.get('topics', [])
             if terms or topics:
@@ -112,19 +117,26 @@ async def query(payload):
                     response['search_error'] = 'invalid_terms'
                 elif not supported:
                     response['search_error'] = 'unsupported_search'
+                elif profile['project_required'] and not server.get('search_project'):
+                    response['search_error'] = 'project_required'
+                elif server.get('search_project') and (not isinstance(server['search_project'], str)
+                        or not jira_tools.PROJECT.fullmatch(server['search_project'])):
+                    response['search_error'] = 'invalid_project'
                 else:
                     try:
                         groups = ([terms] if terms else []) + topics
                         clauses = [' AND '.join('summary ~ "' + term + '"' for term in group) for group in groups]
-                        jql = (clauses[0] if len(clauses) == 1 else ' OR '.join('(' + clause + ')' for clause in clauses)) + ' ORDER BY updated DESC'
-                        data = result_data(await session.call_tool('jira_search', {
-                            'jql': jql, 'fields': 'summary,status', 'limit': 8}))
+                        jql = clauses[0] if len(clauses) == 1 else ' OR '.join('(' + clause + ')' for clause in clauses)
+                        if server.get('search_project'):
+                            jql = 'project = "' + server['search_project'] + '" AND (' + jql + ')'
+                        jql += ' ORDER BY updated DESC'
+                        data = result_data(await session.call_tool('jira_search', jira_tools.search_arguments(search, jql)))
                         rows = data.get('issues') if isinstance(data, dict) else data
                         if not isinstance(rows, list):
                             raise ValueError('Invalid search response')
                         for data in rows[:8]:
                             row = issue_row(data)
-                            if row:
+                            if row and (not server.get('search_project') or row['key'].rsplit('-', 1)[0] == server['search_project']):
                                 topic_match = any(jira.matches_task(row['title'], words) for words in topics)
                                 if topic_match or jira.matches_task(row['title'], terms):
                                     items.append({**row, 'match': 'topic' if topic_match else 'task'})

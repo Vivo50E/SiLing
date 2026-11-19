@@ -11,6 +11,8 @@
       <button type="button" data-servers></button>
       <label class="settings-row"><span data-server-label></span><select data-server></select></label>
       <label class="settings-row"><span data-base-label></span><input data-base type="url" placeholder="https://your-team.atlassian.net" autocomplete="off"></label>
+      <label class="settings-row"><span data-project-label></span><input data-project autocomplete="off" maxlength="32" placeholder="DEMO"></label>
+      <p class="ui-secondary" data-project-help></p>
       <div class="settings-inline-actions"><button type="button" data-connect></button><button type="button" data-login></button><button type="button" data-disconnect></button></div></fieldset>
       <button type="button" data-cancel-login hidden></button>
       <label class="settings-row"><span data-topic-label></span><input type="checkbox" data-topic></label>
@@ -21,6 +23,7 @@
       help:'One Dashboard Jira connection serves every pane, regardless of its agent. Reads ticket keys and searches task-name keywords. CLI OAuth sessions are separate; importing configuration does not sign in.',
       'source-label':'Configuration source', 'local-option':'Local Codex / Claude Code', 'custom-option':'Custom configuration file',
       'file-label':'MCP configuration file', servers:'Read servers', 'server-label':'MCP server',
+      'project-label':'Jira project key (optional)', 'project-help':'MaaS-Jira needs a project for topic searches. A Jira project URL also fills this automatically. Ticket-key lookup works without it.',
       'base-label':'Jira site URL (optional if JIRA_URL is configured)', connect:'Test & connect', login:'Log in with browser', 'cancel-login':'Cancel login', disconnect:'Disconnect'})) ui.setMessage(el(key), message);
     const topicKey = 'siling_jira_topics_v1';
     window.SilingJiraTopics = {enabled() {
@@ -46,7 +49,7 @@
     };
     const show = cfg => {
       connected = cfg.enabled === true;
-      ui.setMessage(el('status'), connected ? 'Jira MCP connected. Tickets are identified when their list loads or refreshes.' : 'Jira MCP disconnected. Saved links remain available.');
+      ui.setMessage(el('status'), connected ? (cfg.search_project_required && !cfg.project_key ? 'Jira MCP connected. Set a project key to enable topic search.' : 'Jira MCP connected. Tickets are identified when their list loads or refreshes.') : 'Jira MCP disconnected. Saved links remain available.');
       if (connected) {
         el('file').value = cfg.config_file;
         el('source').value = ['codex','claude'].includes(cfg.config_source) ? 'local' : 'custom';
@@ -55,6 +58,7 @@
           localLoaded = true;
         } else el('server').replaceChildren(new Option(cfg.server_name, cfg.server_name));
         el('base').value = cfg.base_url;
+        el('project').value = cfg.project_key || '';
       }
       updateSource();
       el('disconnect').hidden = !connected;
@@ -87,10 +91,11 @@
       if (el('source').value === 'local' && !native) {
         ui.setMessage(el('status'), 'No local MCP servers found. Use a custom configuration file if needed.');return;
       }
-      const result = await request('connect', {config_file:native?.config_file || el('file').value.trim(), server_name:native?.name || el('server').value, base_url:el('base').value.trim()});
+      const result = await request('connect', {config_file:native?.config_file || el('file').value.trim(), server_name:native?.name || el('server').value, base_url:el('base').value.trim(), project_key:el('project').value.trim()});
       if (result.error) {
         const errors = {
           jira_url_required:'Enter the Jira site URL (for example https://your-team.atlassian.net). This is the Jira website, not the MCP endpoint.',
+          invalid_project:'Invalid Jira project key. Use letters, digits and underscores, and match the project URL if supplied.',
           invalid_jira_url:'Invalid Jira site URL. Use HTTPS without credentials, query parameters or a fragment.',
           auth_required:'The MCP server requires authentication (401/403). Use Log in with browser on this Mac to authorize Dashboard separately.',
           native_auth_required:'This MCP uses CLI-specific authentication. Configure a supported authenticated MCP connection for Dashboard.',
@@ -99,12 +104,14 @@
           server_error:'The MCP server returned a server error. Check the service and retry.'
         };
         ui.setMessage(el('status'), errors[result.error] || (
-          result.error === 'unsupported_tool' ? 'This MCP must expose jira_get_issue with issue_key.' :
+          result.error === 'unsupported_tool' ? 'This MCP must expose a supported jira_get_issue schema with issue_key or issue_id.' :
           result.error === 'sdk_missing' ? 'Install the Dashboard requirements to enable the MCP client.' :
           'The MCP handshake failed. Check the service transport and protocol configuration.'));
       } else {show(result); changed?.();}
     });
     const loginErrors = {
+      invalid_project:'Invalid Jira project key. Use letters, digits and underscores, and match the project URL if supplied.',
+      invalid_jira_url:'Invalid Jira site URL. Use HTTPS without credentials, query parameters or a fragment.',
       oauth_local_mac_required:'Open Dashboard directly on this Mac to use browser login.',
       keychain_unavailable:'macOS Keychain is unavailable or locked. No plaintext credentials were saved.',
       oauth_not_supported:'Browser login requires an HTTP MCP with supported OAuth discovery and no configured auth headers.',
@@ -114,7 +121,7 @@
       oauth_token_failed:'OAuth token exchange failed. Check the server policy and retry login.',
       oauth_denied:'Browser authorization was declined. You can retry login.',
       oauth_timeout:'Browser login timed out. Retry and complete authorization within four minutes.',
-      unsupported_tool:'Login succeeded, but this MCP must expose jira_get_issue with issue_key.',
+      unsupported_tool:'Login succeeded, but the MCP issue lookup schema is unsupported. Supported identifiers: issue_key or issue_id.',
       config_changed:'MCP configuration changed during login. Select the server and retry.',
       oauth_busy:'Another Jira login is already running.',
       oauth_failed:'Browser login failed. Check Keychain, the system browser and MCP availability.'
@@ -125,7 +132,7 @@
         ui.setMessage(el('status'), 'No local MCP servers found. Use a custom configuration file if needed.');return;
       }
       let state=await request('oauth-start',{config_file:native?.config_file || el('file').value.trim(),
-        server_name:native?.name || el('server').value,base_url:el('base').value.trim()});
+        server_name:native?.name || el('server').value,base_url:el('base').value.trim(), project_key:el('project').value.trim()});
       if(state.error) {ui.setMessage(el('status'),loginErrors[state.error] || loginErrors.oauth_failed);return;}
       const id=state.id;
       el('cancel-login').hidden=false;

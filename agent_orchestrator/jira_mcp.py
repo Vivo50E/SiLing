@@ -15,7 +15,7 @@ try:
 except ImportError:
     import tomli as tomllib
 
-from . import jira, jira_topics, terminal_files
+from . import jira, jira_topics, jira_tools, terminal_files
 from .json_store import edit_json, write_json
 
 KEY = re.compile(r'(?<![A-Za-z0-9_])([A-Z][A-Z0-9_]{0,31}-[1-9][0-9]{0,10})(?![A-Za-z0-9_])')
@@ -47,6 +47,31 @@ def web_base(value):
             or any(p in {'.', '..'} for p in url.path.split('/'))):
         raise ValueError('Use HTTPS, or HTTP on loopback, without credentials or query parameters.')
     return urlunsplit((url.scheme, url.netloc.lower(), url.path, '', ''))
+
+
+
+
+class InvalidJiraProject(ValueError):
+    pass
+
+
+def connection_scope(value, project=''):
+    if not isinstance(project, str):
+        raise InvalidJiraProject('Invalid project key')
+    project = project.strip()
+    if project and not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,31}', project):
+        raise InvalidJiraProject('Invalid project key')
+    project = project.upper()
+    base = web_base(value)
+    parts = urlsplit(base)
+    match = re.fullmatch(r'(.*?)/(?:jira/software/(?:c/)?projects|projects)/([A-Za-z][A-Za-z0-9_]{0,31})(?:/.*)?', parts.path)
+    if match:
+        inferred = match[2].upper()
+        if project and inferred != project:
+            raise InvalidJiraProject('Conflicting project key')
+        project = inferred
+        base = urlunsplit((parts.scheme, parts.netloc, match[1], '', ''))
+    return base, project
 
 
 def config_servers(path):
@@ -216,7 +241,7 @@ class JiraMCP:
 
     def status(self):
         cfg = read_json(self.path)
-        result = {k: cfg[k] for k in ('enabled', 'config_file', 'server_name', 'base_url', 'search_supported') if k in cfg}
+        result = {k: cfg[k] for k in ('enabled', 'config_file', 'server_name', 'base_url', 'search_supported', 'search_project_required', 'project_key') if k in cfg}
         if cfg.get('config_file'):
             result['config_source'] = next((source for source, path in native_config_paths()
                                            if str(path) == cfg['config_file']), 'custom')
@@ -224,7 +249,7 @@ class JiraMCP:
         return result
 
     def connect(self, body, *, _oauth_account=None, _expected=None):
-        if set(body) != {'config_file', 'server_name', 'base_url'}:
+        if set(body) not in ({'config_file', 'server_name', 'base_url'}, {'config_file', 'server_name', 'base_url', 'project_key'}):
             raise ValueError('Specify config_file, server_name and base_url only.')
         path, name = body['config_file'], body['server_name']
         if not isinstance(path, str) or not isinstance(name, str) or not name or len(name) > 200:
@@ -237,7 +262,9 @@ class JiraMCP:
         if not value:
             return {'error': 'jira_url_required'}
         try:
-            base = web_base(value)
+            base, project = connection_scope(value, body.get('project_key', ''))
+        except InvalidJiraProject:
+            return {'error': 'invalid_project'}
         except (ValueError, TypeError):
             return {'error': 'invalid_jira_url'}
         with self.config_lock:
@@ -245,7 +272,8 @@ class JiraMCP:
             if _expected is not None and before != _expected:
                 return {'error': 'config_changed'}
         account = _oauth_account or (before.get('oauth_account') if before.get('fingerprint') == fingerprint(server) else None)
-        worker_server = {**server, 'oauth_account': account} if account else server
+        worker_server = {**server, **({'oauth_account': account} if account else {}),
+                         **({'search_project': project} if project else {})}
         if not self.slots.acquire(blocking=False):
             return {'error': 'busy'}
         try:
@@ -261,6 +289,8 @@ class JiraMCP:
             write_json(self.path, {'enabled': True, 'config_file': str(Path(path).expanduser()),
                                   'server_name': name, 'base_url': base, 'fingerprint': fingerprint(server),
                                   'search_supported': result.get('search_supported', False),
+                                  'search_project_required': result.get('search_project_required', False),
+                                  **({'project_key': project} if project else {}),
                                   'connection_id': uuid.uuid4().hex, **({'oauth_account': account} if account else {})})
         old = before.get('oauth_account')
         if old and old != account:
@@ -354,7 +384,9 @@ class JiraMCP:
             terms = jira.task_terms(run)
             topics = []
             if topic:
-                if cfg.get('search_supported'):
+                if cfg.get('search_project_required') and not cfg.get('project_key'):
+                    result['search_error'] = 'project_required'
+                elif cfg.get('search_supported'):
                     topics, topic_error = self.topic_plan(run, directory)
                     if topic_error:
                         result['topic_error'] = topic_error
@@ -366,7 +398,8 @@ class JiraMCP:
                 if read_json(self.path) != cfg:
                     return {**result, 'items': list(items.values())[:1000], 'mcp_error': 'config_changed'}
             candidates += [i['key'] for i in items.values() if i['url'] == cfg['base_url'] + '/browse/' + i['key']]
-            connection = fingerprint({'server': cfg.get('fingerprint'), 'base_url': cfg['base_url']})
+            connection = fingerprint({'server': cfg.get('fingerprint'), 'base_url': cfg['base_url'],
+                                      'project_key': cfg.get('project_key', '')})
             attempts = saved.get('attempts', {}) if saved.get('connection') == connection else {}
             due = [key for key in dict.fromkeys(candidates) if force or time.time() - attempts.get(key, 0) >= 60]
             due.sort(key=lambda key: attempts.get(key, 0))
@@ -389,6 +422,8 @@ class JiraMCP:
                         else:
                             if cfg.get('oauth_account'):
                                 server = {**server, 'oauth_account': cfg['oauth_account']}
+                            if cfg.get('project_key'):
+                                server = {**server, 'search_project': cfg['project_key']}
                             if search_due:
                                 response = call_worker(server, keys, terms=terms, topics=topics) if topics else call_worker(server, keys, terms=terms)
                             else:
@@ -408,9 +443,10 @@ class JiraMCP:
                                     key = row.get('key')
                                     if not isinstance(key, str) or not KEY.fullmatch(key):
                                         continue
-                                    searched = (search_due and row.get('match') == 'task'
+                                    in_project = not cfg.get('project_key') or key.rsplit('-', 1)[0] == cfg['project_key']
+                                    searched = (in_project and search_due and row.get('match') == 'task'
                                                 and jira.matches_task(str(row.get('title', '')), terms))
-                                    topic_match = next((words for words in topics if search_due
+                                    topic_match = next((words for words in topics if in_project and search_due
                                                         and row.get('match') == 'topic'
                                                         and jira.matches_task(str(row.get('title', '')), words)), None)
                                     if key not in keys and not searched and not topic_match:

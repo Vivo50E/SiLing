@@ -219,8 +219,9 @@ intervene.
   authentication helpers are not executed or silently dropped.
   Stdio starts in the configuration file's directory unless it specifies `cwd`.
   Standard stdio, Streamable HTTP and SSE transports are supported. The server
-  must expose `jira_get_issue(issue_key, fields=...)` (`fields` may be omitted),
-  as mcp-atlassian does. **Test & connect** uses configured credentials or an
+  must expose the fixed `jira_get_issue` tool. Reviewed adapters accept
+  mcp-atlassian's `issue_key` and string fields, or MaaS-Jira's `issue_id` and
+  array fields (`fields` may be omitted by the schema). **Test & connect** uses configured credentials or an
   existing authenticated bridge; **Log in with browser** can create a separate
   Dashboard OAuth login on macOS. Native CLI private token caches are never reused.
   HTTP 401/403 reports that authentication is still needed;
@@ -236,7 +237,7 @@ intervene.
   contexts never fall back to a local launch directory.
   Independently of explicit ticket keys, task names with at least two useful
   keywords (or a Chinese phrase) also use the fixed read-only `jira_search` tool.
-  It must support `jql`, `fields` and `limit`; missing search support is shown
+  It must support `jql`, `fields` and either `limit` or MaaS-Jira's `top_k`; missing search support is shown
   separately and does not disable key lookup. Search sends at most five task-name
   words, requests summary/status for at most eight issues, and only associates
   titles matching every keyword. This is keyword matching, not semantic AI search.
@@ -251,6 +252,20 @@ intervene.
   Open the list or **Refresh** to discover later output; ordinary keyword lookup does not poll. **Refresh** bypasses the cache and processes remaining keys first.
   Configuration changes require reconnecting. Remote sessions use their own node's
   Jira configuration. Disconnect stops future lookups and discards in-flight results.
+- **Jira project key** scopes new task-name and AI topic searches to one project.
+  MaaS-Jira requires this for text searches. Enter a key such as `DEMO`, or paste a
+  project-page URL in **Jira site URL**: supported `/jira/software/c/projects/DEMO`
+  and `/projects/DEMO` links are normalized to the site/context root and fill the
+  project key automatically. Explicit conflicting keys are rejected. Click
+  **Test & connect** after changing scope; a matching saved Dashboard OAuth login
+  is reused. No project is needed for explicit ticket-key lookup. Missing MaaS
+  project scope is reported separately and does not spend an AI planning call.
+  Search results are locally checked against the project; changing scope
+  invalidates the search cache but retains historical links. The adapters use
+  fixed read tools, minimal summary/status fields, page 1 when supported and at
+  most eight results. MaaS `success/data` response envelopes are recognized;
+  failure envelopes cannot contribute ticket links. Unknown required parameters,
+  ambiguous identifier schemas and unrelated tool names remain unsupported.
 - **Jira MCP connection → Log in with browser** gives Dashboard its own OAuth
   login on macOS. Select **MaaS-Jira**, set the Jira site URL (for example,
   `https://your-team.atlassian.net`, not a project page), and click the login

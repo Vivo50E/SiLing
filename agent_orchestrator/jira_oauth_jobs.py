@@ -7,7 +7,7 @@ import threading
 import time
 import uuid
 
-from .jira_mcp import fingerprint, read_json, server_config, web_base
+from .jira_mcp import fingerprint, read_json, server_config, connection_scope, InvalidJiraProject
 from .jira_oauth import credential_lock
 from .keychain import Keychain
 
@@ -25,12 +25,15 @@ class JiraOAuthJobs:
         with self.lock:return dict(self.job or {'state':'idle'})
 
     def start(self, body):
-        if set(body)!={'config_file','server_name','base_url'}:raise ValueError()
+        if set(body) not in ({'config_file','server_name','base_url'}, {'config_file','server_name','base_url','project_key'}):raise ValueError()
         if sys.platform!='darwin':return {'state':'failed','error':'keychain_unavailable'}
         server=server_config(body['config_file'],body['server_name'])
         if not server.get('url') or server.get('type')=='sse' or server.get('headers'):
             return {'state':'failed','error':'oauth_not_supported'}
-        base=web_base(body['base_url'] or server.get('env',{}).get('JIRA_URL',''))
+        try:
+            base,project=connection_scope(body['base_url'] or server.get('env',{}).get('JIRA_URL',''),body.get('project_key',''))
+        except InvalidJiraProject:return {'state':'failed','error':'invalid_project'}
+        except ValueError:return {'state':'failed','error':'invalid_jira_url'}
         # OAuth endpoints themselves require HTTPS in production (loopback fixtures are supported).
         before=read_json(self.manager.path)
         with self.lock:
@@ -38,7 +41,7 @@ class JiraOAuthJobs:
                 return {**self.job,'error':'oauth_busy'}
             account=uuid.uuid4().hex
             self.job={'id':account,'state':'starting'}
-            thread=threading.Thread(target=self.run,args=(dict(body,base_url=base),server,before,account),daemon=True)
+            thread=threading.Thread(target=self.run,args=(dict(body,base_url=base,project_key=project),server,before,account),daemon=True)
             thread.start()
             return dict(self.job)
 

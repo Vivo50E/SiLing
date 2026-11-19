@@ -29,7 +29,7 @@
       el('help').textContent=ui.message(labels.help);
       el('status').textContent=data.mcp_error ? ui.message(data.mcp_error==='config_changed' ? 'MCP configuration changed. Reconnect in Settings.' : 'Jira MCP unavailable. Saved links are still shown; retry or check Settings.') :
         data.topic_error ? ui.message(data.topic_error === 'topic_context_unavailable' ? 'Topic search skipped: task metadata is empty or may contain credentials.' : data.topic_error === 'topic_busy' ? 'Topic analysis is busy. It will retry automatically.' : 'AI topic analysis failed. Check the Dashboard user’s Claude CLI login. Keyword lookup is still available.') :
-        data.search_error ? ui.message(data.search_error==='unsupported_search' ? 'This MCP cannot search task names. Enable jira_search with jql, fields and limit; ticket-key lookup still works.' : 'Task-name search failed. Saved links are still shown; refresh to retry.') :
+        data.search_error ? ui.message(data.search_error==='project_required' || data.search_error==='invalid_project' ? 'Set a Jira project key in Settings and reconnect to enable topic searches. Ticket-key lookup still works.' : data.search_error==='unsupported_search' ? 'This MCP cannot search task names. A supported jira_search schema is required; ticket-key lookup still works.' : 'Task-name search failed. Saved links are still shown; refresh to retry.') :
         data.failed ? ui.message('Some ticket keys could not be verified. Saved links are still shown.') :
         data.pending ? ui.message('More ticket keys remain. Refresh to continue.') : data.warning ? t(data.warning) : data.items.length ? '' : t('No related Jira tickets found. Add a link below.');
       for (const item of data.items) {

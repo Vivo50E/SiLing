@@ -92,7 +92,8 @@ The SDK 1.x client runs in an isolated subprocess, suppressing provider logs and
 returning only bounded ticket keys, titles, statuses and fixed error codes.
 Only the fixed `jira_get_issue` and `jira_search` tools can be called, with
 validated evidence keys or a generated summary-only JQL query and minimal fields.
-Search arguments are restricted to jql, fields and limit; at most five sanitized
+Reviewed read adapters accept issue_key/issue_id, string/array minimal fields,
+limit/top_k and optional fixed page/disabled expansion flags; at most five sanitized
 task-name words and eight results are used. Every search title must match all
 words locally before association. Server tool descriptions cannot select tools
 or commands;
@@ -181,3 +182,23 @@ Failed login entries are deleted. Disconnect disables the saved connection befor
 deleting its owned Keychain entry and reports deletion failure. It does not revoke
 remote grants or remove native credentials. Remote client registrations can remain
 after cancellation; revoke unneeded grants with the provider when appropriate.
+
+
+## Jira MaaS schema compatibility
+
+Tool names remain the fixed `jira_get_issue`/`jira_search` allowlist. Argument
+selection depends only on reviewed identifier, field and pagination schema types,
+not provider descriptions or model output. Nullable schemas are unwrapped only
+when there is a single non-null type. Unknown required arguments and ambiguous
+identifiers fail closed. MaaS issue lookup uses `issue_id`, fields are arrays,
+and searches use `top_k`; responses explicitly marked unsuccessful are discarded
+before nested result unwrapping. Only keys, bounded titles and states are retained.
+
+MaaS text search requires a user-configured project key. Keys are restricted to
+ASCII Jira identifier syntax and inserted into generated JQL with the entire
+keyword expression parenthesized. Project scope is checked in both worker and
+parent before accepting new search associations; explicit evidence-key lookups
+and retained historical links are not restricted to the current search project.
+Missing scope skips AI planning. A changed project is part of the search-cache
+identity. Project-page URLs can be normalized to a site/context root and project
+key; explicit conflicts are rejected. No new tool or write operation is enabled.

@@ -314,13 +314,15 @@ PR/MR 和 Jira 图标旁显示去重后的数量（含 0）。初次统计已关
 
 服务 `env` 中已配置 `JIRA_URL` 时可省略站点地址，否则填写 Jira 站点，可带 `/jira` 等上下文路径。SiLing 只保存配置引用，不将凭据复制到设置或浏览器；`${ENV_VAR}` 和 `${ENV_VAR:-default}` 从 Dashboard 进程环境解析。支持 Codex 的 `http_headers`、`env_http_headers`、`bearer_token_env_var` 和本地 `env_vars`；尊重禁用的服务及 Jira 工具，不执行动态认证 helper，也不静默忽略它们。远程执行器环境变量不从本机代替读取。
 
-支持标准 stdio、Streamable HTTP 和 SSE；服务需提供 mcp-atlassian 风格的 `jira_get_issue(issue_key, fields=...)`，`fields` 参数可省略。“测试并连接”使用已配置的凭据或认证桥接程序；也可使用下述独立浏览器登录。此功能不读取原生 CLI 的私有 OAuth 缓存，原生登录态不会共享。HTTP 401/403 会明确提示尚需认证，发现配置不等于已经登录。暂不支持仅提供 Rovo 工具名的服务。
+支持标准 stdio、Streamable HTTP 和 SSE；服务需提供固定的 `jira_get_issue` 工具，支持 mcp-atlassian 的 `issue_key` + 字符串字段，以及 MaaS-Jira 的 `issue_id` + 字段数组；schema 未声明 `fields` 时可省略。“测试并连接”使用已配置的凭据或认证桥接程序；也可使用下述独立浏览器登录。此功能不读取原生 CLI 的私有 OAuth 缓存，原生登录态不会共享。HTTP 401/403 会明确提示尚需认证，发现配置不等于已经登录。暂不支持仅提供 Rovo 工具名的服务。
 
 连接错误会区分缺少/无效的 Jira 网页地址、OAuth 认证、网络及协议握手问题。MCP 网关地址不能代替 Jira 站点地址。Dashboard 的一条连接供所有 pane 共用，与 Codex、Claude、Cursor、Terminal 或自定义 agent 无关。启用分组后，自动查验输出、任务信息、当前本地 Git 分支和已发现 PR/MR 标题中的 ticket 编号；本地当前目录从活跃 pane 获取，SSH 或环境不明确时不退回启动目录。
 
-无论是否已有明确的当前 ticket 编号，都会用任务名称中的关键词调用只读 `jira_search`（需支持 `jql`、`fields`、`limit`）。最多发送 5 个任务名关键词、读取 8 个 ticket 的标题和状态，只有标题匹配所有关键词才关联；这是关键词匹配，不是 AI 语义搜索，不发送完整对话或 prompt。通用名称及疑似含凭据的名称会跳过。任务名变化会触发重新统计，搜索缓存 5 分钟，点击刷新可绕过缓存。不支持搜索时会单独提示，ticket 编号查询仍可用。
+无论是否已有明确的当前 ticket 编号，都会用任务名称中的关键词调用只读 `jira_search`（需支持 `jql`、`fields`，以及 `limit` 或 MaaS-Jira 的 `top_k`）。最多发送 5 个任务名关键词、读取 8 个 ticket 的标题和状态，只有标题匹配所有关键词才关联；这是关键词匹配，不是 AI 语义搜索，不发送完整对话或 prompt。通用名称及疑似含凭据的名称会跳过。任务名变化会触发重新统计，搜索缓存 5 分钟，点击刷新可绕过缓存。不支持搜索时会单独提示，ticket 编号查询仍可用。
 
 Stdio 服务默认在配置文件所在目录启动，也可在服务配置中指定 `cwd`。
+
+**Jira 项目 key** 限定后续任务名和 AI 主题搜索范围，MaaS-Jira 文本搜索必须指定。可填写如 `DEMO` 的项目 key，或者直接在站点地址粘贴项目页面链接：支持 `/jira/software/c/projects/DEMO`、`/projects/DEMO` 等路径，自动提取项目并规范化为站点/上下文根地址；显式填写的项目若与链接冲突则拒绝。修改后点击“测试并连接”；同一服务已有的 Dashboard OAuth 登录会复用。按明确编号查询无需项目。缺少 MaaS 项目时单独提示，不调用 AI 规划主题。搜索结果会在本地再核对项目，范围变化会使搜索缓存失效，但保留历史链接。适配器仅调用固定只读工具，请求标题/状态、支持时指定第 1 页，最多 8 条结果；支持 MaaS 的 `success/data` 包装，失败响应不能生成关联。未知必填参数、有歧义的编号 schema 和其他工具名仍不支持。
 
 **Jira MCP 连接 → 使用浏览器登录** 可在 macOS 给 Dashboard 单独授权。选择 **MaaS-Jira**，站点地址填写 Jira 根站点（如 `https://your-team.atlassian.net`，不要填项目页面），直接在运行 Dashboard 的 Mac 上点击登录。系统浏览器打开服务的授权页，请在四分钟内完成。关闭设置不取消登录，可点“取消登录”停止。手机、远程客户端和代理请求不能触发服务器 Mac 的本机回调登录。HTTP MCP 需支持资源/授权元数据、PKCE S256 和动态客户端注册，授权、注册和 token 地址须与声明的 issuer 同源。带自定义请求头、stdio 和旧 SSE 配置仍用“测试并连接”，不走此 OAuth 流程。公司策略可能拒绝注册或要求允许本机回调地址；Rovo 还需另做工具名适配。连接启用前会验证固定的 Jira 只读工具。客户端密钥、access token 和 refresh token 只保存在 macOS Keychain 的 SiLing 专用条目中；项目配置只保存不透明的条目引用，钥匙串失败时不退回明文文件。后台自动刷新过期/被拒绝的 token 并保存轮换后的 refresh token，不会自行打开浏览器；刷新失败时请到设置重新登录。断开会停止识别并删除此连接的本地钥匙串条目，不撤销服务端授权，也不改原生 CLI 凭据。替换登录后会在钥匙串可用时清理旧条目；失败或取消登录会清理临时条目，但服务端可能保留已注册客户端。
 
