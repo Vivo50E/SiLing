@@ -1203,3 +1203,5 @@ Pane More keeps Rename, Reconnect display, and Close pane at the top. Expand App
 Rename a session using the sidebar pencil or pane More → Rename session. The shared in-page dialog works in browsers and Electron; an empty name restores the automatic title, and failed saves preserve your input for retry.
 
 Terminal URL highlights and click targets exclude adjacent CJK prose separated by commas or semicolons; Chinese paths and query values remain supported.
+
+File preview keeps Copy all visible in narrow windows; YAML/text copies preserve indentation, and HTML previews can copy the original source.

@@ -447,6 +447,10 @@ const server = http.createServer((req, res) => {
     return res.end(JSON.stringify({folders:linkedFixtures.get(id)||[]}));
   }
   if (url.pathname.endsWith('/folders/file/raw')) {
+    if (url.searchParams.get('folder') === '/fixture/copy-source.html') {
+      res.setHeader('Content-Type','text/html');
+      return res.end('<!doctype html>\n<h1>Copy source</h1>\n');
+    }
     if (url.searchParams.get('folder') === '/fixture/report.md') {
       res.setHeader('Content-Type','text/plain');
       return res.end(completeSource);
@@ -456,6 +460,10 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname.endsWith('/folders/file')) {
     artifactPreviewRequests.push(url.searchParams.get('folder'));
+    if (process.env.UI_PREVIEW_COPY_ONLY === '1') {
+      res.setHeader('Content-Type','application/json');
+      return res.end(JSON.stringify({ok:true,kind:'text',name:'argocd-application-intelligent-pm.yaml',path:url.searchParams.get('folder'),content:'apiVersion: argoproj.io/v1alpha1\nkind: Application\nspec:\n  project: default\n',truncated:false}));
+    }
     res.setHeader('Content-Type','application/json');
     return res.end(JSON.stringify({ok:true,kind:'markdown',name:'report.md',path:'/fixture/report.md',content:previewSource,truncated:truncatePreview}));
   }
@@ -679,7 +687,37 @@ try {
     groupFixture.groups=[{id:'jira-group',name:'Jira group',color:'teal'},{id:'other-group',name:'Other',color:'blue'}];
     groupFixture.members={'jira-on':'jira-group','jira-off':'other-group'};
   }});
-  if (process.env.UI_BOOT_ONLY === '1') {
+  if (process.env.UI_PREVIEW_COPY_ONLY === '1') {
+    await viewport(1000,800);
+    await evaluate(`localStorage.setItem('orch_layout','1');localStorage.setItem('orch_slots',JSON.stringify(['fixture-0']))`);
+    await cdp('Page.reload');
+    await waitFor(`!!document.querySelector('[data-run-id="fixture-0"] .btn-folders')`);
+    linkedFixtures.set('fixture-0', [{path:'/fixture/argocd-application-intelligent-pm.yaml',type:'file',exists:true,allowed:true,
+      entries:[{rel:'',name:'argocd-application-intelligent-pm.yaml',type:'file',kind:'text',previewable:true}],loaded_dirs:['']}]);
+    await evaluate(`document.querySelector('[data-run-id="fixture-0"] .btn-folders').click()`);
+    await waitFor(`!document.querySelector('#folder-copy-all').disabled`);
+    await screenshot('yaml-copy-wide');
+    for (const width of [1000,800,640,390]) {
+      await viewport(width,800);
+      await screenshot('yaml-copy-'+width);
+      const box=await evaluate(`(()=>{const b=document.querySelector('#folder-copy-all'),r=b.getBoundingClientRect();return {left:r.left,right:r.right,hit:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.closest('#folder-copy-all')===b};})()`);
+      assert.ok(box.left>=0 && box.right<=width && box.hit, 'Copy all remains visible and clickable at '+width+': '+JSON.stringify(box));
+    }
+    await evaluate(`Object.defineProperty(navigator,'clipboard',{configurable:true,value:{write:async items=>{window.copiedFile=await(await items[0].getType('text/plain')).text()},writeText:async text=>{window.copiedFile=text}}});document.querySelector('#folder-copy-all').click()`);
+    await waitFor(`window.copiedFile!==undefined`);
+    assert.equal(await evaluate('window.copiedFile'),'apiVersion: argoproj.io/v1alpha1\nkind: Application\nspec:\n  project: default\n','YAML copy preserves indentation and complete source');
+    await viewport(1000,800);
+    await evaluate(`document.querySelector('#folder-modal-close').click()`);
+    linkedFixtures.set('fixture-0', [{path:'/fixture/copy-source.html',type:'file',exists:true,allowed:true,
+      entries:[{rel:'',name:'copy-source.html',type:'file',kind:'text',previewable:true}],loaded_dirs:['']}]);
+    await evaluate(`document.querySelector('[data-run-id="fixture-0"] .btn-folders').click()`);
+    await waitFor(`!!document.querySelector('#folder-modal-preview iframe') && !document.querySelector('#folder-copy-all').disabled`);
+    await evaluate(`window.copiedFile=undefined;document.querySelector('#folder-copy-all').click()`);
+    await waitFor(`window.copiedFile!==undefined`);
+    assert.equal(await evaluate('window.copiedFile'),'<!doctype html>\n<h1>Copy source</h1>\n','HTML copies source rather than rendered text');
+    assert.deepEqual(errors, [], 'No uncaught preview errors');
+    console.log('PASS: Copy all stays visible at desktop and narrow widths, YAML indentation preserved, HTML source copied');
+  } else if (process.env.UI_BOOT_ONLY === '1') {
     await startupCheck();
     assert.deepEqual(errors, [], 'No uncaught startup errors');
   } else if (process.env.UI_UPDATE_ONLY === '1') {

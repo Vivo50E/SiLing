@@ -2214,10 +2214,12 @@
     min-height: 0;
     display: grid;
     grid-template-rows: auto 1fr;
+    grid-template-columns: minmax(0, 1fr);
     background: var(--bg);
   }
   .file-head {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
@@ -2284,7 +2286,7 @@
   }
   .file-title {
     min-width: 0;
-    flex: 1 1 auto;
+    flex: 1 1 160px;
   }
   .file-title .name {
     font-weight: 600;
@@ -2313,6 +2315,13 @@
   #folder-copy-all {
     flex-shrink: 0;
     white-space: nowrap;
+  }
+  @media (max-width: 760px) {
+    .folder-modal-window { width: calc(100vw - 16px); }
+    .folder-layout:not(.sidebar-collapsed) {
+      grid-template-columns: minmax(100px, 28%) 7px minmax(0, 1fr);
+    }
+    .file-head { gap: 6px; padding: 8px; }
   }
   .folder-preview-refresh {
     width: 30px;
@@ -12566,6 +12575,8 @@
     if (isHtmlFile(entry)) {
       resetPreviewMode();
       setPreviewHeader(entry.name, filePathFor(folder, entry.rel), "html");
+      previewCopyTarget = {text:"", truncated:true, url:src};
+      $("folder-copy-all").disabled = false;
       $("folder-modal-preview").classList.add("browser-preview");
       $("folder-modal-preview").innerHTML =
         `<iframe class="file-frame" src="${src}" sandbox="allow-scripts allow-forms allow-popups" title="${escapeHtml(entry.name)}"></iframe>`;
