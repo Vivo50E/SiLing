@@ -253,7 +253,12 @@ intervene.
   Open the list or **Refresh** to discover later output; ordinary keyword lookup does not poll. **Refresh** bypasses the cache and processes remaining keys first.
   Configuration changes require reconnecting. Remote sessions use their own node's
   Jira configuration. Disconnect stops future lookups and discards in-flight results.
-- **Jira project key** scopes new task-name and AI topic searches to one project.
+- **Jira project key** scopes new task-name and AI topic searches, and automatically
+  detected bare ticket numbers, to one project. Protocol/version strings such as
+  `SSH-2.0` are not ticket numbers. Explicit Jira URLs and manually added links can
+  reference other projects; their URL provenance survives status refreshes.
+  Legacy cached bare-number associations outside the configured project are removed
+  when the list is read, even if MCP is unavailable.
   MaaS-Jira requires this for text searches. Enter a key such as `DEMO`, or paste a
   project-page URL in **Jira site URL**: supported `/jira/software/c/projects/DEMO`
   and `/projects/DEMO` links are normalized to the site/context root and fill the

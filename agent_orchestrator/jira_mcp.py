@@ -19,6 +19,7 @@ from . import jira, jira_topics, jira_tools, terminal_files
 from .json_store import edit_json, write_json
 
 KEY = re.compile(r'(?<![A-Za-z0-9_])([A-Z][A-Z0-9_]{0,31}-[1-9][0-9]{0,10})(?![A-Za-z0-9_])')
+BARE_KEY = re.compile(KEY.pattern + r'(?!\.[0-9])')
 ERRORS = {'sdk_missing', 'unsupported_tool', 'connection_failed', 'config_changed', 'busy',
           'auth_required', 'native_auth_required', 'timeout', 'network_error', 'server_error',
           'keychain_unavailable', 'oauth_busy'}
@@ -26,6 +27,17 @@ ERRORS = {'sdk_missing', 'unsupported_tool', 'connection_failed', 'config_change
 
 class NativeMCPAuthRequired(ValueError):
     """A native client's authentication helper cannot be silently omitted."""
+
+
+def cached_key_allowed(item, cfg):
+    """Retire legacy out-of-scope guesses, retaining explicit links and searches."""
+    project = cfg.get('project_key')
+    if (not project or item.get('source') != 'mcp' or item.get('match', 'key') != 'key'
+            or item.get('key_evidence') in {'url', 'search'}):
+        return True
+    ticket = jira.ticket_url(item.get('url', ''))
+    return (not ticket or ticket['url'] != cfg.get('base_url', '') + '/browse/' + ticket['key']
+            or ticket['key'].rsplit('-', 1)[0] == project)
 
 
 def read_json(path):
@@ -345,12 +357,21 @@ class JiraMCP:
         result = jira.collect(run, text)
         directory = Path(directory)
         path = directory / 'jira.json'
-        saved = read_json(path)
+        # Prune under the same lock as provider merges, including cache-only reads
+        # and failed lookups. A later successful request must not resurrect a guess.
+        with self.config_lock:
+            cfg = read_json(self.path)
+            saved = read_json(path)
+            kept = [i for i in saved.get('items', []) if isinstance(i, dict) and cached_key_allowed(i, cfg)]
+            if kept != saved.get('items', []):
+                with edit_json(path) as state:
+                    state['items'] = [i for i in state.get('items', [])
+                                      if isinstance(i, dict) and cached_key_allowed(i, cfg)]
+                saved['items'] = kept
         items = {i['url']: i for i in saved.get('items', []) if isinstance(i, dict) and jira.ticket_url(i.get('url', ''))}
         for item in result['items']:
             if item['source'] == 'linked' or item['url'] not in items:
                 items[item['url']] = {**items.get(item['url'], {}), **item}
-        cfg = read_json(self.path)
         result['connected'] = cfg.get('enabled') is True
         if lookup and cfg.get('enabled'):
             # Full URLs from other sites are not evidence for this Jira instance.
@@ -379,8 +400,12 @@ class JiraMCP:
             context = evidence + '\n' + clean
             context_links = jira.collect({}, context)['items']
             context = re.sub(r'https?://[^\s<>"\x00-\x20]+', '', context)
-            candidates = list(dict.fromkeys(KEY.findall(context)))[:100]
-            candidates += [i['key'] for i in context_links if i['url'] == cfg['base_url'] + '/browse/' + i['key']]
+            candidates = [key for key in dict.fromkeys(BARE_KEY.findall(context))
+                          if not cfg.get('project_key') or key.rsplit('-', 1)[0] == cfg['project_key']][:100]
+            url_keys = {i['key'] for i in context_links + list(items.values())
+                        if (i.get('source') in {'linked', 'output'} or i.get('key_evidence') == 'url')
+                        and i.get('url') == cfg['base_url'] + '/browse/' + i.get('key', '')}
+            candidates += sorted(url_keys)
             terms = jira.task_terms(run)
             topics = []
             if topic:
@@ -459,14 +484,19 @@ class JiraMCP:
                                             and jira_topics.valid_topics([prior_words])
                                             and jira.matches_task(str(row.get('title', '')), prior_words)):
                                         topic_match = prior_words
+                                    key_evidence = ('url' if key in url_keys else 'search'
+                                                    if searched or topic_match or prior.get('match') in {'task', 'topic'}
+                                                    or prior.get('key_evidence') == 'search' else 'bare')
                                     updates.append({'url': cfg['base_url'] + '/browse/' + key, 'key': key,
                                                     'title': str(row.get('title') or key)[:500],
                                                     'state': str(row.get('state') or '')[:100], 'source': 'mcp',
                                                     'checked_at': now, 'match': 'topic' if topic_match else 'task' if searched else 'key',
+                                                    'key_evidence': key_evidence,
                                                     'topic_terms': topic_match or []})
                                 directory.mkdir(parents=True, exist_ok=True)
                                 with edit_json(path, create=True) as state:
-                                    previous = {i['url']: i for i in state.get('items', [])}
+                                    previous = {i['url']: i for i in state.get('items', [])
+                                                if cached_key_allowed(i, cfg)}
                                     previous.update({i['url']: i for i in updates
                                                      if i['checked_at'] >= previous.get(i['url'], {}).get('checked_at', 0)})
                                     state['items'] = list(previous.values())[-1000:]
