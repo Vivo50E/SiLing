@@ -90,6 +90,12 @@ export async function checkJira({evaluate,waitFor,cdp,viewport,screenshot,reques
   mode('empty');await evaluate(`document.querySelector('#pane-jira [data-refresh]').click()`);
   await waitFor(`document.querySelector('#pane-jira [data-status]').textContent.includes('No related')`);
   assert.equal(await evaluate(`document.querySelector('${on} .pane-link-count').textContent`),'0');
+  for (const [value, message] of [['no-keywords','Jira search skipped'],['empty-topic','AI found no usable task topic']]) {
+    mode(value);await evaluate(`document.querySelector('#pane-jira [data-refresh]').click()`);
+    await waitFor(`document.querySelector('#pane-jira [data-status]').textContent.includes(${JSON.stringify(message)})`);
+    assert.equal(await evaluate(`document.querySelector('#pane-jira [data-status]').textContent.includes('No related')`),false);
+  }
+  await screenshot('jira-topic-unavailable');
   mode('ok');await evaluate(`document.querySelector('#pane-jira [data-refresh]').click()`);
   await waitFor(`document.querySelectorAll('#pane-jira li').length===1`);
   await evaluate(`window.jiraOpen=window.open;window.jiraOpened=[];window.open=(...args)=>jiraOpened.push(args);document.querySelector('#pane-jira a').click()`);
@@ -131,5 +137,10 @@ export async function checkJira({evaluate,waitFor,cdp,viewport,screenshot,reques
   await viewport(740,900);await evaluate(`document.querySelector('${on}').click()`);
   await waitFor(`document.querySelector('#pane-jira h2')?.textContent==='相关 Jira tickets'`);
   await screenshot('jira-tickets-zh');
+  for (const [value, message] of [['no-keywords','没有可用的任务关键词'],['empty-topic','AI 未能提取可用的任务主题']]) {
+    mode(value);await evaluate(`document.querySelector('#pane-jira [data-refresh]').click()`);
+    await waitFor(`document.querySelector('#pane-jira [data-status]').textContent.includes(${JSON.stringify(message)})`);
+  }
+  await screenshot('jira-topic-unavailable-zh');
   console.log('PASS: Jira master/group opt-in, persistent group preference, scoped icons, on-demand links/add/open/error/empty, bilingual narrow view and iframe/draft preservation');
 }

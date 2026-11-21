@@ -918,6 +918,8 @@
     "Uses your local Claude CLI’s configured model to understand the task name and up to 2,000 characters of saved initial description. No conversation upload or tools. Up to $0.10 and 25 seconds per analysis; results are cached. Visible active panes check Jira every 10 minutes.": "使用本机 Claude CLI 配置的模型理解任务名及最多 2,000 字符的已保存初始描述，不上传对话，也不能调用工具。每次分析最多 $0.10、25 秒，结果会缓存。可见的活跃 pane 每 10 分钟检查 Jira。",
     "Works with every pane agent. Jira MCP verifies ticket keys and searches task names. Enable automatic topic search in Settings to understand the task and discover tickets without a ticket number.": "适用于所有 agent。Jira MCP 查验编号并搜索任务名。在设置中启用主动主题搜索后，无需 ticket 编号即可按任务主题发现相关 ticket。",
     "Topic match": "主题匹配",
+    "Jira search skipped: no usable task keywords. Rename this pane with the task subject, then refresh.": "已跳过 Jira 搜索：没有可用的任务关键词。请将 pane 名称改为具体任务主题后刷新。",
+    "AI found no usable task topic. Rename this pane with the task subject, then refresh.": "AI 未能提取可用的任务主题。请将 pane 名称改为具体任务主题后刷新。",
     "Topic search skipped: task metadata is empty or may contain credentials.": "已跳过主题搜索：任务信息为空或可能含有凭据。",
     "Topic analysis is busy. It will retry automatically.": "主题分析正忙，将自动重试。",
     "AI topic analysis failed. Check the Dashboard user’s Claude CLI login. Keyword lookup is still available.": "AI 主题分析失败，请检查 Dashboard 用户的 Claude CLI 登录；关键词查询仍可用。",

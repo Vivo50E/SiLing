@@ -175,8 +175,8 @@ const server = http.createServer((req, res) => {
     requests[requests.length-1].search=url.search;
     res.setHeader('Content-Type','application/json');
     if(jiraMode==='error'){res.writeHead(503);res.end(JSON.stringify({detail:'Fixture unavailable'}));return;}
-    res.end(JSON.stringify({items:jiraMode==='empty'?[]:[{url:'https://jira.example/browse/DEMO-12',key:'DEMO-12',title:'Ticket <img src=x>',source:jiraConnection.enabled?'mcp':'linked',state:jiraConnection.enabled?'In Progress':''}],
-      ...(jiraMode==='mcp-error'?{mcp_error:'connection_failed'}:jiraMode==='changed'?{mcp_error:'config_changed'}:jiraMode==='partial'?{failed:1}:jiraMode==='pending'?{pending:3}:{})}));return;
+    res.end(JSON.stringify({items:['empty','no-keywords','empty-topic'].includes(jiraMode)?[]:[{url:'https://jira.example/browse/DEMO-12',key:'DEMO-12',title:'Ticket <img src=x>',source:jiraConnection.enabled?'mcp':'linked',state:jiraConnection.enabled?'In Progress':''}],
+      ...(jiraMode==='mcp-error'?{mcp_error:'connection_failed'}:jiraMode==='changed'?{mcp_error:'config_changed'}:jiraMode==='partial'?{failed:1}:jiraMode==='pending'?{pending:3}:jiraMode==='no-keywords'?{search_skipped:'no_keywords'}:jiraMode==='empty-topic'?{search_skipped:'no_keywords',topic_error:'topic_no_keywords'}:{})}));return;
   }
   if (url.pathname.endsWith('/reviews')) {
     requests[requests.length-1].search=url.search;

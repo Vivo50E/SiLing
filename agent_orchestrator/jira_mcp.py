@@ -327,7 +327,7 @@ class JiraMCP:
         text = jira_topics.context(run)
         if not text:
             return [], 'topic_context_unavailable'
-        identity = fingerprint({'context': text, 'version': 1})
+        identity = fingerprint({'context': text, 'version': 2})
         path = Path(directory) / 'jira-topics.json'
         saved = read_json(path)
         if saved.get('identity') == identity and (
@@ -345,6 +345,8 @@ class JiraMCP:
                 return saved['topics'], saved.get('error', '')
             try:
                 topics, error = jira_topics.plan(text), ''
+                if not topics:
+                    error = 'topic_no_keywords'
             except (OSError, ValueError, TypeError, AttributeError, subprocess.TimeoutExpired):
                 topics, error = [], 'topic_model_failed'
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -376,7 +378,7 @@ class JiraMCP:
         if lookup and cfg.get('enabled'):
             # Full URLs from other sites are not evidence for this Jira instance.
             clean = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', text[-262144:])
-            evidence = '\n'.join(str(run.get(k) or '') for k in ('task', 'display_name', 'initial_prompt'))[-32768:]
+            evidence = (jira.task_title(run) + '\n' + str(run.get('initial_prompt') or ''))[-32768:]
             # Inspect the live pane for every agent. Never treat a shell's launch
             # directory as its current local repository (it may now be over SSH).
             cwd = ''
@@ -413,10 +415,12 @@ class JiraMCP:
                     result['search_error'] = 'project_required'
                 elif cfg.get('search_supported'):
                     topics, topic_error = self.topic_plan(run, directory)
-                    if topic_error:
+                    if topic_error and (topic_error != 'topic_no_keywords' or not terms):
                         result['topic_error'] = topic_error
                 else:
                     result['search_error'] = 'unsupported_search'
+            if not terms and not topics:
+                result['search_skipped'] = 'no_keywords'
             # Topic inference can outlive disconnect/reconfiguration. Do not start
             # a new provider request after that action has completed.
             with self.config_lock:

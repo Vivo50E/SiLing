@@ -51,6 +51,11 @@ for line in sys.stdin:
                 {'key': 'OTHER-8', 'fields': {'summary': 'Unrelated fix', 'status': {'name': 'Done'}}},
                 {'key': 'INVALID', 'fields': {'summary': 'SRAM Vmin Vmax'}},
             ]}}
+            if os.environ.get('FIXTURE_SHORT_TOPIC'):
+                result['structuredContent']['issues'] = [
+                    {'key': 'DEMO-7', 'fields': {'summary': 'NVPE OI overview', 'status': {'name': 'Open'}}},
+                    {'key': 'DEMO-8', 'fields': {'summary': 'NVPE ATE overview', 'status': {'name': 'Open'}}},
+                ]
         if os.environ.get('FIXTURE_MAAS') and not result.get('isError'):
             if request['params']['name'] == 'jira_get_issue':
                 body = json.loads(result['content'][0]['text'])

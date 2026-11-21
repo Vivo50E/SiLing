@@ -28,10 +28,11 @@
       el('branch').textContent='';
       el('help').textContent=ui.message(labels.help);
       el('status').textContent=data.mcp_error ? ui.message(data.mcp_error==='config_changed' ? 'MCP configuration changed. Reconnect in Settings.' : 'Jira MCP unavailable. Saved links are still shown; retry or check Settings.') :
-        data.topic_error ? ui.message(data.topic_error === 'topic_context_unavailable' ? 'Topic search skipped: task metadata is empty or may contain credentials.' : data.topic_error === 'topic_busy' ? 'Topic analysis is busy. It will retry automatically.' : 'AI topic analysis failed. Check the Dashboard user’s Claude CLI login. Keyword lookup is still available.') :
+        data.topic_error ? ui.message(data.topic_error === 'topic_context_unavailable' ? 'Topic search skipped: task metadata is empty or may contain credentials.' : data.topic_error === 'topic_busy' ? 'Topic analysis is busy. It will retry automatically.' : data.topic_error === 'topic_no_keywords' ? 'AI found no usable task topic. Rename this pane with the task subject, then refresh.' : 'AI topic analysis failed. Check the Dashboard user’s Claude CLI login. Keyword lookup is still available.') :
         data.search_error ? ui.message(data.search_error==='project_required' || data.search_error==='invalid_project' ? 'Set a Jira project key in Settings and reconnect to enable topic searches. Ticket-key lookup still works.' : data.search_error==='unsupported_search' ? 'This MCP cannot search task names. A supported jira_search schema is required; ticket-key lookup still works.' : 'Task-name search failed. Saved links are still shown; refresh to retry.') :
         data.failed ? ui.message('Some ticket keys could not be verified. Saved links are still shown.') :
-        data.pending ? ui.message('More ticket keys remain. Refresh to continue.') : data.warning ? t(data.warning) : data.items.length ? '' : t('No related Jira tickets found. Add a link below.');
+        data.pending ? ui.message('More ticket keys remain. Refresh to continue.') : data.warning ? t(data.warning) : data.items.length ? '' :
+        data.search_skipped ? ui.message('Jira search skipped: no usable task keywords. Rename this pane with the task subject, then refresh.') : t('No related Jira tickets found. Add a link below.');
       for (const item of data.items) {
         // Validate even server-provided URLs before handing them to web routing.
         let url;try {url=new URL(item.url);} catch {continue;}

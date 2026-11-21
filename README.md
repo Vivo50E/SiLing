@@ -238,6 +238,10 @@ intervene.
   contexts never fall back to a local launch directory.
   Independently of explicit ticket keys, task names with at least two useful
   keywords (or a Chinese phrase) also use the fixed read-only `jira_search` tool.
+  Two-character domain terms such as `OI`, `AI` and `UI` are retained; common
+  short function words are ignored. Searches use the current visible pane name
+  and never fall back to an obsolete task name when that name lacks keywords.
+  Missing keywords are reported as a skipped search, separately from zero matches.
   It must support `jql`, `fields` and either `limit` or MaaS-Jira's `top_k`; missing search support is shown
   separately and does not disable key lookup. Search sends at most five task-name
   words, requests summary/status for at most eight issues, and only associates
@@ -315,7 +319,10 @@ intervene.
   Panes waiting for the single model worker retry after 30 seconds.
   Task renames trigger a new check. Topic plans are cached by task metadata across
   restarts, including when **Refresh** is clicked; model failures cool down for
-  ten minutes. Each changed task permits one model call at a time Dashboard-wide,
+  ten minutes. Empty model plans also show a missing-topic hint when literal
+  keywords are unavailable, and can retry after ten minutes. This update invalidates
+  old topic-plan caches once so short acronyms can be reconsidered.
+  Each changed task permits one model call at a time Dashboard-wide,
   with a $0.10 budget and 25-second timeout. The switch is off by default and saved
   in this browser. Turn it off to stop future topic discovery. Existing links and
   key lookup remain available. A working authenticated MCP with `jira_search` and

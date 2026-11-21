@@ -113,7 +113,7 @@ async def query(payload):
             if terms or topics:
                 if (not jira_topics.valid_topics(topics)
                         or not isinstance(terms, list) or len(terms) > 5
-                        or any(not isinstance(t, str) or not re.fullmatch(r'[a-z][a-z0-9]{2,23}|[\u3400-\u9fff]{2,12}', t) for t in terms)):
+                        or any(not isinstance(t, str) or not jira_topics.TERM.fullmatch(t) for t in terms)):
                     response['search_error'] = 'invalid_terms'
                 elif not supported:
                     response['search_error'] = 'unsupported_search'
