@@ -23,9 +23,15 @@ const selection = {
   _getMouseBufferCoords: e => e.coords,
 };
 const mouse = {triggerMouseEvent: () => { reports++; }};
+const nativeProvider = {
+  provideLinks(y, callback) {
+    assert.equal(this, nativeProvider, 'Preserve native provider receiver');
+    callback(y === 0 ? [{text:'https://example.test/path,正文', decorations:{custom:true}}] : undefined);
+  },
+};
 const term = {
   cols: 20, rows: 5, buffer: {active: buffer}, options: {},
-  _core: {coreMouseService: mouse, _selectionService: selection,
+  _core: {linkifier2: {_linkProviders:[nativeProvider]}, coreMouseService: mouse, _selectionService: selection,
     _oscLinkService: {getLinkData: () => ({uri: 'https://example.test/wrapped'})}},
   onScroll: fn => { callbacks.scroll = fn; },
   onResize: fn => { callbacks.resize = fn; },
@@ -42,6 +48,12 @@ global.document = {
 };
 global.setTimeout = fn => timers.push(fn);
 eval(source);
+nativeProvider.provideLinks(0, links => {
+  assert.equal(links[0].decorations.underline, false);
+  assert.equal(links[0].decorations.pointerCursor, false);
+  assert.equal(links[0].decorations.custom, true);
+});
+nativeProvider.provideLinks(1, links => assert.equal(links, undefined));
 assert.equal(document.documentElement.style.colorScheme, 'dark');
 assert.equal(document.documentElement.style['--orch-scroll-track'], '#2b2b2b');
 assert.equal(document.documentElement.style['--orch-scroll-thumb'], 'rgb(118,118,118)');
@@ -74,6 +86,22 @@ function click(x, y, moved = false, altKey = false, ctrlKey = false) {
   mouse.triggerMouseEvent({});
   timers.splice(0).forEach(fn => fn());
 }
+
+// ASCII punctuation beside CJK prose must not become part of a literal URL.
+const callbackUrl = 'https://example.test/oauth2/callback';
+term.cols = 100;
+for (const separator of [',', ';', '，', '；']) {
+  rows = [row(callbackUrl + separator + '并保留原有回调？')];
+  assert.equal(hover(2, 0)[0].style.width, `${callbackUrl.length * 200 / term.cols}px`);
+  click(2, 0);
+  assert.equal(opened.at(-1), callbackUrl);
+  assert.equal(hover(callbackUrl.length + 1, 0).length, 0, 'Following prose is not clickable');
+}
+for (const valid of ['https://example.test/中文路径', 'https://example.test/?q=中文',
+    'https://example.test/a,b;c?q=x,y', 'https://example.test/a%2C中文']) {
+  rows = [row(valid)]; click(2, 0); assert.equal(opened.at(-1), valid);
+}
+term.cols = 20;
 
 const url = 'https://example.test/wrapped';
 rows = [row(url.slice(0, 20)), row(url.slice(20) + ')', true)];

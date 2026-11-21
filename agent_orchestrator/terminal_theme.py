@@ -440,9 +440,10 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       let url = String(value || "");
       // Terminal linkifiers do not consistently recognize CJK punctuation
       // as a URL boundary. In prose such as `https://example.test（details）`,
-      // trim the annotation before opening the target instead of letting the
+      // ASCII commas/semicolons followed by CJK prose are boundaries too.
+      // Trim the annotation before opening the target instead of letting the
       // browser percent-encode it as part of the path.
-      const cjkBoundary = url.search(/[（【《〈「『〔［｛，。；：！？、]/u);
+      const cjkBoundary = url.search(/[（【《〈「『〔［｛，。；：！？、]|[,;](?=[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}])/u);
       if (cjkBoundary >= 0) url = url.slice(0, cjkBoundary);
       url = url.replace(/[.,;:!?]+$/, "");
       // Markdown commonly leaves its closing delimiter next to a literal
@@ -702,6 +703,29 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
       return null;
     };
     const urlForEvent = (event) => linkForEvent(event)?.url || "";
+
+    // SiLing owns link hover ranges. xterm's web-link provider otherwise
+    // paints a second, broader underline that can include adjacent prose.
+    // Keep its links/activation intact and use xterm's decoration contract.
+    const nativeLinkifier = terminal._core?.linkifier || terminal._core?.linkifier2;
+    for (const provider of terminal._core?._linkProviderService?.linkProviders
+        || nativeLinkifier?._linkProviders || []) {
+      if (typeof provider.provideLinks !== "function") continue;
+      const provide = provider.provideLinks;
+      provider.provideLinks = function(y, callback) {
+        return provide.call(this, y, links => {
+          for (const link of links || []) {
+            link.decorations = {...link.decorations, underline:false, pointerCursor:false};
+            const activate = link.activate;
+            if (typeof activate === "function") link.activate = function(event) {
+              const target = urlForEvent(event);
+              if (target) return activate.call(this, event, target);
+            };
+          }
+          callback(links);
+        });
+      };
+    }
 
     let hoverLayer = null;
     const clearHover = () => {

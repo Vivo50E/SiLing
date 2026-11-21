@@ -436,6 +436,28 @@ finally:
   await screenshot('hard-wrapped-web-link');
   await evaluate(`window.frameElement.dataset.inlineSelection='true';window.frameElement.dataset.nativeSelection='true';`);
   console.log('PASS: hard-wrapped web URL click targets and hover ranges under Claude mouse policy');
+  const proseUrl='https://example.invalid/oauth2/callback';
+  await evaluate(`new Promise(resolve=>term.write('\\r\\n'+${JSON.stringify(proseUrl)}+',并保留原有回调？\\r\\n',resolve))`);
+  await evaluate('term.scrollToBottom()');
+  const proseCell=await evaluate(`(()=>{const b=term.buffer.active,r=document.querySelector('.xterm-screen').getBoundingClientRect();for(let y=b.viewportY;y<Math.min(b.length,b.viewportY+term.rows);y++){if(b.getLine(y).translateToString(true).startsWith(${JSON.stringify(proseUrl)}))return {x:r.x+2.5*r.width/term.cols,y:r.y+(y-b.viewportY+.5)*r.height/term.rows,cellWidth:r.width/term.cols};}})()`);
+  assert.ok(proseCell,'CJK prose fixture is visible');
+  await cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x:proseCell.x,y:proseCell.y,buttons:0});
+  await pause(150);
+  assert.equal(await evaluate(`(term._core.linkifier || term._core.linkifier2).currentLink?.state?.decorations.underline`),false,'Native linkifier does not paint a second, broader underline');
+  const highlightWidth=await evaluate(`parseFloat(document.querySelector('.siling-link-highlight').firstElementChild.style.width)`);
+  assert.ok(Math.abs(highlightWidth-proseUrl.length*proseCell.cellWidth)<1,'Highlight ends before ASCII comma and CJK prose');
+  await cdp('Input.dispatchMouseEvent',{type:'mousePressed',x:proseCell.x,y:proseCell.y,button:'left',buttons:1,clickCount:1});
+  await cdp('Input.dispatchMouseEvent',{type:'mouseReleased',x:proseCell.x,y:proseCell.y,button:'left',buttons:0,clickCount:1});
+  assert.equal(await evaluate('openedUrls.at(-1)'),proseUrl);
+  await cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x:proseCell.x,y:proseCell.y,buttons:0});
+  await screenshot('url-before-cjk-prose');
+  const opensBeforeProse=await evaluate('openedUrls.length');
+  const proseX=proseCell.x+(proseUrl.length+1)*proseCell.cellWidth;
+  await cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x:proseX,y:proseCell.y,buttons:0});
+  await cdp('Input.dispatchMouseEvent',{type:'mousePressed',x:proseX,y:proseCell.y,button:'left',buttons:1,clickCount:1});
+  await cdp('Input.dispatchMouseEvent',{type:'mouseReleased',x:proseX,y:proseCell.y,button:'left',buttons:0,clickCount:1});
+  assert.equal(await evaluate('openedUrls.length'),opensBeforeProse,'Adjacent prose cannot activate the native URL');
+  console.log('PASS: ASCII punctuation separates URL highlight and click from adjacent CJK prose');
   // The preceding browser-only link fixtures changed xterm without changing
   // tmux's screen/cursor. Resynchronize before testing real PTY output.
   tmux('refresh-client');

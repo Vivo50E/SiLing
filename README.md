@@ -1196,3 +1196,5 @@ Use **More → Session management → Fork to new pane** to branch a Claude or C
 Pane More keeps Rename, Reconnect display, and Close pane at the top. Expand Appearance and position, Files and connections, Secret configuration and operations, or Session management for other controls; restart, archive, switch type, and terminate are under Session management. Closing a pane keeps its session running.
 
 Rename a session using the sidebar pencil or pane More → Rename session. The shared in-page dialog works in browsers and Electron; an empty name restores the automatic title, and failed saves preserve your input for retry.
+
+Terminal URL highlights and click targets exclude adjacent CJK prose separated by commas or semicolons; Chinese paths and query values remain supported.
