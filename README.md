@@ -1215,3 +1215,5 @@ Rename a session using the sidebar pencil or pane More → Rename session. The s
 Terminal URL highlights and click targets exclude adjacent CJK prose separated by commas or semicolons; Chinese paths and query values remain supported.
 
 File preview keeps Copy all visible in narrow windows; YAML/text copies preserve indentation, and HTML previews can copy the original source.
+
+Terminal file links in numbered or bulleted lists remain clickable across hanging-indented wraps; trailing annotations are excluded from the file target.

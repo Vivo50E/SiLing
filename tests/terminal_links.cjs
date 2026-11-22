@@ -226,6 +226,35 @@ rows = [row('  /tmp/a'),row('  explanation')];
 click(3,0);
 assert.equal(messages.at(-1).message.path,'/tmp/a','Short rows must not absorb following text');
 
+// Numbered/bulleted paths use hanging indentation and may end in a note.
+for (const marker of ['1. ', '10. ', '  2) ', '  - ']) {
+  for (const cols of [40, 64, 90]) {
+    term.cols = cols;
+    const path = '/private/tmp/claude-502/-Users-demo-Documents-project/fixture-session/scratchpad/qa_sql/02_alter_wat_aggregated_gr_add_isat_vtl_n3_p3.sql';
+    const chunkWidth = cols - marker.length - 2;
+    const chunks = path.match(new RegExp('.{1,'+chunkWidth+'}', 'g'));
+    const last = chunks.length - 1;
+    rows = chunks.map((chunk, i) => row((i ? ' '.repeat(marker.length) : marker) + chunk
+      + (i === last ? '（QA 已有这些列，不用再跑）' : '')));
+    rows.push(row('3. /tmp/next.sql'));
+    term.rows = rows.length;
+    for (let y = 0; y < chunks.length; y++) {
+      click(marker.length, y);
+      assert.equal(messages.at(-1).message.path, path, 'Every numbered continuation opens the complete path');
+      assert.equal(hover(marker.length, y).length, chunks.length);
+    }
+    assert.equal(hover(0, 0).length, 0, 'List marker is not a link');
+    click(4, chunks.length);
+    assert.equal(messages.at(-1).message.path, '/tmp/next.sql', 'Next numbered item is independent');
+  }
+}
+term.cols = 40;
+const fullListedPath='/tmp/'+ 'a'.repeat(25)+'.sql';
+rows=[row('1. '+fullListedPath),row('2. /tmp/other.sql')];term.rows=rows.length;
+click(4,0);
+assert.equal(messages.at(-1).message.path,fullListedPath,'A near-full item cannot absorb the next list marker');
+term.cols = 20;
+
 // Codex prints local Markdown links as label (path), hard-wrapped with indent.
 const hardPath = '/Users/demo/Documents/OSS/project/outputs/run/artifacts/copy-history.png';
 rows = [row('效果图 (/Users/'), row('  demo/Documents/'), row('  OSS/project/'),

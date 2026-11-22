@@ -602,6 +602,8 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
         const match = head.text.match(/^(.*?)(https?:\/\/[^\s<>"'`]+|\/(?!\/)[^\s<>"'`]+)$/i);
         if (!match || (match[1] && !/[\s([<="'`：，；（【]$/u.test(match[1]))) continue;
         const indent = head.text.match(/^[ \t]*/)[0];
+        const listPrefix = /^[ \t]*(?:\d+[.)]|[-*•])[ \t]+$/.test(match[1]);
+        const hangingIndent = listPrefix ? " ".repeat(match[1].length) : indent;
         const local = match[2].startsWith("/");
         let target = match[2];
         let mapped = head.cells.slice(match[1].length);
@@ -610,18 +612,22 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
         for (let j = i + 1; j < physicalLines.length; j += 1) {
           const next = physicalLines[j];
           const part = next.text.match(local
-            ? /^([ \t]*)([^\s<>"'`]+)$/
+            ? /^([ \t]*)([^\s<>"'`]+)([ \t]+.*)?$/
             : /^([ \t]*)([A-Za-z0-9._~:/?#\[\]@!$&()*+,;=%-]+)$/);
           if (!part || /^[a-z][a-z0-9+.-]*:/i.test(part[2])) break;
+          // Accept spaced prose only after an explicit annotation boundary.
+          if (part[3] && !/[（【《〈「『〔［｛，。；：！？、]/u.test(part[2])) break;
           if (local && ((part[2].startsWith("/") && /\.[A-Za-z0-9]{1,8}$/.test(target))
               || /[，。；：！？、]$/u.test(target))) break;
           const end = previous.cells[previous.cells.length - 1];
-          if (!next.wrapped && (part[1] !== indent || !end
+          if (!next.wrapped && ((part[1] !== indent && part[1] !== hangingIndent) || !end
               || end.col + end.width < terminal.cols - 8)) break;
           target += part[2];
           mapped.push(...next.cells.slice(part[1].length));
           previous = next;
           joined = true;
+          // A trailing annotation ends this target even on a near-full row.
+          if (part[3] || (local && /[（【《〈「『〔［｛，。；：！？、]/u.test(part[2]))) break;
         }
         if (!joined) continue;
         const url = literalLinkTarget(target);

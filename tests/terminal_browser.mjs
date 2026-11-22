@@ -468,13 +468,17 @@ finally:
   const announcedChunks=[barePath.slice(0,firstWidth),...barePath.slice(firstWidth).match(new RegExp('.{1,'+(columns-4)+'}','g'))];
   const bareRows=pathChunks.map((part,i)=>'  '+part+(i===pathChunks.length-1?'？':''));
   const announcedRows=announcedChunks.map((part,i)=>'  '+(i===0?prefix:'')+part);
-  for (const pathRows of [bareRows,announcedRows]) {
+  const numberedWidth=columns-7;
+  const numberedChunks=barePath.match(new RegExp('.{1,'+numberedWidth+'}', 'g'));
+  const numberedRows=numberedChunks.map((part,i)=>(i===0?'1. ':'   ')+part
+    +(i===numberedChunks.length-1?'（QA 已有）':''));
+  for (const pathRows of [bareRows,announcedRows,numberedRows]) {
     tmux('send-keys','-t','check',"printf '%s\\n' '' "+pathRows.map(s=>"'"+s+"'").join(' '),'Enter');
     let pathCells=[];
     // Wait for the actual rows, not a fixed delay under machine load.
     for(let attempt=0;attempt<30;attempt++) {
       await evaluate('term.scrollToBottom()');
-      pathCells=await evaluate(`(()=>{const rows=${JSON.stringify(pathRows)};const b=term.buffer.active;const r=document.querySelector('.xterm-screen').getBoundingClientRect();return rows.map(row=>{const indent=row.startsWith('  '+${JSON.stringify(prefix)})?2+${prefix.length*2}:2;for(let y=b.viewportY;y<Math.min(b.length,b.viewportY+term.rows);y++){if(b.getLine(y).translateToString(true)===row)return {x:r.x+(indent+1.5)*r.width/term.cols,y:r.y+(y-b.viewportY+.5)*r.height/term.rows};}})})()`);
+      pathCells=await evaluate(`(()=>{const rows=${JSON.stringify(pathRows)};const b=term.buffer.active;const r=document.querySelector('.xterm-screen').getBoundingClientRect();return rows.map(row=>{const indent=${pathRows===numberedRows?3:2};const offset=row.startsWith('  '+${JSON.stringify(prefix)})?2+${prefix.length*2}:indent;for(let y=b.viewportY;y<Math.min(b.length,b.viewportY+term.rows);y++){if(b.getLine(y).translateToString(true)===row)return {x:r.x+(offset+.5)*r.width/term.cols,y:r.y+(y-b.viewportY+.5)*r.height/term.rows};}})})()`);
       if(pathCells.length>1 && pathCells.every(Boolean)) break;
       await pause(100);
     }
@@ -486,7 +490,7 @@ finally:
       await cdp('Input.dispatchMouseEvent',{type:'mouseReleased',...cell,button:'left',buttons:0,clickCount:1});
       assert.equal(await evaluate(`window.localMessages.at(-1)?.path`),barePath);
     }
-    await screenshot(pathRows===bareRows?'hard-wrapped-ssh-path':'announcement-ssh-path');
+    await screenshot(pathRows===numberedRows?'numbered-wrapped-path':pathRows===bareRows?'hard-wrapped-ssh-path':'announcement-ssh-path');
   }
   console.log('PASS: bare and Chinese-prefixed SSH paths highlight and open complete targets from every line');
   await evaluate(`window.frameElement.dataset.fileContext='true';window.silingFileContextForRow=()=> 'historical-ssh-context';`);
