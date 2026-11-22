@@ -2207,7 +2207,8 @@ def _resolve_linked_path(raw: str) -> Path:
         raise HTTPException(400, "invalid linked path")
     if not (path.is_file() or path.is_dir()):
         raise HTTPException(404, "linked path not found")
-    if not _is_allowed_linked_folder(path):
+    # Explicit regular-file links do not grant access to their parent directory.
+    if not path.is_file() and not _is_allowed_linked_folder(path):
         roots = ", ".join(str(p) for p in _linked_folder_roots())
         raise HTTPException(400, f"linked path outside allowed roots: {roots}")
     return path
@@ -2499,7 +2500,9 @@ def _clean_folder_rel(rel: str) -> str:
     return "/".join(parts)
 
 
-def _is_safe_linked_target(target: Path, _folder: Path) -> bool:
+def _is_safe_linked_target(target: Path, folder: Path) -> bool:
+    if folder.is_file():
+        return target == folder.resolve()
     return _is_allowed_linked_folder(target)
 
 
@@ -2876,7 +2879,7 @@ def _linked_folder_summary(rec: dict[str, str]) -> dict[str, Any]:
     item_type = rec.get("type") if rec.get("type") in {"file", "folder"} else (
         "file" if linked_path.is_file() else "folder"
     )
-    allowed = exists and _is_allowed_linked_folder(linked_path)
+    allowed = exists and (linked_path.is_file() or _is_allowed_linked_folder(linked_path))
     summary: dict[str, Any] = {
         **rec,
         "path": str(linked_path),

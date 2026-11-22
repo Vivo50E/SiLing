@@ -442,8 +442,11 @@ crash may leave one behind. This is not an encrypted credential vault.
 Click an absolute local path or a `file://` link in a terminal to open it in SiLing’s
 Files preview. The clicked item is linked to that session automatically; agents do
 not need to run `link-file` first. Codex’s `label (/path)` output is also clickable,
-including indented hard-wrapped paths. Paths must exist on the session’s host and be
-inside the configured allowed roots (`ORCH_LINKED_FOLDER_ROOTS` for extra roots).
+including indented hard-wrapped paths. Explicit regular-file links can be outside the
+workspace, provided the file exists and is readable on the session’s host. Each file
+is linked to that session; this does not grant access to its parent or siblings.
+Directory browsing still requires configured allowed roots (`ORCH_LINKED_FOLDER_ROOTS`
+for extra roots), including when following directory symlinks.
 Bare inferred paths need a directory component or filename suffix, so slash commands
 such as `/help` and `/approve` remain plain text. For a root-level name without a
 suffix (such as `/README` or `/tmp`), use an explicit `file://` or OSC hyperlink.

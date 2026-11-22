@@ -202,3 +202,15 @@ and retained historical links are not restricted to the current search project.
 Missing scope skips AI planning. A changed project is part of the search-cache
 identity. Project-page URLs can be normalized to a site/context root and project
 key; explicit conflicts are rejected. No new tool or write operation is enabled.
+
+## Explicit file links
+
+Authenticated Dashboard users can link existing regular files outside workspace
+roots to a session. Preview, raw download and host-open endpoints still require
+the file to be linked to that session; a file link cannot resolve child or sibling
+paths. This grants access to that individual file, not its parent directory.
+Directory browsing and traversal retain the configured allowed-root policy,
+including resolved symlink targets. Dashboard credentials therefore authorize
+explicit reads of files accessible to the service's OS account; do not expose
+them to untrusted clients. Remote paths resolve on the owning node, not the
+viewer's machine.
