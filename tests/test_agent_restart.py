@@ -67,6 +67,22 @@ class AgentRestartTests(unittest.TestCase):
     def restart(self):
         return self.client.post("/api/sessions/source/restart", headers={"Authorization": "Bearer fixture-token"})
 
+    def test_restart_does_not_repeat_confirmed_proxy_prompt(self):
+        self.src.update(proxy_mode="devin", proxy_mode_applied="devin", proxy_delivery_status="sent")
+        response = self.restart()
+        self.assertEqual(response.status_code, 200, response.text)
+        args = self.spawn.call_args.args[0]
+        self.assertIn("--inherit-proxy-mode", args)
+        self.assertEqual(args[args.index("--resume-id") + 1], "conversation-123")
+
+    def test_restart_applies_pending_proxy_change(self):
+        self.src.update(proxy_mode="local", proxy_mode_applied="devin", proxy_delivery_status="queued")
+        response = self.restart()
+        self.assertEqual(response.status_code, 200, response.text)
+        args = self.spawn.call_args.args[0]
+        self.assertNotIn("--inherit-proxy-mode", args)
+        self.assertEqual(args[args.index("--proxy-mode") + 1], "local")
+
     def test_missing_claude_conversation_never_stops_or_launches(self):
         self.src["agent"] = "claude"
         self.transcript.unlink()

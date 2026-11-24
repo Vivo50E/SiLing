@@ -18,6 +18,15 @@ def validate(mode):
     return mode
 
 
+def inherited_mode(row):
+    """Only skip startup input when the same conversation received this mode."""
+    mode = row.get("proxy_mode")
+    if (mode in MODES and row.get("proxy_mode_applied") == mode
+            and row.get("proxy_delivery_status") in ("sent", "startup", "inherited")):
+        return mode
+    return ""
+
+
 def devin_skill():
     home = Path.home()
     roots = [Path(os.environ.get("CODEX_HOME") or home / ".codex") / "skills",

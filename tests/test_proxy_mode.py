@@ -128,20 +128,33 @@ class ProxyLauncherTests(unittest.TestCase):
             (bin_dir/'tmux').chmod(0o700)
             env = dict(os.environ, PATH=f'{bin_dir}:/usr/bin:/bin', ORCH_OUTPUTS_DIR=str(root/'outputs'), HOME=str(root))
             for agent in ('claude','codex','cursor'):
-                for launch in ('new','resume','fork'):
+                for launch in ('new','resume','inherited','fork'):
                     if agent == 'cursor' and launch == 'fork':
                         continue
                     for mode in ('devin','cmux-cloud','local'):
                         with self.subTest(agent=agent, launch=launch, mode=mode):
                             name = f'{agent}-{launch}-{mode}'
                             args = ['bash', str(scripts/'run.sh'), '--no-attach', '--run-name', name, '--proxy-mode', mode]
-                            if launch != 'new': args += ['--resume-id' if launch == 'resume' else '--fork-id', 'native-original']
+                            if launch != 'new': args += ['--resume-id' if launch in ('resume', 'inherited') else '--fork-id', 'native-original']
+                            if launch == 'inherited': args += ['--inherit-proxy-mode']
                             args += [agent, 'fixture', str(root)]
                             result = subprocess.run(args, env=env, capture_output=True, text=True, timeout=10)
                             self.assertEqual(result.returncode, 0, result.stderr)
                             argv = json.loads(capture.read_text())
-                            self.assertTrue(argv[-1].startswith('[SiLing pane execution preference]'))
-                            self.assertIn('OFF' if mode == 'local' else f'Remote proxy mode: {mode}', argv[-1])
+                            if launch == 'inherited':
+                                self.assertFalse(any('[SiLing pane execution preference]' in arg for arg in argv))
+                            else:
+                                self.assertTrue(argv[-1].startswith('[SiLing pane execution preference]'))
+                                self.assertIn('OFF' if mode == 'local' else f'Remote proxy mode: {mode}', argv[-1])
                             if launch != 'new': self.assertIn('native-original', argv)
                             saved = json.loads((root/'outputs'/name/'session.json').read_text())
                             self.assertEqual(saved['proxy_mode_applied'], mode)
+
+
+class InheritedProxyTests(unittest.TestCase):
+    def test_only_confirmed_unchanged_policy_is_inherited(self):
+        for status in ('sent', 'startup', 'inherited', 'queued', 'sending', 'uncertain', ''):
+            row = dict(proxy_mode='devin', proxy_mode_applied='devin', proxy_delivery_status=status)
+            self.assertEqual(proxy_mode.inherited_mode(row), 'devin' if status in ('sent', 'startup', 'inherited') else '')
+            row['proxy_mode'] = 'local'
+            self.assertEqual(proxy_mode.inherited_mode(row), '')

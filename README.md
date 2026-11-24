@@ -138,6 +138,8 @@ intervene.
   Unchanged log snapshots keep their existing text and selection instead of
   repeatedly laying out large histories; scrolling up pauses updates until
   you return to the bottom.
+- **Terminal cursor:** a vertical bar, hidden in unfocused panes. A recognized
+  Codex footer does not display its parked cursor.
 - **Pane More → Proxy mode** selects Local execution, Devin, or cmux Cloud for
   that Claude/Codex/Cursor session. The local agent coordinates and reviews;
   implementation and expensive tests are delegated. Devin uses the installed
@@ -149,7 +151,9 @@ intervene.
   distinguishes queued, sent and uncertain delivery (sent does not mean the agent
   acknowledged or complied). An uncertain send is never retried automatically;
   check the terminal, or restart to reapply the saved mode. Stopped sessions load
-  it on resume. Restart, resume, snapshot restore and fork inherit the choice;
+  it on resume. Restart/resume of the same conversation does not resend a confirmed,
+  unchanged preference; new conversations, forks and pending/uncertain changes still
+  receive startup instructions. Snapshot restore and fork inherit the choice;
   switching to Terminal drops it. Local execution sends an explicit reset of
   the earlier preference. These are native user-message/startup
   prompt instructions, not enforced sandbox restrictions or an automatic job

@@ -11560,6 +11560,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         terminal_theme: Optional[str] = None,
         fork_id: str = "",
         proxy: Optional[str] = None,
+        inherited_proxy: str = "",
     ) -> dict:
         """Build `run.sh` args, spawn the session, and return
         {"ok": True, "method": ..., "command": ..., "tmux_session": ...(optional)}.
@@ -11597,6 +11598,9 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         if proxy is not None:
             arg_list += ["--proxy-mode", proxy]
             parts += ["--proxy-mode", shlex.quote(proxy)]
+        if resume_id and proxy and inherited_proxy == proxy:
+            arg_list += ["--inherit-proxy-mode"]
+            parts += ["--inherit-proxy-mode"]
         agent_kind = _norm_agent(agent)
         cursor_state = None
         if agent_kind == "cursor" and resume_id:
@@ -12924,6 +12928,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                                 resume_id=resume_id,
                                 resume_meta=inherited_resume,
                                 proxy=src.get("proxy_mode") or None,
+                                inherited_proxy=proxy_mode.inherited_mode(src),
                                 effort=effort,
                                 effort_mode=effort_mode,
                                 terminal_theme=terminal_theme)

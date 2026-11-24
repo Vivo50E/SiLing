@@ -125,6 +125,36 @@ _TTYD_INTERACTION_SCRIPT = r"""<script id="orch-ttyd-interactions-v1">
     if (!terminal || !screen || !mouse || !selection) return false;
     if (mouse.__orchInteractionPatch) return true;
 
+    // A background pane should not leave a block on the TUI's parked cursor.
+    terminal.options.cursorStyle = "bar";
+    terminal.options.cursorInactiveStyle = "none";
+    terminal.parser?.registerCsiHandler({intermediates: " ", final: "q"}, () => {
+      terminal.options.cursorStyle = "bar";
+      return true;
+    });
+    const cursorOnCodexFooter = () => {
+      const buffer = terminal.buffer.active;
+      if (buffer.cursorX !== 0) return false;
+      const y = buffer.baseY + buffer.cursorY;
+      const line = buffer.getLine(y)?.translateToString(true) || "";
+      if (!/^\s*(?:GPT[-\w.]*|gpt[-\w.]*)\s+.*·.*·/.test(line)) return false;
+      for (let offset = 1; offset <= 3; offset++) {
+        if (/^\s*›/.test(buffer.getLine(y - offset)?.translateToString(true) || "")) return true;
+      }
+      return false;
+    };
+
+    // Keep DEC visibility separately: focus/blink paints can bypass renderRows.
+    // Never move the terminal cursor or send visibility changes to the PTY.
+    if (core.coreService && terminal.buffer) {
+      let applicationCursorHidden = core.coreService.isCursorHidden;
+      Object.defineProperty(core.coreService, "isCursorHidden", {
+        configurable: true,
+        get: () => applicationCursorHidden || cursorOnCodexFooter(),
+        set: value => { applicationCursorHidden = value; }
+      });
+    }
+
     // Avoid CoreText's implicit CJK/emoji fallback for ttyd's stock font on
     // macOS. Keep the existing Latin font order, custom fonts and other
     // platforms untouched. Apply once before the initial fit, not per repaint.

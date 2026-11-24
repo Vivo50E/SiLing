@@ -41,6 +41,7 @@ RUN_NAME_OVERRIDE=""
 TERMINAL_THEME="${ORCH_DEFAULT_TERMINAL_THEME:-soft-dark}"
 NO_ATTACH=0
 PROXY_MODE=""
+INHERIT_PROXY=0
 POSITIONAL=()
 
 while [[ $# -gt 0 ]]; do
@@ -55,6 +56,7 @@ while [[ $# -gt 0 ]]; do
         --run-name)   RUN_NAME_OVERRIDE="$2"; shift 2 ;;
         --theme|--terminal-theme) TERMINAL_THEME="$2"; shift 2 ;;
         --no-attach)  NO_ATTACH=1; shift ;;   # spawn tmux + watcher, don't attach
+        --inherit-proxy-mode) INHERIT_PROXY=1; shift ;;
         --proxy-mode)
             if [ $# -lt 2 ]; then echo "--proxy-mode requires a mode" >&2; exit 2; fi
             PROXY_MODE="$2"; shift 2 ;;
@@ -84,6 +86,11 @@ if [ -n "$PROXY_MODE" ]; then
         *) echo "Proxy mode requires a supported coding agent" >&2; exit 2 ;;
     esac
     PROXY_PROMPT=$(python3 "$REPO_DIR/agent_orchestrator/proxy_mode.py" "$PROXY_MODE") || exit $?
+fi
+PROXY_STATUS="${PROXY_MODE:+startup}"
+if [ "$INHERIT_PROXY" = 1 ] && [ -n "$RESUME_ID" ] && [ -z "$FORK_ID" ] && [ -n "$PROXY_MODE" ]; then
+    PROXY_PROMPT=""
+    PROXY_STATUS="inherited"
 fi
 
 # Resolve before creating metadata/tmux. A launchd PATH often omits the
@@ -348,7 +355,7 @@ cat > "$SESSION_JSON" <<EOF
   "effort": "$EFFORT",
   "proxy_mode": "$PROXY_MODE",
   "proxy_mode_applied": "$PROXY_MODE",
-  "proxy_delivery_status": "${PROXY_MODE:+startup}",
+  "proxy_delivery_status": "$PROXY_STATUS",
   "cwd": "$CWD",
   "tmux_session": "$SESSION",
   "log_file": "logs/${TASK_NAME}.log",

@@ -33,6 +33,7 @@
       if (state === 'sent') return message('Sent to agent; this is not an acknowledgement.');
       if (state === 'sending' || state === 'uncertain') return message('Delivery unconfirmed. Check the terminal; no automatic retry. Restart can reapply the saved mode.');
       if (state === 'queued') return message(row.alive && !row.agent_exited ? 'Waiting for an idle agent and an empty input box.' : 'Saved. Instructions will load on the next resume.');
+      if (state === 'inherited') return message('Using the preference already sent in this conversation.');
       if (state === 'startup') return message('Instructions loaded at startup; this is not an acknowledgement.');
       return message('Saved. Save again to queue live delivery.');
     }
@@ -60,7 +61,7 @@
       dialog.querySelector('.proxy-context').textContent = row.display_name || row.task || runId;
       dialog.querySelector('.proxy-label').textContent = message('Code execution provider');
       select.options[0].textContent = message('Local execution');
-      dialog.querySelector('.proxy-help').textContent = message('No restart needed. Instructions are sent when the agent is idle and its input box is empty. Current work is not interrupted. The saved mode also loads on restart or resume. This is an agent instruction, not a sandbox.');
+      dialog.querySelector('.proxy-help').textContent = message('No restart needed. Instructions are sent when the agent is idle and its input box is empty. Current work is not interrupted. Restart/resume keeps an already delivered mode without sending it again; pending changes still load. This is an agent instruction, not a sandbox.');
       dialog.querySelector('.proxy-delivery').textContent = deliveryText(row);
       dialog.querySelector('.proxy-cancel').textContent = message('Cancel');
       submit.textContent = message('Save proxy mode');

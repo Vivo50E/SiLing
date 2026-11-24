@@ -103,6 +103,22 @@ try {
   await evaluate(injection);
   // Let initial font fitting and ttyd's 300 ms resize overlay settle.
   await pause(500);
+  assert.equal(await evaluate('term.options.cursorStyle'), 'bar');
+  assert.equal(await evaluate('term.options.cursorInactiveStyle'), 'none');
+  await evaluate(`new Promise(resolve => term.write('\\x1b[?1049h\\x1b[2J\\x1b[H› Ask Codex to do anything\\r\\n\\r\\n GPT-6-Astra medium · ~/fixture · task\\r\\x1b[?25h\\x1b[2 q', resolve))`);
+  await pause(100);
+  assert.equal(await evaluate('term.options.cursorStyle'), 'bar', 'Application block request keeps bar preference');
+  const footerHidden = await evaluate(`(()=>{const r=term._core._renderService;const renderer=r._renderer.value;const original=renderer.renderRows;let hidden;renderer.renderRows=function(...args){hidden=term._core.coreService.isCursorHidden;return original.apply(this,args)};try{r._renderRows(0,term.rows-1);return {hidden,after:term._core.coreService.isCursorHidden};}finally{renderer.renderRows=original;}})()`);
+  assert.equal(footerHidden.hidden,true,'Parked footer cursor is hidden during paint');
+  assert.equal(footerHidden.after,true,'Footer also stays hidden during focus/blink paints');
+  await evaluate(`new Promise(resolve => term.write('\\x1b[1;3H', resolve))`);
+  assert.equal(await evaluate('term._core.coreService.isCursorHidden'),false,'Returning to the editor restores the application cursor');
+  await pause(100);
+  await screenshot('input-bar-cursor');
+  await evaluate(`new Promise(resolve => term.write('\\x1b[?25l', resolve))`);
+  assert.equal(await evaluate('term._core.coreService.isCursorHidden'),true,'Hidden TUI cursor stays hidden');
+  await evaluate(`new Promise(resolve => term.write('\\x1b[?1049l\\x1b[?25h', resolve))`);
+  console.log('PASS: bar cursor, inactive cursor hidden, Codex footer cursor suppressed, DEC visibility preserved');
   if (process.env.TERMINAL_RECONNECT_ONLY === '1') {
     const originalPid=tmux('display-message','-p','-t','check','#{pane_pid}').trim();
     const count=await evaluate('connectionCount');
