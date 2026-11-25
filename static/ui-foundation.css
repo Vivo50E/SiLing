@@ -223,3 +223,25 @@ html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-mo
 .pane-menu-section > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }
 .pane-menu-section > .ui-menu-group { padding: 0 12px 12px; }
 .pane-menu-section > .ui-menu-group:last-child { padding-bottom: 12px; }
+
+/* Credential cards stay inside their source pane without resizing its PTY. */
+.pane-card > .pane-secret-card[open] {
+  position: absolute; inset: auto 6px 6px; z-index: 30;
+  margin: 0 auto; width: calc(100% - 12px); height: auto; max-width: 540px; max-height: calc(100% - 42px);
+  min-width: 0; padding: 0; box-sizing: border-box;
+  display: flex; flex-direction: column; overflow: hidden;
+  border: 1px solid var(--accent); border-radius: 10px;
+  background: var(--bg-soft); color: var(--text);
+  box-shadow: 0 8px 24px #0004;
+}
+.pane-secret-card .modal-head { flex: 0 0 auto; padding: 10px 12px; gap: 8px; }
+.pane-secret-card .modal-head h2 { font-size: 14px; margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.pane-secret-card .modal-head h2::before { content: "🔒 "; }
+.pane-secret-card .modal-body { display: block; flex: 1 1 auto; min-height: 0; overflow: auto; padding: 12px; overscroll-behavior: contain; }
+.pane-secret-card label { display: grid; gap: 4px; margin: 8px 0; }
+.pane-secret-card input:not([type=checkbox]), .pane-secret-card select, .pane-secret-card textarea {
+  width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; font-size: 16px;
+}
+.pane-secret-card p { overflow-wrap: anywhere; white-space: normal; line-height: 1.45; }
+.pane-secret-card [data-target] { margin-top: 0; font-weight: 600; }
+.pane-secret-card [data-status]:empty { display: none; }

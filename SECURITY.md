@@ -53,6 +53,8 @@ A request already sent before revocation may finish. Do not paste these keys int
 ordinary shell commands or agent messages. Terminal private-input delivery is
 retired: even old-page remote requests receive 410 before any forwarding.
 
+Credential forms are non-modal cards within their source pane. Values are masked and never stored in browser storage or ordinary message drafts. Closing, hiding, removing, or reassigning the pane clears unsent input; this does not revoke an already registered operation or cancel an in-flight request. The cards retain the same server-side credential boundaries described here.
+
 ## Secret configuration boundary
 
 The explicit configuration writer sends credentials directly to `backend.env`,

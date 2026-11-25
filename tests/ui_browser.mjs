@@ -1,3 +1,4 @@
+import { checkInlineSecrets } from './secret_inline_browser.mjs';
 import { checkSessionSleep } from './session_sleep_browser.mjs';
 // Opt-in full-page browser checks. No dependencies or running Dashboard needed.
 // UI_BROWSER=/path/to/chromium node tests/ui_browser.mjs [screenshot-directory]
@@ -687,7 +688,10 @@ try {
     groupFixture.groups=[{id:'jira-group',name:'Jira group',color:'teal'},{id:'other-group',name:'Other',color:'blue'}];
     groupFixture.members={'jira-on':'jira-group','jira-off':'other-group'};
   }});
-  if (process.env.UI_PREVIEW_COPY_ONLY === '1') {
+  if (process.env.UI_SECRET_INLINE_ONLY === '1') {
+    await checkInlineSecrets({evaluate,waitFor,viewport,cdp,screenshot,privateSubmissions,brokerRegistrations,sentPrompts,frameCount:()=>frameLoads});
+    assert.deepEqual(errors, [], 'No inline secret browser errors');
+  } else if (process.env.UI_PREVIEW_COPY_ONLY === '1') {
     await viewport(1000,800);
     await evaluate(`localStorage.setItem('orch_layout','1');localStorage.setItem('orch_slots',JSON.stringify(['fixture-0']))`);
     await cdp('Page.reload');
@@ -1574,7 +1578,7 @@ try {
   assert.equal(await evaluate(`document.querySelector('${privateCard} .pane-input textarea').value`),'config test preserved draft');
   assert.equal(frameLoads,framesBeforePrivate,'Configuration preserves terminal frames');
   assert.equal(requests.filter(r=>r.path.endsWith('/secret-input')).length,0,'Retired terminal input is never called');
-  await cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+  await cdp('Emulation.setDeviceMetricsOverride',{width:900,height:844,deviceScaleFactor:1,mobile:true});
   await openPrivate();
   await evaluate(`{const d=document.querySelector('.secret-config-dialog');d.querySelector('[data-destination]').value='ssh';d.querySelector('[data-destination]').dispatchEvent(new Event('change'));}`);
   assert.equal(await evaluate(`document.querySelector('.secret-config-dialog [data-host-label]').hidden`),false);
@@ -1583,9 +1587,9 @@ try {
   assert.equal(await privateValue(),'','Changing destination clears the secret and confirmation');
   assert.equal(await evaluate(`document.querySelector('.secret-config-dialog [data-confirm]').checked`),false);
   assert.ok(await evaluate(`(()=>{const r=document.querySelector('.secret-config-dialog').getBoundingClientRect();return r.x>=0&&r.right<=innerWidth&&r.height<=innerHeight;})()`),'Configuration fits a narrow screen');
-  await screenshot('secret-config-mobile'); await closeConfig();
-  await cdp('Emulation.clearDeviceMetricsOverride');
-  console.log('PASS: bilingual secret configuration, masked values, cancellation, tab clearing, exact destination, no messages/storage/terminal input, failed-auth protection and mobile layout');
+  await screenshot('secret-config-narrow'); await closeConfig();
+  await viewport(1280,800);
+  console.log('PASS: bilingual secret configuration, masked values, cancellation, tab clearing, exact destination, no messages/storage/terminal input, failed-auth protection and narrow pane layout');
   const framesBeforeBroker=frameLoads;
   const promptsBeforeBroker=sentPrompts.length;
   const openBroker=async()=>{
@@ -1643,12 +1647,12 @@ try {
   assert.ok(await evaluate(`!document.querySelector('.secret-operations-dialog').textContent.includes('fixture-broker-never-reflect')`));
   assert.equal(await evaluate(`document.querySelector('.secret-operations-dialog [data-value]').value`),'');
   await closeBroker();brokerFailure=false;
-  await cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+  await cdp('Emulation.setDeviceMetricsOverride',{width:900,height:844,deviceScaleFactor:1,mobile:true});
   await openBroker();
   assert.ok(await evaluate(`(()=>{const r=document.querySelector('.secret-operations-dialog').getBoundingClientRect();return r.x>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight;})()`),'Secret operation dialog fits a narrow viewport');
-  await screenshot('secret-operations-mobile');await closeBroker();
-  await cdp('Emulation.clearDeviceMetricsOverride');
-  console.log('PASS: Slack preset, custom API advanced settings, destination clearing, bilingual broker management, cleared credentials, no storage/agent messages, reference-only clipboard, revoke, literal errors and mobile layout');
+  await screenshot('secret-operations-narrow');await closeBroker();
+  await viewport(1280,800);
+  console.log('PASS: Slack preset, custom API advanced settings, destination clearing, bilingual broker management, cleared credentials, no storage/agent messages, reference-only clipboard, revoke, literal errors and narrow pane layout');
   const promptsBeforeLink=sentPrompts.length;
   for(const language of ['zh','en']) {
     await evaluate(`{const c=document.querySelector('[data-appearance="language"]');c.value=${JSON.stringify(language)};c.dispatchEvent(new Event('change'));document.querySelector('[data-run-id="fixture-2"] .btn-link-folder').click();}`);

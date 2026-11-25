@@ -2789,7 +2789,7 @@
   .cwd-picker-row button { flex:0 0 auto; }
   #working-directory-dialog .cwd-restart:not([hidden]) { display:flex; align-items:center; gap:8px; }
 </style>
-<link rel="stylesheet" href="/static/ui-foundation.css?v=9" />
+<link rel="stylesheet" href="/static/ui-foundation.css?v=10" />
 <script src="/static/ui-messages.js?v=32"></script>
 <script src="/static/ui-foundation.js?v=15"></script>
 <link rel="stylesheet" href="/static/pane-groups.css?v=9" />
@@ -2807,8 +2807,9 @@
 <script src="/static/pane-reviews.js?v=4"></script>
 <script src="/static/pane-jira.js?v=4"></script>
 <script src="/static/jira-mcp.js?v=3"></script>
-<script src="/static/secret-operations.js?v=2"></script>
-<script src="/static/secret-config.js?v=1"></script>
+<script src="/static/secret-inline.js?v=1"></script>
+<script src="/static/secret-operations.js?v=3"></script>
+<script src="/static/secret-config.js?v=2"></script>
 <script src="/static/terminal-keys.js?v=1"></script>
 <link rel="stylesheet" href="/static/browser-panes.css?v=1" />
 <script src="/static/browser-panes.js?v=1"></script>
@@ -10789,6 +10790,7 @@
   projectsBrowserModal.addEventListener("keydown", handleProjectsBrowserModalKeydown);
 
   function handleGlobalDashboardShortcuts(ev) {
+    if (ev.target?.closest?.(".pane-secret-card")) return;
     if (!ev.metaKey || ev.ctrlKey || ev.altKey || ev.shiftKey) return;
     const key = (ev.key || "").toLowerCase();
     if (key === "d" || ev.code === "KeyD") {

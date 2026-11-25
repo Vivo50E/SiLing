@@ -9,7 +9,7 @@
       alert(ui.message('Secret operations require HTTPS or localhost.'));
       return;
     }
-    if (document.querySelector('.secret-operations-dialog')) return;
+    if (card.querySelector('.secret-operations-dialog[open]')) return;
     const dialog = document.createElement('dialog');
     dialog.className = 'ui-dialog secret-operations-dialog';
     dialog.setAttribute('aria-label', ui.message('Secret operations'));
@@ -40,7 +40,8 @@
         <button type="submit" class="primary" data-submit data-ui-message="Register%20operation">Register operation</button>
         <div data-operations></div>
       </form>`;
-    document.body.append(dialog); ui.translate(dialog); ui.containDialogFocus(dialog);
+    const show = window.SilingSecretInline.mount(dialog, card, runId);
+    ui.translate(dialog);
     const el = name => dialog.querySelector(`[data-${name}]`);
     el('target').textContent = card.querySelector('.pane-drag-region')?.textContent.trim() || runId;
     const endpoint = `/api/sessions/${encodeURIComponent(runId)}/secret-operations`;
@@ -114,7 +115,8 @@
       } catch (_) {if (dialog.isConnected) error();}
       finally {spec.value = ''; el('submit').disabled = false;}
     };
-    dialog.showModal(); el('service').focus({preventScroll:true}); dialog.scrollTop = 0; await load();
+    if (!show()) return;
+    el('service').focus({preventScroll:true}); dialog.scrollTop = 0; await load();
   }
   window.SilingSecretOperations = {open};
 })();

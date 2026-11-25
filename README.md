@@ -393,6 +393,8 @@ sending credentials to a different destination. Share only the operation name.
 
 A custom operation registers an API key with a name and an immutable
 HTTPS operation (GET or POST, Bearer or X-API-Key, optional fixed POST body).
+Both **Secret configuration** and **Secret operations** open as masked input cards inside the source pane, rather than blocking the whole Dashboard. Other panes remain usable and the terminal frame and ordinary draft are preserved. Escape/close, hiding the page or pane, and removing/reassigning the pane clear unsent values. These cards are opened manually from Pane More; they do not scrape agent output or send credentials to agent messages. Configuration still writes a plaintext `backend.env`; use the memory-only operation broker when the agent should only receive an operation reference.
+
 Tell the agent only the name, then use `siling secret call deploy`; `siling secret list`
 lists references in the current `ORCH_RUN_ID` scope. No CLI accepts a key, arbitrary
 command, request override, or key export. Keys live only in Dashboard memory, expire

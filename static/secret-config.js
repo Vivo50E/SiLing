@@ -1,7 +1,7 @@
 (() => {
   async function open({api, ui, runId, card}) {
     if (!window.isSecureContext) { alert(ui.message('Secret configuration requires HTTPS or localhost.')); return; }
-    if (document.querySelector('.secret-config-dialog')) return;
+    if (card.querySelector('.secret-config-dialog[open]')) return;
     const dialog = document.createElement('dialog');
     dialog.className = 'ui-dialog secret-config-dialog';
     dialog.setAttribute('aria-label', ui.message('Secret configuration'));
@@ -21,7 +21,8 @@
         <p data-status role="status" aria-live="polite"></p>
         <button type="submit" class="primary" data-submit data-ui-message="Save%20to%20backend.env">Save to backend.env</button>
       </form>`;
-    document.body.append(dialog); ui.translate(dialog); ui.containDialogFocus(dialog);
+    const show = window.SilingSecretInline.mount(dialog, card, runId);
+    ui.translate(dialog);
     const el = name => dialog.querySelector(`[data-${name}]`);
     el('target').textContent = card.querySelector('.pane-drag-region')?.textContent.trim() || runId;
     const clear = () => { el('value').value = ''; };
@@ -58,7 +59,8 @@
         spec.value = ''; controls.forEach(control => { control.disabled = false; }); el('confirm').checked = false; el('submit').disabled = false;
       }
     };
-    dialog.showModal(); el('directory').focus();
+    if (!show()) return;
+    el('directory').focus();
   }
   window.SilingSecretConfig = {open};
 })();
