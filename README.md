@@ -380,6 +380,46 @@ An SSH tunnel without forwarding headers cannot be distinguished from a local
 connection; the chooser opens on the Dashboard host, not the viewing device.
 
 
+Pane **More → Secret configuration and operations → Session secrets** provides
+Devin-style command approval cards. Copy its instructions to an existing agent,
+or have the agent request a credential by name, without supplying its value:
+
+```sh
+siling secret request --name API_TOKEN --cwd /absolute/project --reason "Run the API check" -- /absolute/path/to/python check_api.py
+siling secret requests
+```
+
+The visible source pane opens a card automatically (within five seconds). Review
+the environment-variable name, exact argument list, working directory and reason,
+then enter the masked value and choose **Approve and run once**. Closing defers
+the request; reopen it from More. **Reject / stop command** cancels it. Pending
+requests expire after 15 minutes; duplicate pending requests share one card.
+The command runs on the Dashboard host with that variable in its environment,
+not in the existing terminal/SSH shell. It inherits only PATH, HOME, LANG, LC_ALL
+and TMPDIR, not Dashboard tokens or the interactive shell environment. Use an
+absolute executable; scripts must read the variable themselves. This release
+supports one variable per request and commands up to 120 seconds. Remote-node
+commands require opening that node's Dashboard directly; no automatic SSH forwarding.
+
+By default the value remains only in memory for one hour in the current session,
+scoped by directory and variable name. Subsequent commands can reuse it only with
+another approval. **Save for future sessions** is unchecked by default and uses
+a separate macOS Keychain service, scoped by directory and variable name. On a
+future request choose **Use saved Keychain secret** and approve again. Keychain
+failure has no plaintext fallback; other operating systems support memory only.
+Use **Forget session secret** or **Delete saved Keychain secret** on the request
+card to remove a value; cancelling a command does not delete a saved credential.
+Session end is checked every five seconds; it clears volatile values and stops
+commands. Dashboard shutdown clears volatile values; saved Keychain entries remain.
+
+Only exit status is returned to the agent, never stdout/stderr. SiLing does not
+write these values to project files, command arguments, chat or terminal history.
+**An approved command can read the value and can itself write files or send it over
+the network.** Review the executable, scripts and destination before approval;
+this is not isolation from trusted same-user agents or Dashboard administrators.
+Keep using the fixed HTTPS broker below when arbitrary command access is unwanted.
+Existing configuration-to-`backend.env` remains a separate explicit action.
+
 Pane **More → Secret configuration and operations → Secret operations** defaults
 to **Slack — check authentication**, with the name `slack_check` prefilled: enter
 only the key to register. This preset calls Slack's `auth.test` only; it cannot
@@ -396,8 +436,7 @@ HTTPS operation (GET or POST, Bearer or X-API-Key, optional fixed POST body).
 Both **Secret configuration** and **Secret operations** open as masked input cards inside the source pane, rather than blocking the whole Dashboard. Other panes remain usable and the terminal frame and ordinary draft are preserved. Escape/close, hiding the page or pane, and removing/reassigning the pane clear unsent values. These cards are opened manually from Pane More; they do not scrape agent output or send credentials to agent messages. Configuration still writes a plaintext `backend.env`; use the memory-only operation broker when the agent should only receive an operation reference.
 
 Tell the agent only the name, then use `siling secret call deploy`; `siling secret list`
-lists references in the current `ORCH_RUN_ID` scope. No CLI accepts a key, arbitrary
-command, request override, or key export. Keys live only in Dashboard memory, expire
+lists references in the current `ORCH_RUN_ID` scope. The fixed-operation CLI accepts no key, command override or key export. Keys live only in Dashboard memory, expire
 after 15 minutes or one hour, and disappear on revoke or Dashboard shutdown.
 Expired keys are cleared by an idle expiry worker. Existing in-flight calls may
 finish before revoke returns; calls are never automatically retried.
@@ -408,7 +447,7 @@ HTTP status only; the Slack preset additionally extracts a boolean authenticatio
 result. Neither returns raw response bodies, headers or exceptions, even if an API
 echoes the key. This is suitable for fixed operations such as a deployment webhook or
 authentication check; arbitrary API data retrieval and local-command injection are
-not supported. The CLI uses loopback access or an SSH tunnel to the Dashboard.
+not supported by this fixed-operation broker. The CLI uses loopback access or an SSH tunnel to the Dashboard.
 Remote Nodes must run a version supporting this API and use HTTPS or a loopback tunnel.
 
 The security boundary is the broker API on a trusted host. Dashboard administrators

@@ -69,6 +69,7 @@ from .directory_picker import choose_directory
 from .browser_open import open_system_browser, system_browser_available, validate_web_url
 from . import terminal_files, terminal_control, secret_input, secret_config
 from .secret_broker import SecretBroker
+from .session_secrets import SessionSecrets
 from .link_jobs import LinkJobs
 from .conversation_metrics import TranscriptMetricsCache
 from .dashboard_network import build_access_url, list_local_ipv4, pick_best_ip
@@ -8755,6 +8756,11 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
     )
     link_jobs = LinkJobs(outputs_dir / ".link-jobs")
     secret_broker = SecretBroker()
+    def secret_session_alive(run_id):
+        row = _lookup_run_light(outputs_dir, run_id)
+        return bool(row and row.get('tmux_session') and tmux_alive(row['tmux_session']))
+
+    session_secrets = SessionSecrets(alive=secret_session_alive)
     workflows = Workflows(outputs_dir)
     dashboard_instance_id = uuid.uuid4().hex
     remote_http_client = httpx.AsyncClient(
@@ -8772,6 +8778,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         secret_broker.start()
+        session_secrets.start()
         resources.start()
         native_activity.start()
         sync_status.start()
@@ -8839,6 +8846,7 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
             app.state.active_snapshot_autosave_thread = None
             jira_connection.oauth.cancel()
             secret_broker.close()
+            session_secrets.close()
             link_jobs.close()
             proxy_sender.stop()
             session_snapshots.stop(timeout=3)
@@ -9102,7 +9110,14 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
                 # Allow GET / to render a page that prompts for a token.
                 return JSONResponse({"error": "invalid token"}, status_code=401, headers={"Cache-Control":"no-store"})
         private_input = request.url.path.startswith('/api/sessions/') and (
-            request.url.path.endswith(('/secret-input', '/secret-config')) or '/secret-operations' in request.url.path)
+            request.url.path.endswith(('/secret-input', '/secret-config')) or '/secret-operations' in request.url.path or '/secret-requests' in request.url.path)
+        private_input = private_input or request.url.path == '/api/secret-requests'
+        if '/secret-requests' in request.url.path:
+            origin = request.headers.get('origin')
+            if origin and not secret_config.same_origin(origin, str(request.url)):
+                return JSONResponse({'detail':'Same-origin request required'}, status_code=403, headers={'Cache-Control':'no-store'})
+            if _remote_session_target(request.url.path) is not None:
+                return JSONResponse({'detail':'Open the owning node Dashboard for command secrets'}, status_code=409, headers={'Cache-Control':'no-store'})
         if private_input and not secret_input.trusted_transport(
                 request.url.scheme, request.client.host if request.client else ''):
             return JSONResponse({'detail': 'Private input requires HTTPS or a loopback connection'},
@@ -11198,10 +11213,76 @@ def create_app(outputs_dir: Path, token: Optional[str] = None,
         run = _lookup_run_light(outputs_dir, run_id)
         if not run:
             secret_broker.revoke_run(run_id)
+            session_secrets.revoke_run(run_id)
             raise HTTPException(404, "run not found")
         if not run.get('tmux_session') or not tmux_alive(run['tmux_session']):
             secret_broker.revoke_run(run_id)
+            session_secrets.revoke_run(run_id)
             raise HTTPException(409, "Secret operations require a live session")
+
+    async def secret_request_body(request: Request):
+        raw = bytearray()
+        try:
+            async for chunk in request.stream():
+                raw.extend(chunk)
+                if len(raw) > 32768:
+                    raise HTTPException(413, "Secret request too large")
+            body = json.loads(raw)
+            if not isinstance(body, dict):
+                raise ValueError()
+            return body
+        except (ValueError, UnicodeError):
+            raise HTTPException(400, "Invalid secret request") from None
+        finally:
+            raw[:] = b'\0' * len(raw)
+
+    def require_secret_approval(request: Request):
+        if (request.headers.get('x-siling-user-intent') != 'approve-secret'
+                or not secret_config.same_origin(request.headers.get('origin', ''), str(request.url))):
+            raise HTTPException(403, "Approve this command from its pane card")
+
+    @app.get("/api/secret-requests")
+    def pending_secret_requests():
+        rows = session_secrets.list()
+        for run_id in {r['run_id'] for r in rows}:
+            try:
+                require_secret_session(run_id)
+            except HTTPException:
+                pass
+        return {"requests": session_secrets.list()}
+
+    @app.get("/api/sessions/{run_id}/secret-requests")
+    def list_session_secret_requests(run_id: str):
+        require_secret_session(run_id)
+        return {"requests": session_secrets.list(run_id)}
+
+    @app.post("/api/sessions/{run_id}/secret-requests")
+    async def create_session_secret_request(run_id: str, request: Request):
+        require_secret_session(run_id)
+        try:
+            return {"request": session_secrets.request(run_id, await secret_request_body(request))}
+        except (ValueError, OSError):
+            raise HTTPException(400, "Invalid command request; use absolute paths and no secret values") from None
+
+    @app.post("/api/sessions/{run_id}/secret-requests/{request_id}/{action}")
+    async def act_session_secret_request(run_id: str, request_id: str, action: str, request: Request):
+        require_secret_session(run_id)
+        require_secret_approval(request)
+        body = await secret_request_body(request)
+        try:
+            if action == 'approve':
+                result = await asyncio.to_thread(session_secrets.approve, run_id, request_id, body)
+                return {"request": result}
+            if action == 'cancel' and not body:
+                return {"request": session_secrets.cancel(run_id, request_id)}
+            if action == 'forget' and set(body) <= {'saved'} and type(body.get('saved', False)) is bool:
+                await asyncio.to_thread(session_secrets.forget, run_id, request_id, body.get('saved', False))
+                return {"ok": True}
+            raise ValueError()
+        except (ValueError, OSError):
+            raise HTTPException(409, "Secret action unavailable; check request state or unlock Keychain. No plaintext fallback.") from None
+        finally:
+            body.clear()
 
     @app.get("/api/sessions/{run_id}/secret-operations")
     def list_secret_operations(run_id: str):

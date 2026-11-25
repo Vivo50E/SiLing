@@ -245,3 +245,9 @@ html[data-motion="reduce"] *, html[data-motion="reduce"] *::before, html[data-mo
 .pane-secret-card p { overflow-wrap: anywhere; white-space: normal; line-height: 1.45; }
 .pane-secret-card [data-target] { margin-top: 0; font-weight: 600; }
 .pane-secret-card [data-status]:empty { display: none; }
+
+.session-secrets-dialog .session-secret-save {
+  display: flex; align-items: flex-start; gap: 8px;
+}
+.session-secrets-dialog .session-secret-save input { width: auto; flex: 0 0 auto; margin-top: 3px; }
+.session-secrets-dialog [data-command] { max-height: 140px; overflow: auto; }

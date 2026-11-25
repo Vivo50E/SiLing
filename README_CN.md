@@ -423,6 +423,35 @@ CLI 主动换行的裸 HTTP(S) 链接，在缩进一致且接近 pane 行尾时�
 Dashboard 不会复制一份新的项目。它记住真正的 workspace，让每个 task 都有一个
 稳定的入口，方便你持续 track 它的工作和产出。
 
+**更多 → 密钥配置与受控调用 → 会话密钥** 支持类似 Devin 的命令审批卡片。
+可先点“复制给 agent 的说明”发给现有 agent；agent 只提交变量名和命令，不提交密钥：
+
+```sh
+siling secret request --name API_TOKEN --cwd /absolute/project --reason "检查 API" -- /absolute/path/to/python check_api.py
+siling secret requests
+```
+
+可见的来源 pane 会在五秒内自动显示卡片。核对变量名、完整参数列表、目录和用途，
+在隐藏输入框填入密钥后点击“批准并执行一次”。关闭只是稍后处理，可从更多菜单重开；
+“拒绝 / 停止命令”会取消请求。待审批请求 15 分钟过期，重复请求合并为同一张卡片。
+命令在 **Dashboard 主机**运行，不在原终端或 SSH shell 内；仅继承 PATH、HOME、LANG、
+LC_ALL、TMPDIR，不继承 Dashboard token 或交互 shell 的环境。可执行文件须为绝对路径，
+脚本自行读取环境变量。本版每次支持一个变量，命令最长运行 120 秒；Remote Node 需直接
+打开该节点 Dashboard，不自动转发 SSH 命令。
+
+默认仅在本会话内存保存一小时，按目录和变量名隔离；再次使用仍需逐条批准。
+“保存到 macOS 钥匙串，供后续会话使用”默认不勾选；开启后由独立的 SiLing Keychain
+服务按目录和变量名保存，下次选择“使用已保存的钥匙串密钥”并再次批准。钥匙串失败不回退
+到明文文件，非 macOS 仅支持内存模式。卡片提供清除本会话密钥和删除钥匙串密钥；
+取消命令不删除保存的密钥。后台每五秒检查会话结束并清理内存、停止命令；Dashboard
+关闭清空内存密钥，Keychain 条目保留。
+
+agent 只收到退出状态，不收到标准输出或错误输出。SiLing 不把密钥写入项目文件、
+命令参数、聊天或终端历史。**获准命令能读取密钥，也能自行写文件或联网发送**，所以
+应核对程序、脚本和目标地址；不能将此功能视为对同账户 agent 或 Dashboard 管理员的
+权限隔离。不希望赋予任意命令读取能力时，继续使用下方的固定 HTTPS 受控调用。
+原有写入 `backend.env` 的配置方式仍作为独立的明确操作保留。
+
 「密钥配置」和「受控密钥调用」现在从 pane 的更多菜单手动打开，显示为该 pane 内的隐藏输入卡片，不阻塞其他 pane，也不重建终端或覆盖普通消息草稿。关闭／Esc、隐藏页面或 pane、移除或切换 pane 会话时清空未提交值。不扫描 Agent 输出、不把密钥发送给 Agent。配置方式仍写入明文 `backend.env`；只想让 Agent 使用调用引用时，请使用内存中的受控调用。
 
 在 pane 的 **更多 → 密钥配置与受控调用 → 受控密钥调用** 中，默认选择
@@ -437,14 +466,14 @@ Dashboard 不会复制一份新的项目。它记住真正的 workspace，让每
 自定义 API 把 API key 与名称、固定 HTTPS 地址和操作绑定
 （GET／POST、Bearer／X-API-Key、可选的固定 POST 正文）。只告诉 Agent 名称，使用
 `siling secret call deploy` 执行；`siling secret list` 列出当前 `ORCH_RUN_ID` 下的引用。
-CLI 不接受明文密钥、任意命令、请求覆盖或密钥导出。密钥仅存于 Dashboard 内存，
+固定操作 CLI 不接受明文密钥、命令覆盖、请求覆盖或密钥导出。密钥仅存于 Dashboard 内存，
 可选择 15 分钟或 1 小时有效期；到期由后台清理，撤销或 Dashboard 停止时清空。
 撤销前已开始的请求可能完成；系统不自动重试调用。
 
 认证头由代理添加，验证远端 TLS 证书，不使用环境代理、不跟随重定向。
 自定义 API 只返回 HTTP 状态码；Slack 预设仅额外提取布尔认证结果。
 均不返回响应正文、响应头或底层异常，即使接口回显密钥也不输出。
-适用于部署 webhook、认证检查等固定操作；不支持任意 API 数据读取或本机命令注入。
+固定操作代理适用于部署 webhook、认证检查；它不支持任意 API 数据读取或本机命令注入。
 CLI 需使用回环地址或 SSH 隧道连接 Dashboard；Remote Nodes 也需支持此版本的 API，
 并通过 HTTPS 或回环隧道连接。
 

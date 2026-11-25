@@ -24,12 +24,14 @@
       });
     }
     dialog.addEventListener('close', () => { clear(); observer.disconnect(); }, {once:true});
-    return () => {
+    return ({preserveFocus = false} = {}) => {
       if (!valid()) {
         clear(); observer.disconnect(); dialog.dispatchEvent(new Event('close')); return false;
       }
-      card.scrollIntoView({block:'nearest', inline:'nearest'});
+      const active = document.activeElement;
+      if (!preserveFocus) card.scrollIntoView({block:'nearest', inline:'nearest'});
       dialog.show();
+      if (preserveFocus && active?.isConnected) active.focus({preventScroll:true});
       return true;
     };
   }

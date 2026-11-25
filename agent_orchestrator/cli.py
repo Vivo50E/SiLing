@@ -1079,6 +1079,44 @@ def cmd_secret(args):
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
+def cmd_secret_request(args):
+    run_id = args.run_id or os.environ.get('ORCH_RUN_ID', '')
+    base = _dashboard_api_base(args.dashboard_url)
+    if not run_id or not is_loopback_host(urlparse(base).hostname or ''):
+        raise SystemExit('Use a SiLing session and loopback Dashboard URL or SSH tunnel')
+    path = f'/api/sessions/{quote(run_id, safe="")}/secret-requests'
+    headers = {'Accept':'application/json', 'Content-Type':'application/json'}
+    token = dashboard_token()
+    if token:
+        headers['Authorization'] = 'Bearer '+token
+    body = None
+    if args.secret_action == 'request':
+        argv = args.command
+        if argv and argv[0] == '--':
+            argv = argv[1:]
+        body = json.dumps({'name':args.name, 'cwd':str(Path(args.cwd).resolve()),
+                           'argv':argv, 'reason':args.reason, 'timeout':args.timeout}).encode()
+    opener = build_opener(ProxyHandler({}), HTTPSHandler(context=ssl._create_unverified_context()))
+    try:
+        with opener.open(Request(base+path, data=body, headers=headers,
+                                 method='POST' if body else 'GET'), timeout=20) as response:
+            payload = json.loads(response.read(65536))
+        rows = [payload['request']] if body else payload['requests']
+        result = []
+        for row in rows:
+            if not re.fullmatch(r'[a-f0-9]{32}', row.get('id', '')):
+                raise ValueError()
+            state = row.get('state')
+            if state not in ('pending', 'running', 'completed', 'failed', 'timed_out', 'cancelled'):
+                raise ValueError()
+            code = row.get('exit_code')
+            result.append({'id':row['id'], 'state':state,
+                           'exit_code':code if type(code) is int else None, 'output_withheld':True})
+    except Exception:
+        raise SystemExit('Secret request unavailable; check its pane card. Do not send keys in chat.') from None
+    print(json.dumps({'requests': result}, indent=2))
+
+
 def cmd_session_read(args):
     position = "head" if args.head else "tail"
     lines = 50000 if getattr(args, "all", False) else args.lines
@@ -1582,6 +1620,18 @@ def main():
         child.add_argument('--run-id', default='', help='Session scope (default: ORCH_RUN_ID)')
         child.add_argument('--dashboard-url', default='', help='Loopback Dashboard URL or SSH tunnel')
         child.set_defaults(func=cmd_secret)
+
+    for action in ('request', 'requests'):
+        child = secret_sub.add_parser(action, help='Request pane approval or check command status; never supply a key')
+        child.add_argument('--run-id', default='')
+        child.add_argument('--dashboard-url', default='')
+        if action == 'request':
+            child.add_argument('--name', required=True, help='Environment variable name, not its value')
+            child.add_argument('--cwd', default=os.getcwd())
+            child.add_argument('--reason', default='')
+            child.add_argument('--timeout', type=int, default=60)
+            child.add_argument('command', nargs=argparse.REMAINDER, help='-- /absolute/executable arguments')
+        child.set_defaults(func=cmd_secret_request)
 
     p_workflow = sub.add_parser("workflow", help="Run an explicit reviewed dependency graph")
     workflow_sub = p_workflow.add_subparsers(dest="workflow_action", required=True)

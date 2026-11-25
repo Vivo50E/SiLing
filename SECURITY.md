@@ -55,6 +55,38 @@ retired: even old-page remote requests receive 410 before any forwarding.
 
 Credential forms are non-modal cards within their source pane. Values are masked and never stored in browser storage or ordinary message drafts. Closing, hiding, removing, or reassigning the pane clears unsent input; this does not revoke an already registered operation or cancel an in-flight request. The cards retain the same server-side credential boundaries described here.
 
+## Session command secrets
+
+The separate session-command API accepts only a name and immutable command spec.
+Creating a request cannot execute it or read stored values. Approval requires an
+explicit same-origin browser POST and user-intent header; credentials require
+HTTPS or loopback. These are browser/CSRF guards, not authentication against an
+agent holding Dashboard admin access: that agent can impersonate approvals.
+All routes retain Dashboard authentication; no credential retrieval endpoint exists.
+Requests and values remain in memory, expire, and are scoped by run/directory/name.
+A five-second lifecycle check revokes ended sessions. Each request executes once,
+with a 1–120 second timeout and process-group cleanup on cancellation/shutdown.
+No shell interpolation is performed. The approved executable and scripts still
+run with the Dashboard user's privileges: mutable scripts, files, subprocesses,
+network access, daemonization and same-user/admin inspection are outside this
+boundary. This feature is not the fixed HTTPS broker's stronger status-only API
+restriction on what may use a key. Review commands before allowing them to read it.
+
+A minimal child environment receives the approved variable; stdin/stdout/stderr
+use DEVNULL and only exit status escapes. No transcripts, files or argv receive
+the value from SiLing. An approved program can itself persist or exfiltrate it;
+no claim is made that the command or OS will never write secrets to disk. Retained
+bytearrays are erased on expiry/revoke, without guaranteeing removal of runtime
+copies. Cancelling a command does not erase a saved credential; explicit forget
+buttons clear memory and optionally the corresponding Keychain entry.
+
+Optional persistence uses Security.framework memory APIs under the distinct
+`SiLing.SessionSecrets.v1` service, with directory/name-bound account hashes.
+It never invokes the `security` CLI or falls back to plaintext. Saved credentials
+require another explicit approval in future sessions. Non-macOS hosts support
+volatile values only. Remote qualified sessions are rejected before forwarding;
+open the owning node's Dashboard. CLI requests use loopback or an SSH tunnel.
+
 ## Secret configuration boundary
 
 The explicit configuration writer sends credentials directly to `backend.env`,

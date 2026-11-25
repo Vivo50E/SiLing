@@ -1,3 +1,4 @@
+import { checkSessionSecrets } from './session_secrets_browser.mjs';
 import { checkInlineSecrets } from './secret_inline_browser.mjs';
 import { checkSessionSleep } from './session_sleep_browser.mjs';
 // Opt-in full-page browser checks. No dependencies or running Dashboard needed.
@@ -129,6 +130,8 @@ let jiraConnection={enabled:false};
 let jiraOAuth={state:'idle'},jiraOAuthBody={},jiraOAuthPolls=0;
 const jiraConnections=[];
 let bulkMode=false,bulkHold=null;const bulkBodies=[];
+let sessionSecretRequests = [];
+const sessionSecretSubmissions = [];
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   requests.push({ method: req.method, path: url.pathname });
@@ -284,6 +287,20 @@ const server = http.createServer((req, res) => {
       if (archiveMode==='lost') {res.writeHead(503); return res.end('{}');}
       res.end(JSON.stringify({ok:true,session_archives:archiveFixture}));
     }); return;
+  }
+  if (url.pathname === '/api/secret-requests') {
+    res.setHeader('Content-Type','application/json');
+    return res.end(JSON.stringify({requests:sessionSecretRequests}));
+  }
+  if (url.pathname.includes('/secret-requests/')) {
+    res.setHeader('Content-Type','application/json');
+    let raw='';req.on('data',c=>raw+=c);req.on('end',()=>{
+      const body=JSON.parse(raw),id=url.pathname.split('/').at(-2),action=url.pathname.split('/').at(-1);
+      sessionSecretSubmissions.push({body,action,intent:req.headers['x-siling-user-intent']});
+      const row=sessionSecretRequests.find(r=>r.id===id);
+      row.state=action==='approve'?'running':'cancelled';
+      res.end(JSON.stringify({request:row}));
+    });return;
   }
   if (url.pathname === '/api/resources') {
     res.setHeader('Content-Type', 'application/json');
@@ -688,7 +705,10 @@ try {
     groupFixture.groups=[{id:'jira-group',name:'Jira group',color:'teal'},{id:'other-group',name:'Other',color:'blue'}];
     groupFixture.members={'jira-on':'jira-group','jira-off':'other-group'};
   }});
-  if (process.env.UI_SECRET_INLINE_ONLY === '1') {
+  if (process.env.UI_SESSION_SECRETS_ONLY === '1') {
+    await checkSessionSecrets({evaluate,waitFor,viewport,cdp,screenshot,configure:rows=>{sessionSecretRequests=rows;},submissions:sessionSecretSubmissions,sentPrompts,frameCount:()=>frameLoads});
+    assert.deepEqual(errors, [], 'No session secret browser errors');
+  } else if (process.env.UI_SECRET_INLINE_ONLY === '1') {
     await checkInlineSecrets({evaluate,waitFor,viewport,cdp,screenshot,privateSubmissions,brokerRegistrations,sentPrompts,frameCount:()=>frameLoads});
     assert.deepEqual(errors, [], 'No inline secret browser errors');
   } else if (process.env.UI_PREVIEW_COPY_ONLY === '1') {
